@@ -16,15 +16,18 @@ class AdiDewasa : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // MODIFIKASI 1: Menghapus pengecekan settingsForProvider.enableAdult
-    // Semua kategori akan langsung dimuat.
+    // UPDATE: Menambahkan 6 Kategori Spesifik
+    // Type: 2 = Movies, 1 = TV Series, -1 = Semua
+    // Sort: 1 = Latest, 5 = Most Watched, 6 = Top Rated (asumsi umum filter)
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
-                MainPageData("Adult Recently Added", "-1:1:adult"),
-                MainPageData("Adult Movies", "2:6:adult"),
-                MainPageData("Adult TV-Shows", "1:3:adult"),
-                MainPageData("Adult Most Watched", "-1:5:adult"),
+                MainPageData("Adult Movies - Latest", "2:1:adult"),         // 1. Film Terbaru
+                MainPageData("Adult Movies - Most Watched", "2:5:adult"),   // 2. Film Populer
+                MainPageData("Adult Movies - Top Rated", "2:6:adult"),      // 3. Film Rating Tinggi
+                MainPageData("Adult TV Shows - Latest", "1:1:adult"),       // 4. Serial TV Terbaru
+                MainPageData("Adult TV Shows - Most Watched", "1:5:adult"), // 5. Serial TV Populer
+                MainPageData("Adult Recently Added (All)", "-1:1:adult"),   // 6. Semua Terbaru
             )
         }
 
@@ -39,7 +42,7 @@ class AdiDewasa : MainAPI() {
 
             val isAdultSection = adultFlag == "adult"
 
-            // MODIFIKASI 2: Memaksa "adult": true agar server selalu mengirim konten
+            // TETAP: Memaksa "adult": true agar server selalu mengirim konten tanpa filter
             val jsonPayload = """{
                 "page": $page,
                 "type": "$type",
@@ -81,8 +84,7 @@ class AdiDewasa : MainAPI() {
 
     private fun MediaItem.toSearchResult(): SearchResponse? {
         try {
-            // MODIFIKASI 3: Menghapus blok filter "if (!settingsForProvider.enableAdult...)"
-            // Sekarang semua item akan di-return tanpa disembunyikan.
+            // TETAP: Filter penyembunyi konten dihapus total
 
             // Use title or name, whichever is available
             val itemTitle = this.title ?: this.name ?: "Unknown Title"
