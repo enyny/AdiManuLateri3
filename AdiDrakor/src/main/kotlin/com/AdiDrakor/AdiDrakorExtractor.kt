@@ -946,6 +946,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // ================== ADIDEWASA (ADDED) ==================
+    @Suppress("UNCHECKED_CAST") // Membungkam warning Unchecked Cast
     suspend fun invokeAdiDewasa(
         title: String,
         year: Int?,
