@@ -15,8 +15,97 @@ import com.lagradost.cloudstream3.extractors.helper.AesHelper
 
 object DramaDripExtractor : DramaDrip() {
 
+    // ================== 0. ADIMOVIEBOX SOURCE (ADDED) ==================
+    // Prioritas: Tertinggi (Direct Source)
+    suspend fun invokeAdimoviebox(
+        title: String,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val searchUrl = "https://moviebox.ph/wefeed-h5-bff/web/subject/search"
+        val streamApi = "https://fmoviesunblocked.net"
+        
+        // 1. Cari Film/Serial berdasarkan judul
+        val searchBody = mapOf(
+            "keyword" to title,
+            "page" to 1,
+            "perPage" to 10,
+            "subjectType" to 0
+        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+
+        val searchRes = app.post(searchUrl, requestBody = searchBody).text
+        // Parsing manual agar tidak merusak DramaDripParser utama
+        val items = tryParseJson<AdimovieboxSearch>(searchRes)?.data?.items ?: return
+        
+        // 2. Filter hasil pencarian yang cocok
+        val matchedMedia = items.find { item ->
+            val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
+            // Logika pencocokan: Judul persis ATAU (Judul mengandung kata kunci & Tahun sama)
+            (item.title.equals(title, true)) || 
+            (item.title?.contains(title, true) == true && itemYear == year)
+        } ?: return
+
+        // 3. Request Link Stream
+        val subjectId = matchedMedia.subjectId ?: return
+        val se = if (season == null) 0 else season
+        val ep = if (episode == null) 0 else episode
+        
+        val playUrl = "$streamApi/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
+        // Referer spesifik wajib ada
+        val validReferer = "$streamApi/spa/videoPlayPage/movies/${matchedMedia.detailPath}?id=$subjectId&type=/movie/detail&lang=en"
+
+        val playRes = app.get(playUrl, referer = validReferer).text
+        val streams = tryParseJson<AdimovieboxStreams>(playRes)?.data?.streams ?: return
+
+        // 4. Ekstrak Link Video
+        streams.reversed().forEach { source ->
+             callback.invoke(
+                newExtractorLink(
+                    "Adimoviebox",
+                    "Adimoviebox",
+                    source.url ?: return@forEach,
+                    // Gunakan INFER_TYPE agar otomatis deteksi MP4/M3U8
+                    INFER_TYPE 
+                ) {
+                    this.referer = validReferer
+                    this.quality = getQualityFromName(source.resolutions)
+                }
+            )
+        }
+
+        // 5. Ekstrak Subtitle
+        val id = streams.firstOrNull()?.id
+        val format = streams.firstOrNull()?.format
+        if (id != null) {
+            val subUrl = "$streamApi/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$subjectId"
+            app.get(subUrl, referer = validReferer).parsedSafe<AdimovieboxCaptions>()?.data?.captions?.forEach { sub ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        sub.lanName ?: "Unknown",
+                        sub.url ?: return@forEach
+                    )
+                )
+            }
+        }
+    }
+
+    // --- Internal Data Classes untuk Adimoviebox ---
+    data class AdimovieboxSearch(val data: AdimovieboxData?)
+    data class AdimovieboxData(val items: List<AdimovieboxItem>?)
+    data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
+    data class AdimovieboxStreams(val data: AdimovieboxStreamData?)
+    data class AdimovieboxStreamData(val streams: List<AdimovieboxStreamItem>?)
+    data class AdimovieboxStreamItem(val id: String?, val format: String?, val url: String?, val resolutions: String?)
+    data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
+    data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
+    data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
+    // ================== END ADIMOVIEBOX ==================
+
+
     // --- 1. JENIUSPLAY (VIA IDLIX) ---
-    // Prioritas: Pertama
     suspend fun invokeIdlix(
         title: String? = null,
         year: Int? = null,
@@ -84,7 +173,7 @@ object DramaDripExtractor : DramaDrip() {
 
             when {
                 source.startsWith("https://jeniusplay.com") -> {
-                    // Memanggil Extractor Jeniusplay (Pastikan kelas Jeniusplay ada di file Extractors.kt)
+                    // Memanggil Extractor Jeniusplay
                     Jeniusplay().getUrl(source, "$referer/", subtitleCallback, callback)
                 }
                 !source.contains("youtube") -> {
@@ -98,7 +187,6 @@ object DramaDripExtractor : DramaDrip() {
     }
 
     // --- 2. VIDLINK ---
-    // Prioritas: Kedua
     suspend fun invokeVidlink(
         tmdbId: Int?,
         season: Int?,
@@ -131,7 +219,6 @@ object DramaDripExtractor : DramaDrip() {
     }
 
     // --- 3. VIDPLAY (VIA VIDSRCCC) ---
-    // Prioritas: Ketiga
     suspend fun invokeVidsrccc(
         tmdbId: Int?,
         imdbId: String?,
@@ -152,7 +239,6 @@ object DramaDripExtractor : DramaDrip() {
         val userId = script.substringAfter("userId = \"").substringBefore("\";")
         val v = script.substringAfter("v = \"").substringBefore("\";")
 
-        // Pastikan VidsrcHelper ada di Utils.kt
         val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId")
 
         val serverUrl = if (season == null) {
@@ -189,7 +275,6 @@ object DramaDripExtractor : DramaDrip() {
                     }
                 }
                 it.name.equals("UpCloud") -> {
-                    // Logika UpCloud (opsional, bagian dari Vidsrccc)
                      val scriptData = app.get(
                         sources.source ?: return@amap,
                         referer = "$vidsrcccAPI/"
@@ -228,7 +313,6 @@ object DramaDripExtractor : DramaDrip() {
     }
 
     // --- 4. VIXSRC (ALPHA) ---
-    // Prioritas: Keempat
     suspend fun invokeVixsrc(
         tmdbId: Int?,
         season: Int?,
@@ -259,7 +343,7 @@ object DramaDripExtractor : DramaDrip() {
 
         listOf(
             VixsrcSource("Vixsrc [Alpha]", video1, url),
-            VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/"), // MappleAPI const perlu didefine di DramaDrip
+            VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/"),
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -276,6 +360,4 @@ object DramaDripExtractor : DramaDrip() {
             )
         }
     }
-    
-    // NOTE: VidsrcCx dan Vidrock telah dinonaktifkan (tidak disertakan) sesuai permintaan.
 }
