@@ -5,13 +5,14 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson // PERBAIKAN: Ditambahkan
 import com.lagradost.nicehttp.RequestBodyTypes
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 
 object AdiDewasaExtractor {
+    // Konstanta URL
     const val idlixAPI = "https://tv6.idlixku.com"
     const val vidsrcccAPI = "https://vidsrc.cc"
     const val vidSrcAPI = "https://vidsrc.net"
@@ -26,6 +27,7 @@ object AdiDewasaExtractor {
     const val gomoviesAPI = "https://gomovies-online.cam"
 
     suspend fun invokeAdimoviebox(title: String, year: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
+        // PERBAIKAN: toJson() sekarang sudah dikenali
         val searchBody = mapOf("keyword" to title, "page" to 1, "perPage" to 10, "subjectType" to 0).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         val items = app.post("https://moviebox.ph/wefeed-h5-bff/web/subject/search", requestBody = searchBody).parsedSafe<AdimovieboxSearch>()?.data?.items ?: return
         val matched = items.find { (it.title.equals(title, true)) || (it.title?.contains(title, true) == true && it.releaseDate?.contains("$year") == true) } ?: return
