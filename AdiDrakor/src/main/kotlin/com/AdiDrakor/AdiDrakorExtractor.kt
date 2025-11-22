@@ -937,7 +937,7 @@ object AdiDrakorExtractor : AdiDrakor() {
 
     }
 
-    // ================== ADIDEWASA / DRAMAFULL (FINAL FIX + HEADER BYPASS) ==================
+    // ================== ADIDEWASA / DRAMAFULL (NO PLAYER HEADERS) ==================
     @Suppress("UNCHECKED_CAST") 
     suspend fun invokeAdiDewasa(
         title: String,
@@ -949,15 +949,16 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL (Via Helper)
+        // 1. PEMBERSIHAN JUDUL
         val cleanQuery = AdiDewasaHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
 
         try {
+            // Gunakan Header untuk SEARCHING (Wajib ada)
             val searchRes = app.get(searchUrl, headers = AdiDewasaHelper.headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. PENCOCOKAN JUDUL (Via Helper)
+            // 2. PENCOCOKAN JUDUL
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 AdiDewasaHelper.isFuzzyMatch(title, itemTitle)
@@ -1005,7 +1006,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                 if (foundUrl != null) targetUrl = foundUrl
             }
 
-            // 4. EKSTRAKSI VIDEO & BYPASS 3002
+            // 5. EKSTRAKSI VIDEO (HEADER PADA PLAYER DIHAPUS)
             val docPage = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
@@ -1019,22 +1020,19 @@ object AdiDrakorExtractor : AdiDrakor() {
             videoSource.forEach { (quality, url) ->
                  if (url.isNotEmpty()) {
                     callback.invoke(
+                        // PERUBAHAN: Hapus blok { referer = ... }
+                        // Biarkan INFER_TYPE atau M3U8 tanpa header tambahan
                         newExtractorLink(
                             "AdiDewasa",
                             "AdiDewasa ($quality)",
                             url,
-                            INFER_TYPE // PENTING: Ganti M3U8 ke INFER_TYPE untuk cegah Error 3002
-                        ) {
-                            // PENTING: Header Referer ke halaman FILM, bukan HOME
-                            this.referer = targetUrl 
-                            this.headers = AdiDewasaHelper.headers.toMutableMap().apply {
-                                put("Referer", targetUrl) // Override Referer
-                            }
-                        }
+                            INFER_TYPE 
+                        )
                     )
                 }
             }
              
+             // SUBTITLE
              val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
              val subJson = jsonObject["sub"] as? Map<String, Any>
              val subs = subJson?.get(bestQualityKey) as? List<String>
