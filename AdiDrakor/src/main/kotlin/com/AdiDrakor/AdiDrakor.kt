@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa // ADDED IMPORT
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
@@ -305,7 +306,7 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. Adimoviebox (Direct Source - Added)
+            // 0. Adimoviebox (Prioritas Tertinggi)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -316,7 +317,17 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 1. JeniusPlay (Di dalam fungsi Idlix terdapat Jeniusplay)
+            // 1. AdiDewasa (Dramafull - ADDED)
+            {
+                invokeAdiDewasa(
+                    title = res.title ?: return@runAllAsync,
+                    season = res.season,
+                    episode = res.episode,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+            },
+            // 2. JeniusPlay (Idlix)
             {
                 invokeIdlix(
                     res.title,
@@ -327,11 +338,11 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 2. Vidlink
+            // 3. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 3. Vidplay (Di dalam fungsi Vidsrccc terdapat Vidplay)
+            // 4. Vidplay (Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -342,11 +353,11 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vixsrc (Alpha)
+            // 5. Vixsrc
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 5. Sumber Lainnya (Prioritas bawah)
+            // Sumber-sumber lain (Cadangan)
             {
                 invokeVidsrc(
                     res.imdbId,
@@ -373,10 +384,6 @@ open class AdiDrakor : TmdbProvider() {
             {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
-            // 6. VidsrcCx DINONAKTIFKAN
-            // {
-            //    invokeVidsrccx(res.id, res.season, res.episode, callback)
-            // },
             {
                 invokeSuperembed(
                     res.id,
@@ -385,17 +392,7 @@ open class AdiDrakor : TmdbProvider() {
                     subtitleCallback,
                     callback
                 )
-            },
-            // 7. Vidrock DINONAKTIFKAN
-            // {
-            //     invokeVidrock(
-            //         res.id,
-            //         res.season,
-            //         res.episode,
-            //         subtitleCallback,
-            //         callback
-            //     )
-            // }
+            }
         )
 
         return true
