@@ -435,3 +435,17 @@ data class NepuSearch(
         @JsonProperty("type") val type: String? = null,
     )
 }
+
+// --- ADIDEWASA / DRAMAFULL MODELS (ADDED) ---
+data class AdiDewasaSearchResponse(
+    @JsonProperty("data") val data: ArrayList<AdiDewasaItem>? = arrayListOf(),
+    @JsonProperty("success") val success: Boolean? = null
+)
+
+data class AdiDewasaItem(
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("slug") val slug: String? = null,
+    @JsonProperty("image") val image: String? = null,
+    @JsonProperty("year") val year: String? = null // JSON kadang return string/int
+)
