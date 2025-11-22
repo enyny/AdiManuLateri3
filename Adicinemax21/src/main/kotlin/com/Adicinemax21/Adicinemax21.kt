@@ -1,6 +1,7 @@
 package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -335,7 +336,18 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 1. JeniusPlay (Prioritas #1 via Idlix)
+            // 0. Adimoviebox (NEW - Prioritas Tertinggi karena Direct Source)
+            {
+                invokeAdimoviebox(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 1. JeniusPlay (Prioritas #2 via Idlix)
             {
                 invokeIdlix(
                     res.title,
@@ -346,11 +358,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. Vidlink (Prioritas #2)
+            // 2. Vidlink (Prioritas #3)
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 3. Vidplay (Prioritas #3 via Vidsrccc)
+            // 3. Vidplay (Prioritas #4 via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -361,11 +373,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vixsrc Alpha (Prioritas #4 via Vixsrc)
+            // 4. Vixsrc Alpha (Prioritas #5 via Vixsrc)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // Sumber-sumber lain (Urutan berikutnya)
+            // Sumber-sumber lain
             {
                 invokeVidsrc(
                     res.imdbId,
