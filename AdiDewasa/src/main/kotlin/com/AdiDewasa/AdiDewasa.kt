@@ -3,6 +3,7 @@ package com.AdiDewasa
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.newExtractorLink // PERBAIKAN: Ditambahkan
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -56,7 +57,8 @@ class AdiDewasa : MainAPI() {
             }
         } ?: emptyList()
 
-        return newHomePageResponse(list, hasNext = response?.nextPageUrl != null)
+        // PERBAIKAN DI SINI: List harus dibungkus dalam HomePageList
+        return newHomePageResponse(HomePageList(request.name, list), hasNext = response?.nextPageUrl != null)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -124,7 +126,7 @@ class AdiDewasa : MainAPI() {
                         val json = app.get(signedUrl, referer = args.url, headers = AdiDewasaHelper.headers).text
                         val videoSource = tryParseJson<Map<String, Any>>(json)?.get("video_source") as? Map<String, String>
                         videoSource?.forEach { (q, url) ->
-                            // INFER_TYPE tanpa header referer untuk menghindari error 3002
+                            // PERBAIKAN: newExtractorLink sudah di-import
                             callback(newExtractorLink(name, "AdiDewasa ($q)", url, INFER_TYPE))
                         }
                         // Subtitles
