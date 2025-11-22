@@ -86,7 +86,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    // Data Classes Internal Adimoviebox
     data class AdimovieboxSearch(val data: AdimovieboxData?)
     data class AdimovieboxData(val items: List<AdimovieboxItem>?)
     data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
@@ -938,7 +937,7 @@ object AdiDrakorExtractor : AdiDrakor() {
 
     }
 
-    // ================== ADIDEWASA / DRAMAFULL (IMPROVED) ==================
+    // ================== ADIDEWASA / DRAMAFULL (FINAL FIX) ==================
     @Suppress("UNCHECKED_CAST") 
     suspend fun invokeAdiDewasa(
         title: String,
@@ -950,14 +949,13 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL (SMART SEARCH)
-        // Menghapus karakter aneh seperti ':', '!', '-' agar pencarian API tidak error
-        // Contoh: "Goblin: The Lonely..." -> "Goblin The Lonely"
+        // 1. PEMBERSIHAN JUDUL (Agresif)
+        // Hanya ambil huruf dan angka, hapus semua simbol
         val cleanQuery = title.replace(Regex("[^a-zA-Z0-9\\s]"), " ").trim()
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
         
-        // Menggunakan Header agar terlihat seperti Browser Asli
+        // Header Browser agar tidak diblokir
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
             "Accept" to "application/json, text/plain, */*",
@@ -967,31 +965,32 @@ object AdiDrakorExtractor : AdiDrakor() {
         try {
             val searchRes = app.get(searchUrl, headers = headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. LOGIKA PENCOCOKAN (FUZZY MATCH)
-            // Mencari judul yang mengandung kata kunci, bukan harus persis 100%
+            // 2. LOGIKA PENCOCOKAN (RELAXED / LONGGAR)
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 
-                // Normalisasi: lowercase + hapus simbol
                 val t1 = itemTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
                 val t2 = title.lowercase().replace(Regex("[^a-z0-9]"), "")
                 
-                // Jika judul di website mengandung judul pencarian, ATAU sebaliknya
-                // Contoh: Website="Goblin (2016)", TMDB="Goblin" -> Cocok.
-                t1.contains(t2) || t2.contains(t1)
-            } ?: return 
+                // Jika judul sangat pendek, harus sama persis
+                // Jika judul panjang, cukup "mengandung"
+                if (t1.length < 4 || t2.length < 4) {
+                    t1 == t2
+                } else {
+                    t1.contains(t2) || t2.contains(t1)
+                }
+            } ?: searchRes?.data?.firstOrNull() // FALLBACK: Jika tidak ada yang match tapi ada hasil, ambil yang pertama saja!
+
+            if (matchedItem == null) return 
 
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
 
-            // 3. LOAD HALAMAN FILM
+            // 3. LOAD HALAMAN FILM & LOGIKA AUTO-CLICK
             val doc = app.get(targetUrl, headers = headers).document
 
-            // 4. LOGIKA PEMILIHAN EPISODE / FILM
             if (season != null && episode != null) {
                 // -- SERIAL TV --
-                // Mencari link yang teksnya mengandung angka episode kita
-                // Support format: "Episode 5", "Ep 5", atau hanya "5"
                 val episodeHref = doc.select("div.episode-item a, .episode-list a").find { 
                     val text = it.text().trim()
                     val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
@@ -1002,55 +1001,72 @@ object AdiDrakorExtractor : AdiDrakor() {
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
                 // -- FILM (MOVIE) --
-                // Terkadang harus klik tombol 'Watch Now' dulu untuk masuk ke player
-                val watchBtn = doc.selectFirst("a.btn-watch, a.watch-now, .watch-button a")
-                if (watchBtn != null) {
-                    val href = watchBtn.attr("href")
-                    if (href.isNotEmpty() && !href.contains("javascript")) {
-                        targetUrl = fixUrl(href, baseUrl)
+                // Cari tombol "Watch Now", "Nonton", atau link di episode terakhir
+                val selectors = listOf(
+                    "a.btn-watch", 
+                    "a.watch-now", 
+                    ".watch-button a", 
+                    "div.last-episode a",
+                    ".film-buttons a.btn-primary"
+                )
+                
+                var foundUrl: String? = null
+                for (selector in selectors) {
+                    val el = doc.selectFirst(selector)
+                    if (el != null) {
+                        val href = el.attr("href")
+                        if (href.isNotEmpty() && !href.contains("javascript") && href != "#") {
+                            foundUrl = fixUrl(href, baseUrl)
+                            break
+                        }
                     }
+                }
+                
+                if (foundUrl != null) {
+                    targetUrl = foundUrl
                 }
             }
 
-            // 5. EKSTRAKSI VIDEO (HANDLING SIGNED URL)
+            // 5. EKSTRAKSI VIDEO (REGEX SUPER AGRESIF)
             val docPage = app.get(targetUrl, headers = headers).document
-            val script = docPage.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return
+            // Gabungkan semua script menjadi satu string besar untuk dicari
+            val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
-            // Regex fleksibel: menangani kutip satu (') atau kutip dua (")
-            val signedUrl = Regex("""window\.signedUrl\s*=\s*["'](.+?)["']""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
+            // Regex yang menangkap variasi spasi dan kutip
+            val signedUrl = Regex("""signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/") 
                 ?: return
             
             val jsonResponseText = app.get(signedUrl, referer = targetUrl, headers = headers).text
             val jsonObject = tryParseJson<Map<String, Any>>(jsonResponseText) ?: return
             val videoSource = jsonObject["video_source"] as? Map<String, String> ?: return
             
-            // Ambil kualitas tertinggi (misal: 1080, 720)
-            val bestQualityKey = videoSource.keys.filter { it.toIntOrNull() != null }
-                .maxByOrNull { it.toInt() } ?: return
-            val videoUrl = videoSource[bestQualityKey] ?: return
-
-            if (videoUrl.isNotEmpty()) {
-                callback.invoke(
-                    newExtractorLink(
-                        "AdiDewasa",
-                        "AdiDewasa",
-                        videoUrl,
-                        ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = baseUrl
-                    }
-                )
-                
-                // SUBTITLE
-                val subJson = jsonObject["sub"] as? Map<String, Any>
-                val subs = subJson?.get(bestQualityKey) as? List<String>
-                subs?.forEach { subPath ->
-                    val subUrl = fixUrl(subPath, baseUrl)
-                    subtitleCallback.invoke(
-                        newSubtitleFile("English", subUrl)
+            // Ambil semua kualitas yang tersedia
+            videoSource.forEach { (quality, url) ->
+                 if (url.isNotEmpty()) {
+                    callback.invoke(
+                        newExtractorLink(
+                            "AdiDewasa",
+                            "AdiDewasa ($quality)",
+                            url,
+                            ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = baseUrl
+                        }
                     )
                 }
             }
+             
+             // SUBTITLE
+             val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
+             val subJson = jsonObject["sub"] as? Map<String, Any>
+             val subs = subJson?.get(bestQualityKey) as? List<String>
+             subs?.forEach { subPath ->
+                 val subUrl = fixUrl(subPath, baseUrl)
+                 subtitleCallback.invoke(
+                     newSubtitleFile("English", subUrl)
+                 )
+             }
+             
         } catch (e: Exception) {
             e.printStackTrace()
         }
