@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa // ADDED
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
@@ -305,6 +306,17 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
+            // 0. AdiDewasa (Added)
+            {
+                invokeAdiDewasa(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
             // 0. Adimoviebox (Direct Source - Added)
             {
                 invokeAdimoviebox(
