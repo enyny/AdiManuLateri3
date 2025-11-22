@@ -19,6 +19,9 @@ import java.net.URLEncoder
 
 object AdiDrakorExtractor : AdiDrakor() {
 
+    // ... (Kode Adimoviebox, Idlix, dll tetap sama, saya persingkat untuk fokus ke AdiDewasa) ...
+    // Karena Anda minta FULL, saya akan tulis ulang semua fungsi lama + AdiDewasa yang baru.
+
     // ================== ADIMOVIEBOX SOURCE ==================
     suspend fun invokeAdimoviebox(
         title: String,
@@ -95,8 +98,8 @@ object AdiDrakorExtractor : AdiDrakor() {
     data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
     data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
     data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
-    // ================== END ADIMOVIEBOX ==================
-
+    
+    // ================== GOMOVIES ==================
     suspend fun invokeGomovies(
         title: String? = null,
         year: Int? = null,
@@ -937,7 +940,7 @@ object AdiDrakorExtractor : AdiDrakor() {
 
     }
 
-    // ================== ADIDEWASA / DRAMAFULL (FINAL FIX) ==================
+    // ================== ADIDEWASA / DRAMAFULL (USING UTILS HELPER) ==================
     @Suppress("UNCHECKED_CAST") 
     suspend fun invokeAdiDewasa(
         title: String,
@@ -949,45 +952,28 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL (Agresif)
-        // Hanya ambil huruf dan angka, hapus semua simbol
-        val cleanQuery = title.replace(Regex("[^a-zA-Z0-9\\s]"), " ").trim()
+        // 1. GUNAKAN HELPER DARI UTILS UNTUK MEMBERSIHKAN JUDUL
+        val cleanQuery = AdiDewasaHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
-        
-        // Header Browser agar tidak diblokir
-        val headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "Accept" to "application/json, text/plain, */*",
-            "Referer" to baseUrl
-        )
 
         try {
-            val searchRes = app.get(searchUrl, headers = headers).parsedSafe<AdiDewasaSearchResponse>()
+            // Gunakan Header dari Utils
+            val searchRes = app.get(searchUrl, headers = AdiDewasaHelper.headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. LOGIKA PENCOCOKAN (RELAXED / LONGGAR)
+            // 2. GUNAKAN HELPER DARI UTILS UNTUK PENCOCOKAN JUDUL (FUZZY MATCH)
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
-                
-                val t1 = itemTitle.lowercase().replace(Regex("[^a-z0-9]"), "")
-                val t2 = title.lowercase().replace(Regex("[^a-z0-9]"), "")
-                
-                // Jika judul sangat pendek, harus sama persis
-                // Jika judul panjang, cukup "mengandung"
-                if (t1.length < 4 || t2.length < 4) {
-                    t1 == t2
-                } else {
-                    t1.contains(t2) || t2.contains(t1)
-                }
-            } ?: searchRes?.data?.firstOrNull() // FALLBACK: Jika tidak ada yang match tapi ada hasil, ambil yang pertama saja!
+                AdiDewasaHelper.isFuzzyMatch(title, itemTitle)
+            } ?: searchRes?.data?.firstOrNull() // Fallback
 
             if (matchedItem == null) return 
 
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
 
-            // 3. LOAD HALAMAN FILM & LOGIKA AUTO-CLICK
-            val doc = app.get(targetUrl, headers = headers).document
+            // 3. LOAD HALAMAN FILM
+            val doc = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
 
             if (season != null && episode != null) {
                 // -- SERIAL TV --
@@ -1001,7 +987,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
                 // -- FILM (MOVIE) --
-                // Cari tombol "Watch Now", "Nonton", atau link di episode terakhir
                 val selectors = listOf(
                     "a.btn-watch", 
                     "a.watch-now", 
@@ -1021,26 +1006,20 @@ object AdiDrakorExtractor : AdiDrakor() {
                         }
                     }
                 }
-                
-                if (foundUrl != null) {
-                    targetUrl = foundUrl
-                }
+                if (foundUrl != null) targetUrl = foundUrl
             }
 
-            // 5. EKSTRAKSI VIDEO (REGEX SUPER AGRESIF)
-            val docPage = app.get(targetUrl, headers = headers).document
-            // Gabungkan semua script menjadi satu string besar untuk dicari
+            // 5. EKSTRAKSI VIDEO
+            val docPage = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
-            // Regex yang menangkap variasi spasi dan kutip
             val signedUrl = Regex("""signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/") 
                 ?: return
             
-            val jsonResponseText = app.get(signedUrl, referer = targetUrl, headers = headers).text
+            val jsonResponseText = app.get(signedUrl, referer = targetUrl, headers = AdiDewasaHelper.headers).text
             val jsonObject = tryParseJson<Map<String, Any>>(jsonResponseText) ?: return
             val videoSource = jsonObject["video_source"] as? Map<String, String> ?: return
             
-            // Ambil semua kualitas yang tersedia
             videoSource.forEach { (quality, url) ->
                  if (url.isNotEmpty()) {
                     callback.invoke(
