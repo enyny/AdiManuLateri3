@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
 class PappyWattiPunya : MainAPI() {
-    // UBAH: Gunakan HTTPS agar lebih stabil dan tidak mudah di-reset
     override var mainUrl              = "https://mangoporn.net"
     override var name                 = "PappyWattiPunya"
     override val hasMainPage          = true
@@ -14,11 +13,12 @@ class PappyWattiPunya : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // TAMBAHAN: Header agar terlihat seperti Browser PC (Chrome)
+    // Menggunakan User-Agent Android agar trafik terlihat seperti HP biasa
     private val commonHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Referer" to "$mainUrl/"
+        "Referer" to "$mainUrl/",
+        "Connection" to "keep-alive" // Meminta server menjaga koneksi tetap terbuka
     )
 
     override val mainPage = mainPageOf(
@@ -52,9 +52,18 @@ class PappyWattiPunya : MainAPI() {
         "genre/big-cock" to "Big Cock"
     )
 
+    // Fungsi bantuan untuk request dengan timeout lebih lama
+    private suspend fun request(url: String): org.jsoup.nodes.Document {
+        return app.get(
+            url, 
+            headers = commonHeaders, 
+            timeout = 30 // Timeout diperpanjang jadi 30 detik
+        ).document
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // TAMBAHAN: Gunakan headers
-        val document = app.get("$mainUrl/${request.data}/page/$page", headers = commonHeaders).document
+        // Menggunakan fungsi request custom
+        val document = request("$mainUrl/${request.data}/page/$page")
         val home = document.select("div.items > article")
             .mapNotNull { it.toSearchResult() }
         return newHomePageResponse(
@@ -72,7 +81,6 @@ class PappyWattiPunya : MainAPI() {
         val href      = fixUrl(this.select("div h3 a").attr("href"))
         val posterUrl = this.select("div.poster > img").attr("data-wpfc-original-src")
         
-        // Logika poster tetap dipertahankan
         val finalPoster = if (!posterUrl.contains(".jpg") && posterUrl.length < 5) {
              this.select("div.poster > img").attr("src")
         } else {
@@ -97,8 +105,8 @@ class PappyWattiPunya : MainAPI() {
         val searchResponse = mutableListOf<SearchResponse>()
 
         for (i in 1..2) {
-            // TAMBAHAN: Gunakan headers
-            val document = app.get("${mainUrl}/page/$i/?s=$query", headers = commonHeaders).document
+            // Menggunakan fungsi request custom dengan timeout
+            val document = request("${mainUrl}/page/$i/?s=$query")
 
             val results = document.select("article")
                 .mapNotNull { it.toSearchingResult() }
@@ -116,8 +124,8 @@ class PappyWattiPunya : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // TAMBAHAN: Gunakan headers
-        val document = app.get(url, headers = commonHeaders).document
+        // Menggunakan fungsi request custom dengan timeout
+        val document = request(url)
 
         val title = document.selectFirst("div.data > h1")?.text().toString()
         val poster = document.selectFirst("div.poster > img")?.attr("data-wpfc-original-src")?.trim().toString()
@@ -145,8 +153,8 @@ class PappyWattiPunya : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // TAMBAHAN: Gunakan headers juga di sini
-        val document = app.get(data, headers = commonHeaders).document
+        // Menggunakan request custom
+        val document = request(data)
         document.select("div#pettabs > ul a").map {
             val link=it.attr("href")
             loadExtractor(link,subtitleCallback, callback)
