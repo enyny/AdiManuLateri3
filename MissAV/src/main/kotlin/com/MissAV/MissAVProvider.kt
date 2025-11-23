@@ -67,13 +67,6 @@ class MissAVProvider : MainAPI() {
             {
                 break
             }
-            /*if (!searchResponse.containsAll(results)) {
-                searchResponse.addAll(results)
-            } else {
-                break
-            }
-
-            if (results.isEmpty()) break*/
         }
 
         return searchResponse
@@ -135,15 +128,14 @@ class MissAVProvider : MainAPI() {
                                 val language = item.select(".sub-single span:nth-child(2)").text()
                                 val text = item.select(".sub-single span:nth-child(3) a")
                                 
-                                // PERBAIKAN 1: Menghapus "text != null" karena Jsoup select selalu mengembalikan list (kosong atau isi), tidak pernah null.
+                                // PERBAIKAN 1: Cek isNotEmpty() bukan null check
                                 if(text.isNotEmpty() && text[0].text() == "Download")
                                 {
                                     val url = "$subtitleCatUrl${text[0].attr("href")}"
+                                    
+                                    // PERBAIKAN 2: Menggunakan newSubtitleFile() alih-alih constructor SubtitleFile()
                                     subtitleCallback.invoke(
-                                        // PERBAIKAN 2: Menggunakan konstruktor SubtitleFile yang sesuai.
-                                        // Jika compiler tetap meminta 'newSubtitleFile', ganti 'SubtitleFile' menjadi 'newSubtitleFile'.
-                                        // Namun 'SubtitleFile' (data class) biasanya masih valid di banyak versi.
-                                        SubtitleFile(
+                                        newSubtitleFile(
                                             language.replace("\uD83D\uDC4D \uD83D\uDC4E",""),  // Use label for the name
                                             url     // Use extracted URL
                                         )
@@ -157,8 +149,6 @@ class MissAVProvider : MainAPI() {
 
             }
         } catch (e: Exception) { }
-
-
 
         return true
     }
