@@ -110,6 +110,7 @@ open class Vidguardto : ExtractorApi() {
         return url.replace(sig, modifiedSig)
     }
 
+    @Suppress("DEPRECATION")
     private fun runJS2(hideMyHtmlContent: String): String {
         Log.d("runJS", "start")
         val rhino = Context.enter()
