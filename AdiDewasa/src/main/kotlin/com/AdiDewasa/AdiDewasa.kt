@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -13,6 +14,10 @@ class AdiDewasa : MainAPI() {
     override var name = "AdiDewasa"
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
+
+    // --- KONFIGURASI API SUBSOURCE ---
+    private val subSourceApiUrl = "https://api.subsource.net/api/v1"
+    private val subSourceApiKey = "sk_a607958631df470389e6c54d80a2725fb7707d591abf80ed7c5b388854898a94" // API Key Kamu
 
     // --- BAGIAN 1: MENU UTAMA ---
     override val mainPage: List<MainPageData>
@@ -54,7 +59,7 @@ class AdiDewasa : MainAPI() {
         }
     }
 
-    // --- BAGIAN 3: PENCARIAN ---
+    // --- BAGIAN 3: PENCARIAN FILM ---
     override suspend fun search(query: String): List<SearchResponse>? {
         return try {
             app.get("$mainUrl/api/live-search/$query").parsedSafe<ApiSearchResponse>()?.data?.mapNotNull { 
@@ -66,37 +71,27 @@ class AdiDewasa : MainAPI() {
         } catch (e: Exception) { null }
     }
 
-    // --- BAGIAN 4: LOAD DETAIL (LOGIKA TAHUN PERBAIKAN FINAL) ---
+    // --- BAGIAN 4: LOAD DETAIL (FIX TAHUN FINAL) ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         
-        // 1. Ambil Judul Mentah
         val rawTitle = doc.selectFirst("div.right-info h1, h1.title")?.text()?.trim() ?: "Unknown"
         
-        // 2. DETEKSI TAHUN (PRIORITAS BERTINGKAT)
+        // Logika Tahun (Regex)
         var year: Int? = null
-
-        // Cek A: Cari di Judul -> "Gang Rape (2010)"
         val yearInTitle = Regex("""\((\d{4})\)""").find(rawTitle)?.groupValues?.get(1)?.toIntOrNull()
         if (yearInTitle != null) {
             year = yearInTitle
         } 
-        
-        // Cek B: Jika Judul kosong, cari di teks info
-        // Menangani: "Released at: 2015-09-10" atau "Released: 2015"
         if (year == null) {
             val infoText = doc.select("div.right-info, .movie-info").text()
-            
             val releaseRegex = Regex("""Released\s*(?:at)?\s*:\s*(\d{4})""", RegexOption.IGNORE_CASE)
-            val dateRegex = Regex("""(\d{4})-\d{2}-\d{2}""") // Cari format tanggal YYYY-MM-DD
-            
+            val dateRegex = Regex("""(\d{4})-\d{2}-\d{2}""")
             year = releaseRegex.find(infoText)?.groupValues?.get(1)?.toIntOrNull() 
                 ?: dateRegex.find(infoText)?.groupValues?.get(1)?.toIntOrNull()
         }
 
-        // 3. Bersihkan Judul (Hapus tahun dari string tampilan)
         val title = rawTitle.replace(Regex("""\s*\(\d{4}\)"""), "").trim()
-
         val poster = fixImgUrl(doc.selectFirst("meta[property='og:image']")?.attr("content"))
         val desc = doc.selectFirst("div.right-info p.summary-content, .description")?.text()?.trim()
         
@@ -112,59 +107,74 @@ class AdiDewasa : MainAPI() {
 
         return if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) { 
-                this.posterUrl = poster
-                this.plot = desc
-                this.year = year
+                this.posterUrl = poster; this.plot = desc; this.year = year
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, dataPayload) { 
-                this.posterUrl = poster
-                this.plot = desc
-                this.year = year
+                this.posterUrl = poster; this.plot = desc; this.year = year
             }
         }
     }
 
-    // --- BAGIAN 5: SUBTITLE SUBSOURCE (AUTO INDO) ---
+    // --- BAGIAN 5: SUBSOURCE API IMPLEMENTATION (NEW!) ---
     private suspend fun fetchSubSource(rawTitle: String, subtitleCallback: (SubtitleFile) -> Unit) {
         val cleanTitle = rawTitle.replace(Regex("""\(\d{4}\)|Episode\s*\d+|Season\s*\d+"""), "")
-            .replace(Regex("""[^a-zA-Z0-9 ]"""), " ") 
-            .trim()
-            .replace(Regex("""\s+"""), " ")
+            .replace(Regex("""[^a-zA-Z0-9 ]"""), " ").trim().replace(Regex("""\s+"""), " ")
 
-        val queries = listOf(
-            cleanTitle.replace(" ", "+"), 
-            cleanTitle.split(" ").take(2).joinToString("+") 
-        ).distinct()
+        // Header wajib dengan API Key
+        val headers = mapOf(
+            "X-API-Key" to subSourceApiKey,
+            "Accept" to "application/json"
+        )
 
-        val headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36")
-
-        for (q in queries) {
-            if (q.length < 3) continue 
-            try {
-                val searchDoc = app.get("https://subsource.net/search/$q", headers = headers).document
-                val firstResult = searchDoc.selectFirst("div.movie-list div.movie-entry a")
+        try {
+            // 1. SEARCH MOVIE VIA API
+            val searchUrl = "$subSourceApiUrl/movies/search?query=${cleanTitle.replace(" ", "%20")}"
+            val searchRes = app.get(searchUrl, headers = headers).text
+            
+            // Parsing Manual JSON Response (Search)
+            val searchJson = JSONObject(searchRes)
+            val results = searchJson.optJSONArray("results") ?: searchJson.optJSONArray("data")
+            
+            if (results != null && results.length() > 0) {
+                // Ambil ID film pertama yang cocok
+                val firstMovie = results.getJSONObject(0)
+                val movieId = firstMovie.optString("id") // atau "movie_id" tergantung respon API
                 
-                if (firstResult != null) {
-                    var detailHref = firstResult.attr("href")
-                    if (!detailHref.startsWith("http")) detailHref = "https://subsource.net$detailHref"
-
-                    val detailDoc = app.get(detailHref, headers = headers).document
-                    val indoItems = detailDoc.select("div.language-container:contains(Indonesian) div.subtitle-item, tr:contains(Indonesian)")
+                if (movieId.isNotEmpty()) {
+                    // 2. GET SUBTITLES LIST VIA API
+                    // Biasanya ada endpoint /subtitles?movie_id=XYZ atau /movies/{id}
+                    val detailUrl = "$subSourceApiUrl/movies/$movieId"
+                    val detailRes = app.get(detailUrl, headers = headers).text
+                    val detailJson = JSONObject(detailRes)
                     
-                    if (indoItems.isNotEmpty()) {
-                        indoItems.forEach { item ->
-                            val dwnUrl = item.selectFirst("a.download-button, a")?.attr("href")
-                            if (!dwnUrl.isNullOrEmpty()) {
-                                val fullUrl = if (dwnUrl.startsWith("http")) dwnUrl else "https://subsource.net$dwnUrl"
-                                val releaseName = item.select("span.release-name").text().trim()
-                                subtitleCallback(newSubtitleFile("Indonesia ($releaseName)", fullUrl))
+                    // Asumsi struktur: { data: { ..., subtitles: [...] } } atau langsung list
+                    val movieData = detailJson.optJSONObject("data") ?: detailJson
+                    val subtitles = movieData.optJSONArray("subtitles") 
+                        ?: detailJson.optJSONArray("subtitles")
+
+                    if (subtitles != null) {
+                        for (i in 0 until subtitles.length()) {
+                            val sub = subtitles.getJSONObject(i)
+                            val lang = sub.optString("language", "en") // id, en, etc
+                            val langName = sub.optString("lang_name", sub.optString("display", "Unknown"))
+                            
+                            // 3. FILTER INDONESIAN ONLY
+                            if (lang.equals("id", true) || lang.equals("indonesian", true) || langName.contains("Indo", true)) {
+                                val downloadUrl = sub.optString("url") // Link download langsung
+                                    .ifEmpty { "$subSourceApiUrl/subtitles/${sub.optString("id")}/download" } // Atau via endpoint download
+                                
+                                val releaseName = sub.optString("release_name", "SubSource API")
+                                
+                                subtitleCallback(newSubtitleFile("Indonesia ($releaseName)", downloadUrl))
                             }
                         }
-                        return 
                     }
                 }
-            } catch (e: Exception) { }
+            }
+        } catch (e: Exception) {
+            // Fallback: Jika API Limit habis atau error, kode tidak akan crash
+             e.printStackTrace()
         }
     }
 
@@ -179,6 +189,7 @@ class AdiDewasa : MainAPI() {
         val linkUrl = parts[0]
         val titleForSub = parts.getOrNull(1) ?: ""
 
+        // Panggil API SubSource
         if (titleForSub.isNotEmpty()) fetchSubSource(titleForSub, subtitleCallback)
 
         try {
