@@ -1,11 +1,11 @@
 package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.* // PENTING: Mengimpor amap dan utilitas lainnya
 import com.lagradost.cloudstream3.utils.AppUtils
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
-import com.lagradost.cloudstream3.utils.amap // PENTING: Untuk menjalankan paralel
+import com.lagradost.cloudstream3.SubtitleFile
 
 class AdiDewasa : TmdbProvider() {
     override var name = "AdiDewasa"
@@ -46,7 +46,7 @@ class AdiDewasa : TmdbProvider() {
         val season = res.season
         val episode = res.episode
 
-        // 2. Jalankan Extractor secara Paralel (Pengganti runAllAsync)
+        // 2. Jalankan Extractor secara Paralel
         listOf(
             // TUGAS A: Wyzie (Subtitle)
             suspend {
@@ -82,13 +82,12 @@ class AdiDewasa : TmdbProvider() {
                     AdiHybrid.invokeSuperembed(tmdbId, season, episode, subtitleCallback, callback)
                 }
             }
-        ).amap { it.invoke() } // Eksekusi semua tugas
+        ).amap { it.invoke() } // Eksekusi semua tugas secara paralel
 
         return true
     }
 
     // --- DATA CLASS UNTUK MENERIMA DATA DARI TMDB PROVIDER ---
-    // Ini wajib ada agar parsing JSON berhasil
     data class LinkData(
         val id: Int? = null,         // TMDB ID
         val imdbId: String? = null,
