@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -19,30 +20,17 @@ class AdiDewasa : MainAPI() {
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
-                // --- Kategori FILM (Movies) ---
                 MainPageData("Adult Movies - Baru Rilis", "2:1:adult"),
                 MainPageData("Adult Movies - Paling Populer", "2:5:adult"),
                 MainPageData("Adult Movies - Rating Tertinggi", "2:6:adult"),
                 MainPageData("Adult Movies - Sesuai Abjad (A-Z)", "2:3:adult"),
                 MainPageData("Adult Movies - Klasik & Retro (Oldest)", "2:2:adult"),
-
-                // --- Kategori SERIAL TV (Shows) ---
                 MainPageData("Adult TV Shows - Episode Baru", "1:1:adult"),
                 MainPageData("Adult TV Shows - Paling Populer", "1:5:adult"),
-                MainPageData("Adult TV Shows - Rating Tertinggi", "1:6:adult"),
-                MainPageData("Adult TV Shows - Sesuai Abjad (A-Z)", "1:3:adult"),
-                MainPageData("Adult TV Shows - Terlama (Oldest)", "1:2:adult"),
-
-                // --- Kategori CAMPURAN (All) ---
-                MainPageData("All Collections - Baru Ditambahkan", "-1:1:adult"),
-                MainPageData("All Collections - Paling Sering Ditonton", "-1:5:adult"),
-                MainPageData("All Collections - Rekomendasi Terbaik", "-1:6:adult"),
-                MainPageData("All Collections - Arsip Lengkap (A-Z)", "-1:3:adult"),
-                MainPageData("All Collections - Arsip Lama", "-1:2:adult")
+                MainPageData("All Collections - Rekomendasi Terbaik", "-1:6:adult")
             )
         }
 
-    // Helper untuk memperbaiki URL gambar agar tidak rusak (double slash atau missing slash)
     private fun fixImgUrl(url: String?): String {
         if (url.isNullOrEmpty()) return ""
         if (url.startsWith("http")) return url
@@ -100,12 +88,9 @@ class AdiDewasa : MainAPI() {
             val itemTitle = this.title ?: this.name ?: "Unknown Title"
             val itemSlug = this.slug ?: return null
             val itemImage = this.image ?: this.poster
-            
             val href = "$mainUrl/film/$itemSlug"
-            val posterUrl = fixImgUrl(itemImage)
-
             return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
-                this.posterUrl = posterUrl
+                this.posterUrl = fixImgUrl(itemImage)
             }
         } catch (e: Exception) {
             return null
@@ -129,7 +114,6 @@ class AdiDewasa : MainAPI() {
             val response = app.get(url)
             val doc = response.document
             
-            // --- FIX 1: Robust Selector (Menggunakan Meta sebagai backup) ---
             val title = doc.selectFirst("div.right-info h1, h1.title")?.text() 
                 ?: doc.selectFirst("meta[property='og:title']")?.attr("content") 
                 ?: "Unknown Title"
@@ -140,71 +124,87 @@ class AdiDewasa : MainAPI() {
             )
 
             val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() 
-                ?: doc.selectFirst("meta[property='og:description']")?.attr("content") 
-                ?: ""
+                ?: doc.selectFirst("meta[property='og:description']")?.attr("content") ?: ""
 
             val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
             val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
 
-            // Deteksi Series vs Movie
             val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list, .episode-item").isNotEmpty()
-            val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
             
+            // TRICK: Kita simpan JUDUL di dalam data URL dipisahkan dengan tanda "|"
+            // Supaya nanti di loadLinks kita bisa ambil judulnya untuk cari subtitle
             val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
+            val dataPayload = "$videoHref|$title" 
 
             val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
                 val rTitle = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
-                val rImage = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src")
                 val rHref = it.selectFirst("a")?.attr("href") ?: ""
-                
                 if (rTitle.isNotEmpty() && rHref.isNotEmpty()) {
                     newMovieSearchResponse(rTitle, rHref, TvType.Movie) {
-                        this.posterUrl = fixImgUrl(rImage)
+                        this.posterUrl = fixImgUrl(it.selectFirst("img")?.attr("data-src"))
                     }
-                } else {
-                    null
-                }
+                } else null
             }
 
-            if (type == TvType.TvSeries) {
+            if (hasEpisodes) {
                 val episodes = doc.select("div.episode-item a, .episode-list a").mapNotNull {
                     val episodeText = it.text().trim()
                     val episodeHref = it.attr("href")
-                    
-                    // Ekstrak nomor episode lebih aman
                     val episodeNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
                         .find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
                         ?: Regex("""^(\d+)$""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
 
                     if (episodeHref.isNotEmpty()) {
-                        newEpisode(episodeHref) {
+                        // Untuk episode, kita juga pass judulnya
+                        newEpisode("$episodeHref|$title") {
                             this.name = if(episodeNum != null) "Episode $episodeNum" else episodeText
                             this.episode = episodeNum
                         }
-                    } else {
-                        null
-                    }
+                    } else null
                 }
-
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                    this.year = year
-                    this.tags = genre
-                    this.posterUrl = poster
-                    this.plot = description
-                    this.recommendations = recs
+                    this.year = year; this.tags = genre; this.posterUrl = poster; this.plot = description; this.recommendations = recs
                 }
             } else {
-                return newMovieLoadResponse(title, url, TvType.Movie, videoHref) {
-                    this.year = year
-                    this.tags = genre
-                    this.posterUrl = poster
-                    this.plot = description
-                    this.recommendations = recs
+                return newMovieLoadResponse(title, url, TvType.Movie, dataPayload) {
+                    this.year = year; this.tags = genre; this.posterUrl = poster; this.plot = description; this.recommendations = recs
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
             throw e
+        }
+    }
+
+    // --- INTEGRASI SUBSOURCE (LANGSUNG DI SINI) ---
+    private suspend fun fetchSubSource(title: String, subtitleCallback: (SubtitleFile) -> Unit) {
+        try {
+            val cleanTitle = title.replace(Regex("""\(\d{4}\)"""), "").trim().replace(" ", "+")
+            val searchUrl = "https://subsource.net/search/$cleanTitle"
+            val searchDoc = app.get(searchUrl).document
+            
+            // Ambil hasil pencarian pertama
+            val firstResult = searchDoc.selectFirst("div.movie-list div.movie-entry a") ?: return
+            var detailHref = firstResult.attr("href")
+            if (!detailHref.startsWith("http")) detailHref = "https://subsource.net$detailHref"
+
+            val detailDoc = app.get(detailHref).document
+            // Cari elemen subtitle bahasa Indonesia
+            val indoItems = detailDoc.select("div.language-container:contains(Indonesian) div.subtitle-item, tr:contains(Indonesian)")
+
+            indoItems.forEach { item ->
+                val linkEl = item.selectFirst("a.download-button, a")
+                val dwnUrl = linkEl?.attr("href")
+                if (!dwnUrl.isNullOrEmpty()) {
+                    val fullDwnUrl = if (dwnUrl.startsWith("http")) dwnUrl else "https://subsource.net$dwnUrl"
+                    val releaseName = item.select("span.release-name, td:nth-child(1)").text().trim()
+                    val subName = if(releaseName.isNotEmpty()) "Indo: $releaseName" else "Indonesian Sub"
+                    
+                    subtitleCallback(newSubtitleFile("Indonesian", fullDwnUrl))
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore error search sub
         }
     }
 
@@ -214,62 +214,55 @@ class AdiDewasa : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // PISAHKAN DATA URL DAN JUDUL
+        val dataParts = data.split("|")
+        val linkUrl = dataParts.getOrNull(0) ?: data
+        val titleForSub = dataParts.getOrNull(1) ?: ""
+
+        // 1. CARI SUBTITLE INDONESIA (Background process)
+        if (titleForSub.isNotEmpty()) {
+            fetchSubSource(titleForSub, subtitleCallback)
+        }
+
+        // 2. PROSES VIDEO UTAMA
         try {
-            val doc = app.get(data).document
-            // --- FIX 2: Pencarian Script yang lebih luas ---
-            // Mencari script apapun yang mengandung "signedUrl"
+            val doc = app.get(linkUrl).document
             val script = doc.select("script").find { it.html().contains("signedUrl") }?.html() ?: return false
-            
-            // --- FIX 3: Robust Regex ---
-            // Menangkap 'signedUrl' baik menggunakan kutip satu (') maupun kutip dua (")
-            // Juga menangani spasi yang mungkin bervariasi
             val signedUrlMatch = Regex("""signedUrl\s*=\s*['"]([^'"]+)['"]""").find(script)
-            
-            val signedUrlRaw = signedUrlMatch?.groupValues?.get(1) ?: return false
-            val signedUrl = signedUrlRaw.replace("\\/", "/") // Bersihkan escape slash
+            val signedUrl = signedUrlMatch?.groupValues?.get(1)?.replace("\\/", "/") ?: return false
             
             val res = app.get(signedUrl).text
             val resJson = JSONObject(res)
             val videoSource = resJson.optJSONObject("video_source") ?: return false
             
-            // Mengambil kualitas tertinggi (biasanya angka terbesar seperti 1080)
-            val qualities = videoSource.keys().asSequence().toList()
-                .sortedByDescending { it.toIntOrNull() ?: 0 }
-            
-            // Loop untuk mencari link yang valid (jika kualitas terbaik gagal/kosong)
+            val qualities = videoSource.keys().asSequence().toList().sortedByDescending { it.toIntOrNull() ?: 0 }
             var foundLink = false
+
             for (key in qualities) {
                 val url = videoSource.optString(key)
                 if (url.isNotEmpty()) {
-                    callback(
-                        newExtractorLink(
-                            name,
-                            "$name ${key}p", // Menambahkan info kualitas di nama
-                            url
-                        )
-                    )
+                    callback(newExtractorLink(name, "$name ${key}p", url))
                     foundLink = true
                     
-                    // Ambil subtitle hanya dari kualitas terbaik yang ditemukan
+                    // Ambil Subtitle Bawaan (jika ada)
                     val subJson = resJson.optJSONObject("sub")
                     subJson?.optJSONArray(key)?.let { array ->
                         for (i in 0 until array.length()) {
                             val subUrl = array.getString(i)
-                            // Skip jika subUrl kosong
                             if (subUrl.isNotEmpty()) {
-                                subtitleCallback(newSubtitleFile("English ($i)", fixImgUrl(subUrl)))
+                                val cleanSub = fixImgUrl(subUrl)
+                                val lang = if(cleanSub.contains("indo") || cleanSub.contains("_id")) "Indonesian (Ori)" else "English"
+                                subtitleCallback(newSubtitleFile(lang, cleanSub))
                             }
                         }
                     }
-                    break // Kita ambil 1 kualitas terbaik saja (opsional: hapus break jika mau semua kualitas)
+                    break 
                 }
             }
             return foundLink
-
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        
         return false
     }
 }
