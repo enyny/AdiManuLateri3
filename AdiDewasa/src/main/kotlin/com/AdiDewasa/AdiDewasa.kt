@@ -16,11 +16,6 @@ class AdiDewasa : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // UPDATE: Menggunakan 15 Kategori yang PASTI ADA isinya.
-    // Menghapus filter 'Country' yang menyebabkan daftar kosong.
-    // Format Data: "Type:Sort:Adult"
-    // Type: 2=Movie, 1=TV, -1=All
-    // Sort: 1=Latest, 2=Oldest/Year, 3=A-Z, 5=Most Watched, 6=Top Rated
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
@@ -47,17 +42,22 @@ class AdiDewasa : MainAPI() {
             )
         }
 
+    // Helper untuk memperbaiki URL gambar agar tidak rusak (double slash atau missing slash)
+    private fun fixImgUrl(url: String?): String {
+        if (url.isNullOrEmpty()) return ""
+        if (url.startsWith("http")) return url
+        val cleanUrl = if (url.startsWith("/")) url else "/$url"
+        return "$mainUrl$cleanUrl"
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         try {
-            // MODIFIKASI: Kembali ke format 3 parameter yang stabil
             val dataParts = request.data.split(":")
             val type = dataParts.getOrNull(0) ?: "-1"
             val sort = dataParts.getOrNull(1)?.toIntOrNull() ?: 1
             val adultFlag = dataParts.getOrNull(2) ?: "normal"
-
             val isAdultSection = adultFlag == "adult"
 
-            // PENTING: 'country' di-set ke -1 (Semua Negara) agar tidak ada daftar kosong
             val jsonPayload = """{
                 "page": $page,
                 "type": "$type",
@@ -71,9 +71,7 @@ class AdiDewasa : MainAPI() {
             }""".trimIndent()
 
             val payload = jsonPayload.toRequestBody("application/json".toMediaType())
-
             val response = app.post("$mainUrl/api/filter", requestBody = payload)
-            
             val homeResponse = response.parsedSafe<HomeResponse>()
             
             if (homeResponse?.success == false) {
@@ -101,14 +99,10 @@ class AdiDewasa : MainAPI() {
         try {
             val itemTitle = this.title ?: this.name ?: "Unknown Title"
             val itemSlug = this.slug ?: return null
-            val itemImage = this.image ?: this.poster ?: ""
-
+            val itemImage = this.image ?: this.poster
+            
             val href = "$mainUrl/film/$itemSlug"
-            val posterUrl = if (itemImage.isNotEmpty()) {
-                if (itemImage.startsWith("http")) itemImage else mainUrl + itemImage
-            } else {
-                ""
-            }
+            val posterUrl = fixImgUrl(itemImage)
 
             return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
                 this.posterUrl = posterUrl
@@ -132,30 +126,40 @@ class AdiDewasa : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         try {
-            val doc = app.get(url).document
-            val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
-            val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
+            val response = app.get(url)
+            val doc = response.document
+            
+            // --- FIX 1: Robust Selector (Menggunakan Meta sebagai backup) ---
+            val title = doc.selectFirst("div.right-info h1, h1.title")?.text() 
+                ?: doc.selectFirst("meta[property='og:title']")?.attr("content") 
+                ?: "Unknown Title"
+
+            val poster = fixImgUrl(
+                doc.selectFirst("meta[property='og:image']")?.attr("content") 
+                ?: doc.selectFirst("div.poster img")?.attr("src")
+            )
+
+            val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() 
+                ?: doc.selectFirst("meta[property='og:description']")?.attr("content") 
+                ?: ""
+
             val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
             val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
-            val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() ?: ""
-            
-            val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
+
+            // Deteksi Series vs Movie
+            val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list, .episode-item").isNotEmpty()
             val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
             
             val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
 
             val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
-                val title = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
-                val image = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
-                val itemHref = it.selectFirst("a")?.attr("href") ?: ""
+                val rTitle = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
+                val rImage = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src")
+                val rHref = it.selectFirst("a")?.attr("href") ?: ""
                 
-                if (title.isNotEmpty() && itemHref.isNotEmpty()) {
-                    newMovieSearchResponse(title, itemHref, TvType.Movie) {
-                        this.posterUrl = if (image.isNotEmpty()) {
-                            if (image.startsWith("http")) image else mainUrl + image
-                        } else {
-                            ""
-                        }
+                if (rTitle.isNotEmpty() && rHref.isNotEmpty()) {
+                    newMovieSearchResponse(rTitle, rHref, TvType.Movie) {
+                        this.posterUrl = fixImgUrl(rImage)
                     }
                 } else {
                     null
@@ -166,13 +170,15 @@ class AdiDewasa : MainAPI() {
                 val episodes = doc.select("div.episode-item a, .episode-list a").mapNotNull {
                     val episodeText = it.text().trim()
                     val episodeHref = it.attr("href")
+                    
+                    // Ekstrak nomor episode lebih aman
                     val episodeNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
                         .find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
-                        ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: Regex("""^(\d+)$""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
 
                     if (episodeHref.isNotEmpty()) {
                         newEpisode(episodeHref) {
-                            this.name = "Episode ${episodeNum ?: episodeText}"
+                            this.name = if(episodeNum != null) "Episode $episodeNum" else episodeText
                             this.episode = episodeNum
                         }
                     } else {
@@ -210,39 +216,56 @@ class AdiDewasa : MainAPI() {
     ): Boolean {
         try {
             val doc = app.get(data).document
-            val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
+            // --- FIX 2: Pencarian Script yang lebih luas ---
+            // Mencari script apapun yang mengandung "signedUrl"
+            val script = doc.select("script").find { it.html().contains("signedUrl") }?.html() ?: return false
             
-            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
-                ?: return false
+            // --- FIX 3: Robust Regex ---
+            // Menangkap 'signedUrl' baik menggunakan kutip satu (') maupun kutip dua (")
+            // Juga menangani spasi yang mungkin bervariasi
+            val signedUrlMatch = Regex("""signedUrl\s*=\s*['"]([^'"]+)['"]""").find(script)
+            
+            val signedUrlRaw = signedUrlMatch?.groupValues?.get(1) ?: return false
+            val signedUrl = signedUrlRaw.replace("\\/", "/") // Bersihkan escape slash
             
             val res = app.get(signedUrl).text
             val resJson = JSONObject(res)
             val videoSource = resJson.optJSONObject("video_source") ?: return false
             
+            // Mengambil kualitas tertinggi (biasanya angka terbesar seperti 1080)
             val qualities = videoSource.keys().asSequence().toList()
                 .sortedByDescending { it.toIntOrNull() ?: 0 }
-            val bestQualityKey = qualities.firstOrNull() ?: return false
-            val bestQualityUrl = videoSource.optString(bestQualityKey)
-
-            if (bestQualityUrl.isNotEmpty()) {
-                callback(
-                    newExtractorLink(
-                        name,
-                        name,
-                        bestQualityUrl
+            
+            // Loop untuk mencari link yang valid (jika kualitas terbaik gagal/kosong)
+            var foundLink = false
+            for (key in qualities) {
+                val url = videoSource.optString(key)
+                if (url.isNotEmpty()) {
+                    callback(
+                        newExtractorLink(
+                            name,
+                            "$name ${key}p", // Menambahkan info kualitas di nama
+                            url
+                        )
                     )
-                )
-                
-                val subJson = resJson.optJSONObject("sub")
-                subJson?.optJSONArray(bestQualityKey)?.let { array ->
-                    for (i in 0 until array.length()) {
-                        val subUrl = array.getString(i)
-                        subtitleCallback(newSubtitleFile("English", mainUrl + subUrl))
+                    foundLink = true
+                    
+                    // Ambil subtitle hanya dari kualitas terbaik yang ditemukan
+                    val subJson = resJson.optJSONObject("sub")
+                    subJson?.optJSONArray(key)?.let { array ->
+                        for (i in 0 until array.length()) {
+                            val subUrl = array.getString(i)
+                            // Skip jika subUrl kosong
+                            if (subUrl.isNotEmpty()) {
+                                subtitleCallback(newSubtitleFile("English ($i)", fixImgUrl(subUrl)))
+                            }
+                        }
                     }
+                    break // Kita ambil 1 kualitas terbaik saja (opsional: hapus break jika mau semua kualitas)
                 }
-                
-                return true
             }
+            return foundLink
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
