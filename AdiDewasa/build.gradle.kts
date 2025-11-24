@@ -27,5 +27,5 @@ cloudstream {
 
     iconUrl = "https://cekstatusgizi.linisehat.com/assets/img/icon/dewasa.png"
 
-    isCrossPlatform = true
+    isCrossPlatform = false
 }
