@@ -3,7 +3,7 @@ package com.AdiDewasa
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType // <-- PERBAIKAN: Import ditambahkan
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
@@ -102,6 +102,7 @@ class AdiDewasa : MainAPI() {
         val fallbackTitle = document.selectFirst("h1")?.text() ?: "Unknown Title"
         val rawTitle = if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle
 
+        // Title Cleaner
         val title = rawTitle
             .replace(Regex("(?i)^Watch\\s+"), "")
             .substringBefore(" - Movie")
@@ -186,23 +187,22 @@ class AdiDewasa : MainAPI() {
             ).text
             
             val json = JSONObject(jsonText)
-            
             val videoSource = json.optJSONObject("video_source") ?: return false
             val qualities = videoSource.keys().asSequence().toList()
             
             qualities.forEach { qualityStr ->
                 val link = videoSource.optString(qualityStr)
-                val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
-
                 if (link.isNotEmpty()) {
+                    // PERBAIKAN: Menghapus argumen 'qualityInt' dan menggunakan 4 parameter + lambda
                     callback.invoke(
                         newExtractorLink(
                             this.name,
-                            "AdiDewasa $qualityStr",
+                            "AdiDewasa $qualityStr", // Kualitas dimasukkan ke dalam nama agar terdeteksi otomatis
                             link,
-                            ExtractorLinkType.M3U8,
-                            qualityInt // <-- PERBAIKAN: Menggunakan positional argument, bukan named argument
-                        )
+                            ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = data
+                        }
                     )
                 }
             }
