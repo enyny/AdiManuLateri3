@@ -26,7 +26,6 @@ class AdiDewasa : MainAPI() {
     override val hasMainPage = true
     override val hasQuickSearch = true
 
-    // Homepage menggunakan kategori dari Dramafull
     override val mainPage = mainPageOf(
         "$mainUrl/movies" to "Latest Movies",
         "$mainUrl/popular" to "Popular",
@@ -37,21 +36,38 @@ class AdiDewasa : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if(page == 1) request.data else "${request.data}?page=$page"
-        val document = app.get(url).document
         
-        val home = document.select(".film-item, .item").mapNotNull {
+        // FIX: Menambahkan headers agar request tidak diblokir
+        val document = app.get(url, headers = AdiDewasaHelper.headers).document
+        
+        // FIX: Menggunakan selector yang lebih umum untuk menangkap berbagai tema
+        val home = document.select("div.item, .film-item, article.post-item, li.item, .movie-item").mapNotNull {
             it.toSearchResult()
         }
+        
         return newHomePageResponse(request.name, home)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst(".title, h3")?.text() ?: return null
-        val href = this.selectFirst("a")?.attr("href") ?: return null
-        val poster = this.selectFirst("img")?.attr("data-src") ?: this.selectFirst("img")?.attr("src")
+        // Mencari judul di berbagai kemungkinan elemen
+        val title = this.selectFirst(".title, h3, h2, .entry-title")?.text()?.trim() ?: return null
         
+        val href = this.selectFirst("a")?.attr("href") ?: return null
+        
+        // Mencari poster di berbagai atribut lazy load
+        val imgTag = this.selectFirst("img")
+        val poster = imgTag?.attr("data-src") 
+            ?: imgTag?.attr("data-original") 
+            ?: imgTag?.attr("src")
+        
+        val quality = this.selectFirst(".quality, .ep")?.text()?.trim()
+
         return newMovieSearchResponse(title, fixUrl(href), TvType.Movie) {
             this.posterUrl = poster
+            // Menambahkan indikator kualitas di pojok poster jika ada
+            if(quality != null) {
+                addQuality(quality)
+            }
         }
     }
 
@@ -62,7 +78,6 @@ class AdiDewasa : MainAPI() {
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8")
         val url = "$mainUrl/api/live-search/$encodedQuery"
         
-        // Menggunakan API internal Dramafull seperti yang ditemukan di AdiDrakor
         return app.get(url, headers = AdiDewasaHelper.headers).parsedSafe<DramaFullSearchResponse>()?.data?.map {
             newMovieSearchResponse(it.title ?: it.name ?: "", "$mainUrl/film/${it.slug}", TvType.Movie) {
                 this.posterUrl = it.image
@@ -74,15 +89,17 @@ class AdiDewasa : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = AdiDewasaHelper.headers).document
         
-        val title = document.selectFirst("h1.heading-title")?.text()?.trim() ?: "Unknown Title"
-        val poster = document.selectFirst(".film-poster img")?.attr("src")
-        val desc = document.selectFirst(".description, .film-desc")?.text()?.trim()
-        val year = Regex("\\d{4}").find(document.select(".film-info").text())?.value?.toIntOrNull()
+        val title = document.selectFirst("h1.heading-title, h1.title")?.text()?.trim() ?: "Unknown Title"
+        val poster = document.selectFirst(".film-poster img, .poster img")?.attr("src")
+        val desc = document.selectFirst(".description, .film-desc, .story")?.text()?.trim()
+        val year = Regex("\\d{4}").find(document.select(".film-info, .meta").text())?.value?.toIntOrNull()
         
         // Cek apakah ini series (punya episode)
-        val episodes = document.select(".episode-list a, .episode-item a").mapNotNull {
-            val epNum = Regex("(\\d+)").find(it.text())?.groupValues?.get(1)?.toIntOrNull()
+        val episodes = document.select(".episode-list a, .episode-item a, ul.episodes li a").mapNotNull {
+            val text = it.text()
+            val epNum = Regex("(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()
             val href = it.attr("href")
+            
             if (epNum == null) return@mapNotNull null
             
             newEpisode(
@@ -90,7 +107,7 @@ class AdiDewasa : MainAPI() {
                     url = fixUrl(href),
                     title = title,
                     year = year,
-                    season = 1, // Default season 1 karena Dramafull jarang misah season
+                    season = 1,
                     episode = epNum
                 )
             ) {
@@ -106,7 +123,6 @@ class AdiDewasa : MainAPI() {
                 this.year = year
             }
         } else {
-            // Kalau Movie
             newMovieLoadResponse(title, url, TvType.Movie, LinkData(
                 url = url,
                 title = title,
@@ -128,16 +144,14 @@ class AdiDewasa : MainAPI() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 1. Sumber Utama: Dramafull (Direct)
             {
                 invokeAdiDewasaDirect(res.url, callback, subtitleCallback)
             },
-            // 2. Extractor Tambahan (Menggunakan Judul & Tahun dari Dramafull)
             {
                invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback)
             },
             {
-               invokeVidsrc(null, res.season, res.episode, subtitleCallback, callback) // Vidsrc sering butuh IMDB, ini fallback tanpa IMDB
+               invokeVidsrc(null, res.season, res.episode, subtitleCallback, callback)
             },
             {
                invokeXprime(null, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
@@ -160,9 +174,6 @@ class AdiDewasa : MainAPI() {
             {
                invokeSuperembed(null, res.season, res.episode, subtitleCallback, callback)
             }
-            // Note: Beberapa extractor mungkin butuh TMDB ID yang akurat. 
-            // Karena kita pakai Dramafull, TMDB ID mungkin null, jadi beberapa extractor 
-            // mungkin gagal atau hanya mencari berdasarkan query.
         )
 
         return true
