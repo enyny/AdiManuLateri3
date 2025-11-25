@@ -1,8 +1,20 @@
 package com.AdiDewasa
 
+// Import Extractor
+import com.AdiDewasa.AdiDewasaExtractor.invokeIdlix
+import com.AdiDewasa.AdiDewasaExtractor.invokeMapple
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidfast
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidlink
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidsrc
+import com.AdiDewasa.AdiDewasaExtractor.invokeXprime
+import com.AdiDewasa.AdiDewasaExtractor.invokeVixsrc
+
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -14,6 +26,10 @@ class AdiDewasa : MainAPI() {
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
+
+    // API Key Publik TMDb (Biasa digunakan di open source)
+    private val tmdbApi = "https://api.themoviedb.org/3"
+    private val tmdbKey = "8d6d91941230817f7807d643736e8412"
 
     override val mainPage: List<MainPageData>
         get() = listOf(
@@ -90,33 +106,54 @@ class AdiDewasa : MainAPI() {
         }
     }
 
+    // --- FUNGSI PENCARI TMDB ---
+    private suspend fun fetchTmdbInfo(title: String, year: Int?): TmdbResult? {
+        return try {
+            val cleanQuery = title.replace(" ", "%20")
+            val yearParam = if (year != null) "&year=$year" else ""
+            val searchUrl = "$tmdbApi/search/movie?api_key=$tmdbKey&query=$cleanQuery$yearParam&include_adult=true"
+            
+            val res = app.get(searchUrl).parsedSafe<TmdbSearchResponse>()
+            // Ambil hasil pertama
+            res?.results?.firstOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     override suspend fun load(url: String): LoadResponse {
         val response = app.get(url)
         val document = response.document
 
-        // --- TITLE CLEANER (Hanya ini yang kita ubah dari file asli untuk load) ---
+        // 1. Bersihkan Judul dari Dramafull
         val ogTitle = document.select("meta[property=og:title]").attr("content")
         val fallbackTitle = document.selectFirst("h1")?.text() ?: "Unknown Title"
         val rawTitle = if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle
 
-        // Membersihkan judul sampah
         val title = rawTitle
             .replace(Regex("(?i)^Watch\\s+"), "")
             .substringBefore(" - Movie")
             .substringBefore(" subbed")
             .substringBefore(" online")
             .trim()
-        // -------------------------------------------------------------------------
 
-        val poster = document.select("meta[property=og:image]").attr("content")
-        val desc = document.select("meta[property=og:description]").attr("content")
-        
+        // 2. Ambil Tahun dari Dramafull
         var year = Regex("\\d{4}").find(title)?.value?.toIntOrNull()
         if (year == null) year = Regex("\\d{4}").find(document.text())?.value?.toIntOrNull()
-        
-        val tags = document.select("div.genre-list a, .genres a").map { it.text() }
 
-        // --- LOGIC ORIGINAL UNTUK EPISODE ---
+        // 3. CARI KE TMDB (Logika Baru)
+        val tmdbInfo = fetchTmdbInfo(title, year)
+        
+        // Metadata Priority: TMDb > Dramafull
+        val finalTitle = tmdbInfo?.title ?: title
+        val finalYear = tmdbInfo?.releaseDate?.take(4)?.toIntOrNull() ?: year
+        val finalPlot = tmdbInfo?.overview ?: document.select("meta[property=og:description]").attr("content")
+        val finalPoster = if (tmdbInfo?.posterPath != null) "https://image.tmdb.org/t/p/w500${tmdbInfo.posterPath}" 
+                          else document.select("meta[property=og:image]").attr("content")
+        val finalBackdrop = if (tmdbInfo?.backdropPath != null) "https://image.tmdb.org/t/p/w780${tmdbInfo.backdropPath}" else null
+        val tmdbId = tmdbInfo?.id
+
+        // Logika Episode
         val episodes = document.select(".episode-list a, .episode-item a, ul.episodes li a").mapNotNull {
             val text = it.text()
             val href = it.attr("href")
@@ -125,106 +162,142 @@ class AdiDewasa : MainAPI() {
             
             if (epNum == null) return@mapNotNull null
             
-            // PENTING: Kirim URL mentah (href), JANGAN JSON.
-            newEpisode(href) { 
+            // Bungkus data untuk loadLinks
+            val data = LinkData(
+                url = fixUrl(href),
+                title = finalTitle,
+                year = finalYear,
+                season = 1,
+                episode = epNum,
+                tmdbId = tmdbId
+            )
+            
+            newEpisode(data.toJson()) { 
                 this.name = "Episode $epNum"
                 this.episode = epNum
             }
         }
 
-        val recommendations = document.select("div.film_list-wrap div.flw-item").mapNotNull {
-            val recTitle = it.select("h3.film-name a").text()
-            val recHref = it.select("h3.film-name a").attr("href")
-            val recPoster = it.select("img.film-poster-img").attr("data-src")
-            if (recTitle.isEmpty()) return@mapNotNull null
-            newMovieSearchResponse(recTitle, "$mainUrl$recHref", TvType.Movie) {
-                this.posterUrl = recPoster
-            }
-        }
-
         val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
         
-        // PENTING: Untuk Movie, kirim 'url' halaman ini langsung sebagai data.
-        // Ini memastikan loadLinks menerima URL valid, bukan JSON.
-        val dataUrl = if (tvType == TvType.Movie) url else ""
+        // Data untuk Movie (JSON)
+        val movieData = LinkData(url, finalTitle, finalYear, tmdbId = tmdbId).toJson()
 
         return if (tvType == TvType.TvSeries) {
-            newTvSeriesLoadResponse(title, url, tvType, episodes) {
-                this.posterUrl = poster
-                this.plot = desc
-                this.year = year
-                this.tags = tags
-                this.recommendations = recommendations
+            newTvSeriesLoadResponse(finalTitle, url, tvType, episodes) {
+                this.posterUrl = finalPoster
+                this.backgroundPosterUrl = finalBackdrop
+                this.plot = finalPlot
+                this.year = finalYear
             }
         } else {
-            newMovieLoadResponse(title, url, tvType, dataUrl) {
-                this.posterUrl = poster
-                this.plot = desc
-                this.year = year
-                this.tags = tags
-                this.recommendations = recommendations
+            newMovieLoadResponse(finalTitle, url, tvType, movieData) {
+                this.posterUrl = finalPoster
+                this.backgroundPosterUrl = finalBackdrop
+                this.plot = finalPlot
+                this.year = finalYear
             }
         }
     }
 
-    // --- ORIGINAL LOAD LINKS (DIKEMBALIKAN KE VERSI FILE ASLI ANDA) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Data di sini adalah URL (String), karena kita mengembalikannya ke versi asli.
         if (data.isEmpty()) return false
 
-        try {
-            val doc = app.get(data).document
-            
-            // Mencari script signedUrl persis seperti file asli
-            val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
-            
-            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
-                ?: return false
-            
-            // Request ke API Player
-            val res = app.get(signedUrl, referer = data).text
-            val resJson = JSONObject(res)
-            val videoSource = resJson.optJSONObject("video_source") ?: return false
-            
-            // Mengambil kualitas
-            val qualities = videoSource.keys().asSequence().toList()
-                .sortedByDescending { it.toIntOrNull() ?: 0 }
-                
-            val bestQualityKey = qualities.firstOrNull() ?: return false
-            val bestQualityUrl = videoSource.optString(bestQualityKey)
+        // 1. Parse JSON
+        val linkData = try {
+            parseJson<LinkData>(data)
+        } catch (e: Exception) {
+            // Fallback jika data masih string URL lama
+            LinkData(url = data, title = "")
+        }
 
-            if (bestQualityUrl.isNotEmpty()) {
-                // Return Link
-                callback.invoke(
-                    newExtractorLink(
-                        this.name,
-                        this.name, // Nama Source
-                        bestQualityUrl,
-                        com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8
-                    )
-                )
+        val originalUrl = linkData.url
+        val cleanTitle = linkData.title
+        val tmdbId = linkData.tmdbId
+
+        // 2. INTERNAL PLAYER (Dramafull Original) - Prioritas 1
+        try {
+            val doc = app.get(originalUrl).document
+            val allScripts = doc.select("script").joinToString(" ") { it.data() }
+            
+            // Regex Original yang sudah terbukti bekerja
+            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(allScripts)
+                ?.groupValues?.get(1)?.replace("\\/", "/") 
+                ?: Regex("""signedUrl\s*=\s*['"]([^'"]+)['"]""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/")
+
+            if (signedUrl != null) {
+                val jsonText = app.get(
+                    signedUrl, 
+                    referer = originalUrl,
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+                ).text
                 
-                // Return Subtitle
-                val subJson = resJson.optJSONObject("sub")
-                subJson?.optJSONArray(bestQualityKey)?.let { array ->
-                    for (i in 0 until array.length()) {
-                        val subUrl = array.getString(i)
-                        val finalSubUrl = if (subUrl.startsWith("http")) subUrl else "$mainUrl$subUrl"
-                        subtitleCallback.invoke(newSubtitleFile("English", finalSubUrl))
+                val json = JSONObject(jsonText)
+                val videoSource = json.optJSONObject("video_source")
+                
+                if (videoSource != null) {
+                    val qualities = videoSource.keys().asSequence().toList()
+                    qualities.forEach { qualityStr ->
+                        val link = videoSource.optString(qualityStr)
+                        if (link.isNotEmpty()) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    this.name,
+                                    "AdiDewasa $qualityStr",
+                                    link,
+                                    ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = originalUrl
+                                }
+                            )
+                        }
+                    }
+                    
+                    // Subtitles Internal
+                    val subJson = json.optJSONObject("sub")
+                    val bestQuality = qualities.maxByOrNull { it.toIntOrNull() ?: 0 }
+                    if (bestQuality != null) {
+                        val subs = subJson?.optJSONArray(bestQuality)
+                        if (subs != null) {
+                            for (i in 0 until subs.length()) {
+                                val subPath = subs.getString(i)
+                                val subUrl = if (subPath.startsWith("http")) subPath else "$mainUrl$subPath"
+                                subtitleCallback.invoke(newSubtitleFile("English", subUrl))
+                            }
+                        }
                     }
                 }
-                
-                return true
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Internal gagal, lanjut ke eksternal
         }
-        
-        return false
+
+        // 3. EXTERNAL EXTRACTORS (Idlix, Vidsrc, dll) - Menggunakan TMDb ID atau Title
+        if (cleanTitle.isNotEmpty()) {
+            runAllAsync(
+                // Idlix pakai Title (pencarian string)
+                { invokeIdlix(cleanTitle, linkData.year, linkData.season, linkData.episode, subtitleCallback, callback) },
+                // Vidsrc pakai TMDb ID jika ada (lebih akurat), atau Title
+                { 
+                     // Logic Vidsrc di Extractor harusnya support tmdbId jika dimodif, tapi defaultnya imdb
+                     // Kita kirim null imdbId, dan biarkan extractor pakai season/eps jika perlu
+                     invokeVidsrc(null, linkData.season, linkData.episode, subtitleCallback, callback) 
+                },
+                // Xprime butuh TMDB ID
+                { invokeXprime(tmdbId, cleanTitle, linkData.year, linkData.season, linkData.episode, subtitleCallback, callback) },
+                
+                { invokeVidfast(tmdbId, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVidlink(tmdbId, linkData.season, linkData.episode, callback) },
+                { invokeMapple(tmdbId, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVixsrc(tmdbId, linkData.season, linkData.episode, callback) }
+            )
+        }
+
+        return true
     }
 }
