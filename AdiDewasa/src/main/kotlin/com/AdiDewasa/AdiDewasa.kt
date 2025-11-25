@@ -1,12 +1,20 @@
 package com.AdiDewasa
 
+// Import Extractor Pihak Ketiga (Pastikan file AdiDewasaExtractor.kt ada)
+import com.AdiDewasa.AdiDewasaExtractor.invokeIdlix
+import com.AdiDewasa.AdiDewasaExtractor.invokeMapple
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidfast
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidlink
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidsrc
+import com.AdiDewasa.AdiDewasaExtractor.invokeXprime
+import com.AdiDewasa.AdiDewasaExtractor.invokeVixsrc
+
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -98,13 +106,13 @@ class AdiDewasa : MainAPI() {
         val response = app.get(url)
         val document = response.document
 
+        // 1. PEMBERSIH JUDUL (Agar Idlix/Vidsrc bisa membaca)
         val ogTitle = document.select("meta[property=og:title]").attr("content")
         val fallbackTitle = document.selectFirst("h1")?.text() ?: "Unknown Title"
         val rawTitle = if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle
 
-        // Title Cleaner
         val title = rawTitle
-            .replace(Regex("(?i)^Watch\\s+"), "")
+            .replace(Regex("(?i)^Watch\\s+"), "") // Hapus "Watch "
             .substringBefore(" - Movie")
             .substringBefore(" subbed")
             .substringBefore(" online")
@@ -126,7 +134,16 @@ class AdiDewasa : MainAPI() {
             
             if (epNum == null) return@mapNotNull null
             
-            newEpisode(href) {
+            // Kita bungkus URL + Title di dalam JSON LinkData
+            val data = LinkData(
+                url = fixUrl(href),
+                title = title,
+                year = year,
+                season = 1,
+                episode = epNum
+            )
+            
+            newEpisode(data.toJson()) { // Kirim JSON, bukan URL mentah
                 this.name = "Episode $epNum"
                 this.episode = epNum
             }
@@ -143,7 +160,9 @@ class AdiDewasa : MainAPI() {
         }
 
         val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
-        val dataUrl = if (tvType == TvType.Movie) url else ""
+        
+        // Bungkus data Movie juga ke dalam JSON LinkData
+        val movieData = LinkData(url, title, year).toJson()
 
         return if (tvType == TvType.TvSeries) {
             newTvSeriesLoadResponse(title, url, tvType, episodes) {
@@ -154,7 +173,7 @@ class AdiDewasa : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
-            newMovieLoadResponse(title, url, tvType, dataUrl) {
+            newMovieLoadResponse(title, url, tvType, movieData) {
                 this.posterUrl = poster
                 this.plot = desc
                 this.year = year
@@ -172,60 +191,89 @@ class AdiDewasa : MainAPI() {
     ): Boolean {
         if (data.isEmpty()) return false
 
-        try {
-            val doc = app.get(data).document
-            
-            val allScripts = doc.select("script").joinToString(" ") { it.data() }
-            val signedUrl = Regex("""(window\.)?signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)
-                ?.groupValues?.lastOrNull()?.replace("\\/", "/") 
-                ?: return false
-            
-            val jsonText = app.get(
-                signedUrl, 
-                referer = data,
-                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-            ).text
-            
-            val json = JSONObject(jsonText)
-            val videoSource = json.optJSONObject("video_source") ?: return false
-            val qualities = videoSource.keys().asSequence().toList()
-            
-            qualities.forEach { qualityStr ->
-                val link = videoSource.optString(qualityStr)
-                if (link.isNotEmpty()) {
-                    // PERBAIKAN: Menghapus argumen 'qualityInt' dan menggunakan 4 parameter + lambda
-                    callback.invoke(
-                        newExtractorLink(
-                            this.name,
-                            "AdiDewasa $qualityStr", // Kualitas dimasukkan ke dalam nama agar terdeteksi otomatis
-                            link,
-                            ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = data
-                        }
-                    )
-                }
-            }
+        // 1. Parse JSON LinkData (PENTING!)
+        // File lama gagal karena tidak melakukan parsing ini
+        val linkData = try {
+            parseJson<LinkData>(data)
+        } catch (e: Exception) {
+            // Fallback jika data ternyata URL biasa (untuk kompatibilitas)
+            LinkData(url = data, title = "")
+        }
 
-            val subJson = json.optJSONObject("sub")
-            val bestQuality = qualities.maxByOrNull { it.toIntOrNull() ?: 0 }
-            if (bestQuality != null) {
-                val subs = subJson?.optJSONArray(bestQuality)
-                if (subs != null) {
-                    for (i in 0 until subs.length()) {
-                        val subPath = subs.getString(i)
-                        val subUrl = if (subPath.startsWith("http")) subPath else "$mainUrl$subPath"
-                        subtitleCallback.invoke(
-                            newSubtitleFile("English", subUrl)
-                        )
+        val url = linkData.url
+        val cleanTitle = if (linkData.title.isNotEmpty()) linkData.title else null
+
+        // 2. Jalankan Internal Extractor (AdiDewasa)
+        // Kita gunakan logika dari file "Working" tapi dibungkus agar aman
+        try {
+            val doc = app.get(url).document // Gunakan 'url' yang sudah di-parse, bukan 'data' mentah
+            val allScripts = doc.select("script").joinToString(" ") { it.data() }
+            
+            // Regex dari file Working yang terbukti ampuh
+            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(allScripts)
+                ?.groupValues?.get(1)?.replace("\\/", "/")
+            
+            if (signedUrl != null) {
+                val jsonText = app.get(
+                    signedUrl, 
+                    referer = url,
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+                ).text
+                
+                val json = JSONObject(jsonText)
+                val videoSource = json.optJSONObject("video_source")
+                
+                if (videoSource != null) {
+                    val qualities = videoSource.keys().asSequence().toList()
+                    qualities.forEach { qualityStr ->
+                        val link = videoSource.optString(qualityStr)
+                        if (link.isNotEmpty()) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    this.name,
+                                    "AdiDewasa $qualityStr",
+                                    link,
+                                    ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = url
+                                }
+                            )
+                        }
+                    }
+                    
+                    // Subtitles
+                    val subJson = json.optJSONObject("sub")
+                    val bestQuality = qualities.maxByOrNull { it.toIntOrNull() ?: 0 }
+                    if (bestQuality != null) {
+                        val subs = subJson?.optJSONArray(bestQuality)
+                        if (subs != null) {
+                            for (i in 0 until subs.length()) {
+                                val subPath = subs.getString(i)
+                                val subUrl = if (subPath.startsWith("http")) subPath else "$mainUrl$subPath"
+                                subtitleCallback.invoke(newSubtitleFile("English", subUrl))
+                            }
+                        }
                     }
                 }
             }
-            return true
-
         } catch (e: Exception) {
             e.printStackTrace()
-            return false
         }
+
+        // 3. Jalankan Extractor Luar (Idlix, Vidsrc, dll)
+        // Ini akan berjalan paralel dengan internal, memberikan lebih banyak opsi
+        if (cleanTitle != null) {
+            runAllAsync(
+                { invokeIdlix(cleanTitle, linkData.year, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVidsrc(null, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeXprime(null, cleanTitle, linkData.year, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVidfast(null, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVidlink(null, linkData.season, linkData.episode, callback) },
+                { invokeMapple(null, linkData.season, linkData.episode, subtitleCallback, callback) },
+                { invokeVixsrc(null, linkData.season, linkData.episode, callback) }
+            )
+        }
+
+        return true
     }
 }
