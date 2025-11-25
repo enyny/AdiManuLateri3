@@ -1,186 +1,194 @@
 package com.AdiDewasa
 
+// Import Extractor yang sudah kita siapkan sebelumnya
+import com.AdiDewasa.AdiDewasaExtractor.invokeAdiDewasaDirect
+import com.AdiDewasa.AdiDewasaExtractor.invokeIdlix
+import com.AdiDewasa.AdiDewasaExtractor.invokeMapple
+import com.AdiDewasa.AdiDewasaExtractor.invokeSuperembed
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidfast
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidlink
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidsrc
+import com.AdiDewasa.AdiDewasaExtractor.invokeVidsrccc
+import com.AdiDewasa.AdiDewasaExtractor.invokeVixsrc
+import com.AdiDewasa.AdiDewasaExtractor.invokeWyzie
+import com.AdiDewasa.AdiDewasaExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.network.CloudflareKiller
-import com.lagradost.cloudstream3.extractors.helper.AesHelper
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.jsoup.Jsoup
 
-object AdiDewasaExtractor {
-    
-    // Interceptor khusus untuk Extractor agar bisa tembus Cloudflare
+class AdiDewasa : MainAPI() {
+    override var mainUrl = "https://dramafull.cc"
+    override var name = "AdiDewasa"
+    override val hasMainPage = true
+    override val hasQuickSearch = true
+    override val hasChromecastSupport = true
+    override val hasDownloadSupport = true
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
+
+    // FITUR ANTI-BLOKIR
     private val cfInterceptor by lazy { CloudflareKiller() }
-
-    // Header browser lengkap
+    
+    // Header Wajib agar tidak dianggap bot
     private val webHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language" to "en-US,en;q=0.9",
-        "Connection" to "keep-alive"
+        "Accept" to "application/json, text/plain, */*",
+        "Referer" to "$mainUrl/"
     )
 
-    // ================== SUMBER UTAMA: DRAMAFULL DIRECT ==================
-    @Suppress("UNCHECKED_CAST") 
-    suspend fun invokeAdiDewasaDirect(
-        url: String,
-        callback: (ExtractorLink) -> Unit,
-        subtitleCallback: (SubtitleFile) -> Unit
-    ) {
+    override val mainPage: List<MainPageData>
+        get() = listOf(
+            MainPageData("Adult Movies - Baru Rilis", "2:1:adult"),
+            MainPageData("Adult Movies - Paling Populer", "2:5:adult"),
+            MainPageData("Adult Movies - Rating Tertinggi", "2:6:adult"),
+            MainPageData("Adult TV Shows - Episode Baru", "1:1:adult"),
+            MainPageData("All Collections - Rekomendasi", "-1:6:adult")
+        )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         try {
-            // FIX: Menggunakan interceptor CloudflareKiller + Web Headers
-            val response = app.get(url, headers = webHeaders, interceptor = cfInterceptor)
-            val doc = response.document
-            
-            // Ambil semua script untuk dicari
-            val allScripts = doc.select("script").joinToString(" ") { it.data() }
-            
-            // FIX: Regex lebih fleksibel menangkap signedUrl (ada window. atau tidak)
-            val signedUrl = Regex("""(window\.)?signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)?.groupValues?.lastOrNull()?.replace("\\/", "/") 
-                ?: return // Kalau tidak ketemu, stop di sini
-            
-            // Request ke JSON signedUrl dengan Referer yang benar
-            val jsonResponseText = app.get(
-                signedUrl, 
-                referer = url, 
-                headers = webHeaders + mapOf("Accept" to "application/json"),
+            val dataParts = request.data.split(":")
+            val type = dataParts.getOrNull(0) ?: "-1"
+            val sort = dataParts.getOrNull(1)?.toIntOrNull() ?: 1
+            val adultFlag = dataParts.getOrNull(2) ?: "normal"
+            val isAdultSection = adultFlag == "adult"
+
+            val jsonPayload = """{
+                "page": $page,
+                "type": "$type",
+                "country": -1,
+                "sort": $sort,
+                "adult": true,
+                "adultOnly": $isAdultSection,
+                "ignoreWatched": false,
+                "genres": [],
+                "keyword": ""
+            }""".trimIndent()
+
+            val payload = jsonPayload.toRequestBody("application/json".toMediaType())
+
+            // Gunakan Interceptor CloudflareKiller
+            val response = app.post(
+                "$mainUrl/api/filter", 
+                requestBody = payload, 
+                headers = webHeaders, 
                 interceptor = cfInterceptor
-            ).text
+            )
             
-            val jsonObject = tryParseJson<Map<String, Any>>(jsonResponseText) ?: return
-            
-            val videoSource = jsonObject["video_source"] as? Map<String, String> ?: return
-            
-            videoSource.forEach { (quality, link) ->
-                 if (link.isNotEmpty()) {
-                    callback.invoke(
-                        newExtractorLink(
-                            "AdiDewasa",
-                            "AdiDewasa ($quality)",
-                            link,
-                            INFER_TYPE 
-                        ) {
-                            this.referer = url
-                        }
-                    )
-                }
-            }
-             
-             // SUBTITLE
-             val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
-             val subJson = jsonObject["sub"] as? Map<String, Any>
-             val subs = subJson?.get(bestQualityKey) as? List<String>
-             
-             subs?.forEach { subPath ->
-                 val finalUrl = if(subPath.startsWith("http")) subPath else "https://dramafull.cc$subPath"
-                 subtitleCallback.invoke(
-                     newSubtitleFile("English", finalUrl)
-                 )
-             }
+            val homeResponse = response.parsedSafe<HomeResponse>()
+            val mediaList = homeResponse?.data ?: emptyList()
+            val searchResults = mediaList.mapNotNull { it.toSearchResult() }
+
+            return newHomePageResponse(
+                list = HomePageList(request.name, searchResults, false),
+                hasNext = homeResponse?.nextPageUrl != null
+            )
         } catch (e: Exception) {
             e.printStackTrace()
+            return newHomePageResponse(emptyList(), false)
         }
     }
 
-    // ================== EXTRACTORS LAIN ==================
-    
-    // --- IDLIX ---
-    val idlixAPI = "https://tv6.idlixku.com"
-    suspend fun invokeIdlix(
-        title: String?, year: Int?, season: Int?, episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
-    ) {
-        val fixTitle = title?.replace(" ", "-")?.lowercase()
-        val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" 
-                  else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
-        
-        // Panggil Wpmovies
-        invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
+    private fun MediaItem.toSearchResult(): SearchResponse? {
+        val itemTitle = this.title ?: this.name ?: return null
+        val itemSlug = this.slug ?: return null
+        val itemImage = this.image?.takeIf { it.isNotEmpty() } ?: this.poster
+
+        val href = "$mainUrl/film/$itemSlug"
+        val posterUrl = if (!itemImage.isNullOrEmpty()) {
+            if (itemImage.startsWith("http")) itemImage else mainUrl + itemImage
+        } else null
+
+        return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
+            this.posterUrl = posterUrl
+        }
     }
 
-    private suspend fun invokeWpmovies(
-        name: String?, url: String, subtitleCallback: (SubtitleFile) -> Unit, 
-        callback: (ExtractorLink) -> Unit, encrypt: Boolean = false
-    ) {
-        try {
-            val res = app.get(url, timeout = 10L) // Timeout pendek karena ini cuma fallback
-            if(res.code != 200) return
-            
-            val referer = "https://${java.net.URI(url).host}"
-            val doc = res.document
-            
-            doc.select("ul#playeroptionsul > li").forEach {
-                val id = it.attr("data-post")
-                val nume = it.attr("data-nume")
-                val type = it.attr("data-type")
-                
-                val json = app.post(
-                    url = "$referer/wp-admin/admin-ajax.php",
-                    data = mapOf("action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type),
-                    headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
-                    referer = url
-                ).text
-                
-                val source = tryParseJson<ResponseHash>(json)?.let { resp ->
-                    if (encrypt) {
-                        val meta = tryParseJson<Map<String, String>>(resp.embed_url)?.get("m") ?: return@let null
-                        val key = generateWpKey(resp.key ?: return@let null, meta)
-                        AesHelper.cryptoAESHandler(resp.embed_url, key.toByteArray(), false)?.fixUrlBloat()
-                    } else {
-                        resp.embed_url
-                    }
-                } ?: return@forEach
-
-                if (source.contains("jeniusplay")) {
-                     JeniusplayDewasa().getUrl(source, "$referer/", subtitleCallback, callback)
-                }
-            }
+    override suspend fun search(query: String): List<SearchResponse>? {
+        val url = "$mainUrl/api/live-search/$query"
+        return try {
+            app.get(url, headers = webHeaders, interceptor = cfInterceptor)
+                .parsedSafe<ApiSearchResponse>()?.data?.mapNotNull { it.toSearchResult() }
         } catch (e: Exception) {
-            // Ignore error di fallback
+            null
         }
     }
 
-    // --- VIDSRC ---
-    suspend fun invokeVidsrc(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-         if(imdbId == null) return
-         val vidSrcAPI = "https://vidsrc.net"
-         val api = "https://cloudnestra.com"
-         val url = if (season == null) "$vidSrcAPI/embed/movie?imdb=$imdbId" else "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
-         
-         try {
-             app.get(url).document.select(".serversList .server").forEach { server ->
-                if (server.text().equals("CloudStream Pro", true)) {
-                     val hash = app.get("$api/rcp/${server.attr("data-hash")}").text.substringAfter("/prorcp/").substringBefore("'")
-                     val m3u8Link = Regex("https:.*\\.m3u8").find(app.get("$api/prorcp/$hash").text)?.value
-                     callback.invoke(newExtractorLink("Vidsrc", "Vidsrc", m3u8Link ?: return@forEach, ExtractorLinkType.M3U8))
-                }
-             }
-         } catch (e: Exception) {}
-    }
+    override suspend fun load(url: String): LoadResponse {
+        // Load halaman menggunakan Cloudflare Killer
+        val document = app.get(url, headers = webHeaders, interceptor = cfInterceptor).document
+        
+        val title = document.selectFirst("h1.heading-title, .film-info h1")?.text()?.trim() ?: "Unknown"
+        val poster = document.selectFirst(".film-poster img, .poster img")?.attr("src")
+        val desc = document.selectFirst(".description, .film-desc")?.text()?.trim()
+        val year = Regex("\\d{4}").find(document.text())?.value?.toIntOrNull()
+        
+        val episodes = document.select(".episode-list a, .episode-item a").mapNotNull {
+            val text = it.text()
+            val href = it.attr("href")
+            val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+            
+            if (epNum == null) return@mapNotNull null
+            
+            newEpisode(
+                // PENTING: Kita passing LinkData ke loadLinks agar punya info lengkap
+                LinkData(
+                    url = fixUrl(href),
+                    title = title,
+                    year = year,
+                    season = 1,
+                    episode = epNum
+                ).toJson() // Serialisasi ke String
+            ) {
+                this.name = "Episode $epNum"
+                this.episode = epNum
+            }
+        }
 
-    // --- XPRIME ---
-    suspend fun invokeXprime(tmdbId: Int?, title: String?, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val xprimeAPI = "https://backend.xprime.tv"
-        if(title != null) {
-            try {
-                val url = if(season == null) "$xprimeAPI/primebox?name=$title&fallback_year=$year" else "$xprimeAPI/primebox?name=$title&fallback_year=$year&season=$season&episode=$episode"
-                val sources = app.get(url).parsedSafe<PrimeboxSources>()
-                sources?.streams?.forEach { (quality, link) ->
-                    callback.invoke(newExtractorLink("Primebox", "Primebox", link, ExtractorLinkType.M3U8))
-                }
-            } catch (e: Exception) {}
+        return if (episodes.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = desc
+                this.year = year
+            }
+        } else {
+            // Untuk Movie
+            newMovieLoadResponse(title, url, TvType.Movie, LinkData(url, title, year).toJson()) {
+                this.posterUrl = poster
+                this.plot = desc
+                this.year = year
+            }
         }
     }
-    
-    // --- TEMPLATE KOSONG UNTUK LAINNYA ---
-    // Dipertahankan agar tidak error di AdiDewasa.kt saat dipanggil
-    suspend fun invokeVidfast(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
-    suspend fun invokeVidlink(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { }
-    suspend fun invokeMapple(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
-    suspend fun invokeWyzie(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit) { }
-    suspend fun invokeVixsrc(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { }
-    suspend fun invokeVidsrccc(tmdbId: Int?, imdb: String?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
-    suspend fun invokeSuperembed(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        
+        // Parse kembali data LinkData
+        val res = parseJson<LinkData>(data)
+
+        // JALANKAN SEMUA EXTRACTOR SECARA PARALEL
+        runAllAsync(
+            // 1. Player Internal Dramafull (Paling Akurat)
+            { invokeAdiDewasaDirect(res.url, callback, subtitleCallback) },
+            
+            // 2. Extractor Cadangan (Idlix, Vidsrc, dll)
+            { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
+            { invokeVidsrc(null, res.season, res.episode, subtitleCallback, callback) },
+            { invokeXprime(null, res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
+            { invokeVidfast(null, res.season, res.episode, subtitleCallback, callback) },
+            { invokeVidlink(null, res.season, res.episode, callback) },
+            { invokeMapple(null, res.season, res.episode, subtitleCallback, callback) },
+            { invokeVixsrc(null, res.season, res.episode, callback) }
+        )
+
+        return true
+    }
 }
