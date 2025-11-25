@@ -114,17 +114,33 @@ class AdiDewasa : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = webHeaders, interceptor = cfInterceptor).document
+        val response = app.get(url, headers = webHeaders, interceptor = cfInterceptor)
+        val document = response.document
         
-        val title = document.selectFirst("h1.heading-title, .film-info h1")?.text()?.trim() ?: "Unknown"
-        val poster = document.selectFirst(".film-poster img, .poster img")?.attr("src")
-        val desc = document.selectFirst(".description, .film-desc")?.text()?.trim()
-        val year = Regex("\\d{4}").find(document.text())?.value?.toIntOrNull()
+        // --- PERBAIKAN: Menggunakan Meta Tags sebagai Prioritas ---
+        // Ini memperbaiki masalah judul "Unknown" dan plot "Tidak Ditemukan"
+        val ogTitle = document.select("meta[property=og:title]").attr("content")
+        val fallbackTitle = document.selectFirst("h1")?.text() ?: "Unknown Title"
         
-        val episodes = document.select(".episode-list a, .episode-item a").mapNotNull {
+        // Membersihkan judul dari tambahan seperti " - Nonton Film..."
+        val title = (if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle)
+            .split("- Nonton").firstOrNull()?.trim() ?: fallbackTitle
+
+        val poster = document.select("meta[property=og:image]").attr("content")
+        val desc = document.select("meta[property=og:description]").attr("content")
+        
+        // Mencoba mengambil tahun dari judul atau meta tag
+        var year = Regex("\\d{4}").find(title)?.value?.toIntOrNull()
+        if (year == null) {
+             year = Regex("\\d{4}").find(document.text())?.value?.toIntOrNull()
+        }
+        
+        // Logika Episode
+        val episodes = document.select(".episode-list a, .episode-item a, ul.episodes li a").mapNotNull {
             val text = it.text()
             val href = it.attr("href")
-            val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+            val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull() 
+                ?: Regex("""Episode\s*(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
             
             if (epNum == null) return@mapNotNull null
             
@@ -142,14 +158,16 @@ class AdiDewasa : MainAPI() {
             }
         }
 
-        return if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+        val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
+
+        return if (tvType == TvType.TvSeries) {
+            newTvSeriesLoadResponse(title, url, tvType, episodes) {
                 this.posterUrl = poster
                 this.plot = desc
                 this.year = year
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, LinkData(url, title, year).toJson()) {
+            newMovieLoadResponse(title, url, tvType, LinkData(url, title, year).toJson()) {
                 this.posterUrl = poster
                 this.plot = desc
                 this.year = year
@@ -165,12 +183,15 @@ class AdiDewasa : MainAPI() {
     ): Boolean {
         
         val res = parseJson<LinkData>(data)
+        
+        // Jika title "Unknown", perbaiki query untuk extractor lain agar tidak error
+        val cleanTitle = if (res.title.contains("Unknown", true)) null else res.title
 
         runAllAsync(
             { invokeAdiDewasaDirect(res.url, callback, subtitleCallback) },
-            { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
+            { invokeIdlix(cleanTitle, res.year, res.season, res.episode, subtitleCallback, callback) },
             { invokeVidsrc(null, res.season, res.episode, subtitleCallback, callback) },
-            { invokeXprime(null, res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
+            { invokeXprime(null, cleanTitle, res.year, res.season, res.episode, subtitleCallback, callback) },
             { invokeVidfast(null, res.season, res.episode, subtitleCallback, callback) },
             { invokeVidlink(null, res.season, res.episode, callback) },
             { invokeMapple(null, res.season, res.episode, subtitleCallback, callback) },
