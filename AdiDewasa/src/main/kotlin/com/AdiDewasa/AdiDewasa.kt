@@ -117,19 +117,24 @@ class AdiDewasa : MainAPI() {
         val response = app.get(url, headers = webHeaders, interceptor = cfInterceptor)
         val document = response.document
         
-        // --- PERBAIKAN: Menggunakan Meta Tags sebagai Prioritas ---
-        // Ini memperbaiki masalah judul "Unknown" dan plot "Tidak Ditemukan"
+        // --- CLEANER LOGIC START ---
         val ogTitle = document.select("meta[property=og:title]").attr("content")
         val fallbackTitle = document.selectFirst("h1")?.text() ?: "Unknown Title"
-        
-        // Membersihkan judul dari tambahan seperti " - Nonton Film..."
-        val title = (if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle)
-            .split("- Nonton").firstOrNull()?.trim() ?: fallbackTitle
+        val rawTitle = if (ogTitle.isNotEmpty()) ogTitle else fallbackTitle
+
+        // Membersihkan judul dari sampah SEO seperti "Watch Eva - Movie subbed..."
+        val title = rawTitle
+            .replace(Regex("(?i)^Watch\\s+"), "") // Hapus "Watch " di depan
+            .substringBefore(" - Movie")          // Hapus suffix " - Movie..."
+            .substringBefore(" subbed")           // Hapus suffix " subbed..."
+            .substringBefore(" online")           // Hapus suffix " online..."
+            .substringBefore(",")                 // Hapus koma dan setelahnya (opsional)
+            .trim()
 
         val poster = document.select("meta[property=og:image]").attr("content")
         val desc = document.select("meta[property=og:description]").attr("content")
         
-        // Mencoba mengambil tahun dari judul atau meta tag
+        // Logika Tahun
         var year = Regex("\\d{4}").find(title)?.value?.toIntOrNull()
         if (year == null) {
              year = Regex("\\d{4}").find(document.text())?.value?.toIntOrNull()
@@ -147,7 +152,7 @@ class AdiDewasa : MainAPI() {
             newEpisode(
                 LinkData(
                     url = fixUrl(href),
-                    title = title,
+                    title = title, // Judul sudah bersih di sini
                     year = year,
                     season = 1,
                     episode = epNum
@@ -184,11 +189,12 @@ class AdiDewasa : MainAPI() {
         
         val res = parseJson<LinkData>(data)
         
-        // Jika title "Unknown", perbaiki query untuk extractor lain agar tidak error
-        val cleanTitle = if (res.title.contains("Unknown", true)) null else res.title
+        // Pastikan judul bersih dikirim ke extractor
+        val cleanTitle = res.title.trim()
 
         runAllAsync(
             { invokeAdiDewasaDirect(res.url, callback, subtitleCallback) },
+            // Gunakan cleanTitle untuk extractor eksternal agar pencarian akurat
             { invokeIdlix(cleanTitle, res.year, res.season, res.episode, subtitleCallback, callback) },
             { invokeVidsrc(null, res.season, res.episode, subtitleCallback, callback) },
             { invokeXprime(null, cleanTitle, res.year, res.season, res.episode, subtitleCallback, callback) },
