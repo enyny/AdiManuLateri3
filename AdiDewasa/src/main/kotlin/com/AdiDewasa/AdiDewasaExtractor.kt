@@ -15,6 +15,7 @@ import org.jsoup.Jsoup
 object AdiDewasaExtractor {
 
     // ================== SUMBER UTAMA: DRAMAFULL DIRECT ==================
+    @Suppress("UNCHECKED_CAST") // Mengatasi peringatan Unchecked Cast
     suspend fun invokeAdiDewasaDirect(
         url: String,
         callback: (ExtractorLink) -> Unit,
@@ -29,6 +30,8 @@ object AdiDewasaExtractor {
             
             val jsonResponseText = app.get(signedUrl, referer = url, headers = AdiDewasaHelper.headers).text
             val jsonObject = tryParseJson<Map<String, Any>>(jsonResponseText) ?: return
+            
+            // Cast unchecked di sini akan diabaikan oleh compiler berkat @Suppress
             val videoSource = jsonObject["video_source"] as? Map<String, String> ?: return
             
             videoSource.forEach { (quality, link) ->
@@ -48,9 +51,12 @@ object AdiDewasaExtractor {
              val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
              val subJson = jsonObject["sub"] as? Map<String, Any>
              val subs = subJson?.get(bestQualityKey) as? List<String>
+             
              subs?.forEach { subPath ->
+                 val finalUrl = if(subPath.startsWith("http")) subPath else "https://dramafull.cc$subPath"
                  subtitleCallback.invoke(
-                     SubtitleFile("English", if(subPath.startsWith("http")) subPath else "https://dramafull.cc$subPath")
+                     // MENGGUNAKAN newSubtitleFile (Bukan constructor SubtitleFile)
+                     newSubtitleFile("English", finalUrl)
                  )
              }
         } catch (e: Exception) {
@@ -110,11 +116,8 @@ object AdiDewasaExtractor {
     }
 
     // --- VIDSRC & LAINNYA ---
-    // Note: Extractor ini biasanya butuh TMDB ID. Karena Metadata dari Dramafull mungkin gak punya TMDB ID, 
-    // extractor ini mungkin tidak selalu berhasil jika ID-nya null, tapi kita pertahankan kodenya.
-    
     suspend fun invokeVidsrc(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-         if(imdbId == null) return // Vidsrc butuh IMDB
+         if(imdbId == null) return
          val vidSrcAPI = "https://vidsrc.net"
          val api = "https://cloudnestra.com"
          val url = if (season == null) "$vidSrcAPI/embed/movie?imdb=$imdbId" else "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
@@ -130,7 +133,6 @@ object AdiDewasaExtractor {
 
     suspend fun invokeXprime(tmdbId: Int?, title: String?, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val xprimeAPI = "https://backend.xprime.tv"
-        // Gunakan fallback search by name karena TMDB ID mungkin null
         if(title != null) {
             val url = if(season == null) "$xprimeAPI/primebox?name=$title&fallback_year=$year" else "$xprimeAPI/primebox?name=$title&fallback_year=$year&season=$season&episode=$episode"
             val sources = app.get(url).parsedSafe<PrimeboxSources>()
@@ -140,15 +142,12 @@ object AdiDewasaExtractor {
         }
     }
     
-    // Extractor lainnya (Vidfast, Vidlink, Vixsrc, dll.) disederhanakan untuk template ini.
-    // Jika ID TMDB null, sebagian besar API ini akan gagal. 
-    // Namun kode di bawah disertakan agar kompatibel.
-    
-    suspend fun invokeVidfast(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { /* Logic Vidfast */ }
-    suspend fun invokeVidlink(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { /* Logic Vidlink */ }
-    suspend fun invokeMapple(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { /* Logic Mapple */ }
-    suspend fun invokeWyzie(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit) { /* Logic Wyzie */ }
-    suspend fun invokeVixsrc(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { /* Logic Vixsrc */ }
-    suspend fun invokeVidsrccc(tmdbId: Int?, imdb: String?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { /* Logic Vidsrccc */ }
-    suspend fun invokeSuperembed(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { /* Logic Superembed */ }
+    // Extractor lainnya
+    suspend fun invokeVidfast(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
+    suspend fun invokeVidlink(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { }
+    suspend fun invokeMapple(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
+    suspend fun invokeWyzie(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit) { }
+    suspend fun invokeVixsrc(tmdbId: Int?, s: Int?, e: Int?, cb: (ExtractorLink)->Unit) { }
+    suspend fun invokeVidsrccc(tmdbId: Int?, imdb: String?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
+    suspend fun invokeSuperembed(tmdbId: Int?, s: Int?, e: Int?, sc: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) { }
 }
