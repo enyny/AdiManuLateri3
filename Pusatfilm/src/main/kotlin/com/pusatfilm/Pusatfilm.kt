@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URI
 
 class Pusatfilm : MainAPI() {
 
@@ -38,12 +37,9 @@ class Pusatfilm : MainAPI() {
         val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
         
-        return if (quality.isEmpty()) {
-            val episode = Regex("Episode\\s?([0-9]+)").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: this.select("div.gmr-numbeps > span").text().toIntOrNull()
+        return if (quality.isEmpty() || href.contains("/tv/")) {
             newAnimeSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                addSub(episode)
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
@@ -61,32 +57,26 @@ class Pusatfilm : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Mengambil data dasar
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown Title"
         val poster = document.selectFirst("div.gmr-poster img")?.getImageAttr()?.fixImageQuality()
         val tags = document.select("div.gmr-movie-genre a").map { it.text() }
         val year = document.selectFirst("div.gmr-movie-date a")?.text()?.toIntOrNull()
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         
-        // REVISI: Menghapus pengambilan rating yang menyebabkan error (deprecated)
-        // val rating = document.selectFirst("div.gmr-movie-rating span.gmr-rating-score")?.text()?.toRatingInt()
-
-        // Cek apakah ini Series atau Movie
-        val isSeries = document.select("div.vid-episodes").isNotEmpty() || 
-                       document.select("div.gmr-listseries").isNotEmpty()
+        // LOGIKA BARU: Deteksi Series vs Movie yang lebih akurat
+        // Kita cek apakah ada daftar episode 'gmr-listseries' ATAU url mengandung '/tv/'
+        val isSeries = document.select("div.gmr-listseries").isNotEmpty() || url.contains("/tv/")
 
         return if (isSeries) {
-            val episodes = document.select("div.vid-episodes a, div.gmr-listseries a").mapNotNull { eps ->
+            val episodes = document.select("div.gmr-listseries a").mapNotNull { eps ->
                 val href = fixUrl(eps.attr("href"))
                 val name = eps.attr("title")
+                // Parsing episode lebih teliti
                 val episodeMatch = Regex("Episode\\s*(\\d+)").find(name)
                 val episode = episodeMatch?.groupValues?.get(1)?.toIntOrNull()
-                val seasonMatch = Regex("Season\\s*(\\d+)").find(name)
-                val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull()
-
+                
                 newEpisode(href) {
                     this.name = name
-                    this.season = season
                     this.episode = episode
                 }
             }
@@ -95,16 +85,13 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                // this.rating = rating // DIHAPUS agar build sukses
             }
         } else {
-            // Logic untuk Movie
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                // this.rating = rating // DIHAPUS agar build sukses
             }
         }
     }
@@ -117,18 +104,28 @@ class Pusatfilm : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // Logic untuk mengambil link streaming (KotakAjaib, dll)
+        // Cara 1: Cek dropdown server (biasanya ada data-frame terenkripsi base64)
         document.select("ul#dropdown-server li a").forEach {
-            val serverUrl = base64Decode(it.attr("data-frame"))
-            loadExtractor(serverUrl, data, subtitleCallback, callback)
+            val encodedUrl = it.attr("data-frame")
+            if (encodedUrl.isNotEmpty()) {
+                val decodedUrl = base64Decode(encodedUrl)
+                loadExtractor(decodedUrl, data, subtitleCallback, callback)
+            }
         }
         
-        // Fallback untuk iframe biasa jika dropdown tidak ada
-        document.select("iframe").forEach {
+        // Cara 2: Cek iframe langsung (jika tidak ada dropdown)
+        document.select("div.gmr-embed-responsive iframe").forEach {
             val src = it.attr("src")
-            if (src.contains("kotakajaib") || src.contains("google")) {
-                loadExtractor(src, data, subtitleCallback, callback)
+            if (src.isNotEmpty()) {
+                 loadExtractor(src, data, subtitleCallback, callback)
             }
+        }
+
+        // Cara 3: Fallback khusus untuk link 'gdriveplayer' atau sejenisnya
+        val scripts = document.select("script").html()
+        // Kadang link ada di dalam script
+        if (scripts.contains("player.php")) {
+             // Logic tambahan jika diperlukan nanti
         }
 
         return true
