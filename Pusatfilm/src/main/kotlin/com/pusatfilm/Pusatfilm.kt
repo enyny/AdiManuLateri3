@@ -58,7 +58,6 @@ class Pusatfilm : MainAPI() {
         return document.select("article.item").mapNotNull { it.toSearchResult() }
     }
 
-    // --- BAGIAN INI YANG DIPERBAIKI (Fungsi Load) ---
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
@@ -68,7 +67,9 @@ class Pusatfilm : MainAPI() {
         val tags = document.select("div.gmr-movie-genre a").map { it.text() }
         val year = document.selectFirst("div.gmr-movie-date a")?.text()?.toIntOrNull()
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
-        val rating = document.selectFirst("div.gmr-movie-rating span.gmr-rating-score")?.text()?.toRatingInt()
+        
+        // REVISI: Menghapus pengambilan rating yang menyebabkan error (deprecated)
+        // val rating = document.selectFirst("div.gmr-movie-rating span.gmr-rating-score")?.text()?.toRatingInt()
 
         // Cek apakah ini Series atau Movie
         val isSeries = document.select("div.vid-episodes").isNotEmpty() || 
@@ -94,7 +95,7 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.rating = rating
+                // this.rating = rating // DIHAPUS agar build sukses
             }
         } else {
             // Logic untuk Movie
@@ -103,7 +104,7 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.rating = rating
+                // this.rating = rating // DIHAPUS agar build sukses
             }
         }
     }
