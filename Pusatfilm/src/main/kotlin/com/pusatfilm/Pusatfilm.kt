@@ -15,7 +15,7 @@ class Pusatfilm : MainAPI() {
     override val supportedTypes =
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
-    // API Key Publik TMDb (Bisa diganti jika limit habis)
+    // API Key Publik TMDb
     private val tmdbApiKey = "90b62d85429816503f8489849206d4e2"
 
     override val mainPage = mainPageOf(
@@ -66,14 +66,14 @@ class Pusatfilm : MainAPI() {
         // 1. Ambil Data Dasar dari Pusatfilm
         val rawTitle = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown Title"
         
-        // Bersihkan tahun dari judul untuk pencarian TMDb (Misal: "Dune (2024)" -> "Dune")
+        // Bersihkan tahun dari judul (Misal: "Dune (2024)" -> "Dune")
         val cleanTitleRegex = Regex("(.*?)\\s*\\(\\d{4}\\)")
         val cleanTitle = cleanTitleRegex.find(rawTitle)?.groupValues?.get(1) ?: rawTitle
         
         val yearText = document.selectFirst("div.gmr-movie-date a")?.text()?.trim()
         val year = yearText?.toIntOrNull()
 
-        // 2. Cari Data di TMDb (Untuk Poster HD, Background, & Info Akurat)
+        // 2. Cari Data di TMDb
         val isSeries = url.contains("/tv/")
         val tmdbResult = getTmdbDetails(cleanTitle, year, isSeries)
 
@@ -104,7 +104,7 @@ class Pusatfilm : MainAPI() {
                 newEpisode(href) {
                     this.name = "Episode $episodeNum"
                     this.episode = episodeNum
-                    this.season = 1 // Default ke season 1 karena web ini jarang misah season
+                    this.season = 1 
                 }
             }.sortedBy { it.episode }
 
@@ -114,8 +114,8 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                // PENTING: Gunakan addTMDbId()
-                tmdbResult?.id?.let { addTMDbId(it.toString()) }
+                // PERBAIKAN: Menggunakan addTmdbId (huruf d kecil)
+                tmdbResult?.id?.let { addTmdbId(it.toString()) }
             }
         } else {
             return newMovieLoadResponse(rawTitle, url, TvType.Movie, url) {
@@ -124,8 +124,8 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                // PENTING: Gunakan addTMDbId()
-                tmdbResult?.id?.let { addTMDbId(it.toString()) }
+                // PERBAIKAN: Menggunakan addTmdbId (huruf d kecil)
+                tmdbResult?.id?.let { addTmdbId(it.toString()) }
             }
         }
     }
@@ -153,7 +153,6 @@ class Pusatfilm : MainAPI() {
         }
     }
 
-    // Class Data Sederhana untuk menampung hasil TMDb
     data class TmdbSearchResponse(val results: List<TmdbItem>)
     data class TmdbItem(
         val id: Int,
