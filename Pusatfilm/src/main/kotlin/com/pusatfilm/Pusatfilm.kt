@@ -36,7 +36,6 @@ class Pusatfilm : MainAPI() {
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
         val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
         
-        // Deteksi Series vs Movie berdasarkan URL (Lebih akurat untuk situs ini)
         val isSeries = href.contains("/tv/")
         
         return if (isSeries) {
@@ -46,7 +45,6 @@ class Pusatfilm : MainAPI() {
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                // Kualitas biasanya ada di label, misal "Bluray"
                 val quality = this@toSearchResult.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
                 addQuality(quality)
             }
@@ -63,9 +61,11 @@ class Pusatfilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown Title"
         
-        // FIX GAMBAR: Mengambil dari og:image (meta tag) agar pasti muncul di detail
+        // FIX GAMBAR FINAL: Cek 4 sumber berbeda agar gambar pasti muncul
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.fixImageQuality()
             ?: document.selectFirst("div.gmr-poster img")?.getImageAttr()?.fixImageQuality()
+            ?: document.selectFirst("img.wp-post-image")?.getImageAttr()?.fixImageQuality()
+            ?: document.selectFirst("link[rel='image_src']")?.attr("href")?.fixImageQuality()
 
         val tags = document.select("div.gmr-movie-genre a").map { it.text() }
         val year = document.selectFirst("div.gmr-movie-date a")?.text()?.toIntOrNull()
@@ -74,23 +74,21 @@ class Pusatfilm : MainAPI() {
         val isSeries = url.contains("/tv/")
 
         return if (isSeries) {
-            // FIX SERIES: Parsing episode lebih rapi dan diurutkan
             val episodes = document.select("div.gmr-listseries a").mapNotNull { eps ->
                 val href = fixUrl(eps.attr("href"))
-                val rawTitle = eps.attr("title") // Judul mentah "Nonton Series..."
+                val rawTitle = eps.attr("title") // Contoh: "Nonton Series Robin Hood Season 1 Episode 5..."
                 
-                // Ambil angka episode menggunakan Regex
+                // Regex fleksibel: Cari kata 'Episode' diikuti angka
                 val episodeMatch = Regex("(?i)Episode\\s*(\\d+)").find(rawTitle)
                 val episodeNum = episodeMatch?.groupValues?.get(1)?.toIntOrNull()
                 
-                // Jika tidak ketemu angka episode, lewati (karena mungkin bukan link episode valid)
                 if (episodeNum == null) return@mapNotNull null
 
                 newEpisode(href) {
-                    this.name = "Episode $episodeNum" // Paksa nama jadi rapi
+                    this.name = "Episode $episodeNum"
                     this.episode = episodeNum
                 }
-            }.sortedBy { it.episode } // Urutkan episode dari 1 ke atas
+            }.sortedBy { it.episode }
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
@@ -116,7 +114,7 @@ class Pusatfilm : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // 1. Cek Dropdown Server
+        // 1. Cek Dropdown
         document.select("ul#dropdown-server li a").forEach {
             val encodedUrl = it.attr("data-frame")
             if (encodedUrl.isNotEmpty()) {
@@ -125,7 +123,7 @@ class Pusatfilm : MainAPI() {
             }
         }
         
-        // 2. Cek Iframe Utama
+        // 2. Cek Iframe
         document.select("div.gmr-embed-responsive iframe").forEach {
             val src = it.attr("src")
             if (src.isNotEmpty() && !src.contains("youtube")) {
