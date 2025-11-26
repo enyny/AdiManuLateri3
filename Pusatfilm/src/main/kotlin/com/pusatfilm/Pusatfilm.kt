@@ -114,8 +114,8 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                // PENTING: Attach TMDb ID biar Cloudstream bisa load Cast & Recommendations
-                this.tmdbId = tmdbResult?.id
+                // PENTING: Gunakan addTMDbId()
+                tmdbResult?.id?.let { addTMDbId(it.toString()) }
             }
         } else {
             return newMovieLoadResponse(rawTitle, url, TvType.Movie, url) {
@@ -124,7 +124,8 @@ class Pusatfilm : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.tmdbId = tmdbResult?.id
+                // PENTING: Gunakan addTMDbId()
+                tmdbResult?.id?.let { addTMDbId(it.toString()) }
             }
         }
     }
