@@ -991,7 +991,17 @@ object Adicinemax21Extractor : Adicinemax21() {
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
             
+            // DAFTAR SERVER YANG DIBLOKIR
+            val blockedServers = listOf("Maphisto", "Noah", "Bolt", "Zeus", "Nexus")
+
             json.forEach {
+                val serverName = it["server"] ?: ""
+
+                // Skip jika nama server ada di daftar blokir
+                if (blockedServers.any { blocked -> serverName.contains(blocked, ignoreCase = true) }) {
+                    return@forEach
+                }
+
                 val extractorLinkType = when {
                     it["type"]?.contains("hls", true) == true -> ExtractorLinkType.M3U8
                     it["type"]?.contains("dash", true) == true -> ExtractorLinkType.DASH
@@ -1018,7 +1028,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             }
         } catch (e: Exception) {
-            // Error handling (Silent fail agar tidak mengganggu provider lain)
+            // Error handling
         }
     }
 
