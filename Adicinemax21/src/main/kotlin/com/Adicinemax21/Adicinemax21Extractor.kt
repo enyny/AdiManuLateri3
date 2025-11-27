@@ -996,7 +996,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                     it["type"]?.contains("hls", true) == true -> ExtractorLinkType.M3U8
                     it["type"]?.contains("dash", true) == true -> ExtractorLinkType.DASH
                     it["type"]?.contains("mp4", true) == true -> ExtractorLinkType.VIDEO
-                    else -> ExtractorLinkType.INFER
+                    else -> INFER_TYPE
                 }
                 
                 val quality = if (it["quality"]?.isNotEmpty() == true && it["quality"]?.toIntOrNull() != null) {
