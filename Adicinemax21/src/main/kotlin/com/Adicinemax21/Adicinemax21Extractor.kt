@@ -991,32 +991,13 @@ object Adicinemax21Extractor : Adicinemax21() {
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
             
-            // DAFTAR SERVER YANG DIBLOKIR
-            // HANYA RIZZ YANG BOLEH LOLOS
-            val blockedServers = listOf(
-                "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", "Apollo", "Kratos", "Flick", "Hollywood", "Flash", "Ophim", "Bollywood", "Apex", "Universe", // Nama Server
-                "Hindi", "Bengali", "Tamil", "Telugu" // Bahasa India
-            )
-
-            // Whitelist Logic: Hanya Rizz yang diizinkan (atau server yang TIDAK ada di block list)
-            // Namun, karena requestnya "Semuanya kecuali Rizz", kita buat logic ganda agar aman.
-            
+            // LOGIC WHITELIST: Tolak semua kecuali yang namanya mengandung "Rizz"
             json.forEach {
                 val serverName = it["server"] ?: ""
 
-                // 1. Blokir semua server yang ada di daftar blockedServers
-                if (blockedServers.any { blocked -> serverName.contains(blocked, ignoreCase = true) }) {
-                    return@forEach
-                }
-                
-                // 2. Jika nama server TIDAK MENGANDUNG "Rizz", kita skip juga?
-                // Request Anda: "Semuanya dari cinemaos blokir saja bro kecuali Rizz"
-                // Maka kita pakai whitelist strict:
-                
+                // Jika nama server TIDAK mengandung "Rizz", langsung skip.
                 if (!serverName.contains("Rizz", ignoreCase = true)) {
-                     // return@forEach  <-- Uncomment ini jika ingin BENAR-BENAR hanya Rizz. 
-                     // Tapi untuk amannya, kita pakai blocklist di atas saja dulu agar server "Tera/Stellar" (jika bagus) tetap muncul.
-                     // Jika mau strict Rizz only, uncomment baris di atas.
+                    return@forEach
                 }
 
                 val extractorLinkType = when {
