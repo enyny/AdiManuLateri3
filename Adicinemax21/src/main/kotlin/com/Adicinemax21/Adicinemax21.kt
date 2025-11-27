@@ -14,6 +14,7 @@ import com.Adicinemax21.Adicinemax21Extractor.invokeVixsrc
 import com.Adicinemax21.Adicinemax21Extractor.invokeWatchsomuch
 import com.Adicinemax21.Adicinemax21Extractor.invokeWyzie
 import com.Adicinemax21.Adicinemax21Extractor.invokeXprime
+import com.Adicinemax21.Adicinemax21Extractor.invokeCinemaOS // Import Ditambahkan
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -64,6 +65,7 @@ open class Adicinemax21 : TmdbProvider() {
         const val vidsrccxAPI = "https://vidsrc.cx"
         const val superembedAPI = "https://multiembed.mov"
         const val vidrockAPI = "https://vidrock.net"
+        const val cinemaOSApi = "https://cinemaos.tech" // Konstanta Ditambahkan
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -376,6 +378,19 @@ open class Adicinemax21 : TmdbProvider() {
             // 4. Vixsrc Alpha (Prioritas #5 via Vixsrc)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
+            },
+            // 5. CinemaOS (Baru Ditambahkan)
+            {
+                invokeCinemaOS(
+                    res.imdbId,
+                    res.id,
+                    res.title,
+                    res.season,
+                    res.episode,
+                    res.year,
+                    callback,
+                    subtitleCallback
+                )
             },
             // Sumber-sumber lain
             {
