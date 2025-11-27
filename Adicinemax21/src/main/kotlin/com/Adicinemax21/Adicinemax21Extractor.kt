@@ -991,14 +991,38 @@ object Adicinemax21Extractor : Adicinemax21() {
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
             
-            // LOGIC WHITELIST: Tolak semua kecuali yang namanya mengandung "Rizz"
-            json.forEach {
-                val serverName = it["server"] ?: ""
+            // SMART FILTER:
+            // 1. Blokir server "bad"
+            // 2. Prioritaskan server "Rizz"
+            
+            // Daftar server yang PASTI diblokir
+            val blockedServers = listOf(
+                "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", 
+                "Apollo", "Kratos", "Flick", "Hollywood", 
+                "Flash", "Ophim", "Bollywood", "Apex", "Universe", "Rizz", // Blokir Rizz juga dari daftar ini? TUNGGU DULU.
+                "Hindi", "Bengali", "Tamil", "Telugu" 
+            )
+            
+            // Hapus "Rizz" dari daftar blokir karena kita mau allow/whitelist dia secara khusus jika ada.
+            val finalBlocked = blockedServers.filter { !it.equals("Rizz", ignoreCase = true) }
 
-                // Jika nama server TIDAK mengandung "Rizz", langsung skip.
-                if (!serverName.contains("Rizz", ignoreCase = true)) {
-                    return@forEach
-                }
+            // Filter dan Urutkan
+            val validSources = json.filter {
+                val serverName = it["server"] ?: ""
+                // Cek apakah server ada di daftar blokir
+                val isBlocked = finalBlocked.any { blocked -> serverName.contains(blocked, ignoreCase = true) }
+                !isBlocked
+            }.sortedByDescending { 
+                // Prioritaskan "Rizz" agar selalu di paling atas (index 0)
+                (it["server"] ?: "").contains("Rizz", ignoreCase = true)
+            }
+
+            validSources.forEach {
+                val serverName = it["server"] ?: ""
+                
+                // Tambahan filter double-check jika user ingin STRICT RIZZ ONLY
+                // Jika ingin STRICT (hanya rizz, yg lain tdk muncul), uncomment baris di bawah:
+                // if (!serverName.contains("Rizz", ignoreCase = true)) return@forEach
 
                 val extractorLinkType = when {
                     it["type"]?.contains("hls", true) == true -> ExtractorLinkType.M3U8
