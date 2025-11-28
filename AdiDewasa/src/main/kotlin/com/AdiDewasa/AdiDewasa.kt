@@ -3,7 +3,6 @@ package com.AdiDewasa
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -94,53 +93,57 @@ class AdiDewasa : TmdbProvider() {
     }
 
     // --- HYBRID LOAD LOGIC ---
-    override suspend fun load(url: String): LoadResponse {
+    // PERBAIKAN UTAMA: Mengembalikan LoadResponse? (Nullable) untuk mengatasi "Not Implemented"
+    override suspend fun load(url: String): LoadResponse? {
+        // Ambil dokumen asli dari dramafull.cc terlebih dahulu
+        val doc = try {
+            app.get(url).document
+        } catch (e: Exception) {
+            // Jika gagal load URL utama, kembalikan null agar CS menangani error
+            return null
+        }
+
+        // Cek apakah ini TV Series (TMDb mapping untuk TV Series rumit, jadi kita skip dan pakai manual)
+        val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
+        if (hasEpisodes) {
+            return loadManual(url, doc, TvType.TvSeries)
+        }
+
+        // --- BLOK PENCARIAN TMDB (SAFE MODE) ---
         try {
-            // 1. Ambil dokumen asli dari dramafull.cc
-            val doc = app.get(url).document
-            
-            // 2. Ambil informasi dasar untuk pencarian
+            // 1. Ambil informasi dasar untuk pencarian
             val rawTitle = doc.selectFirst("div.right-info h1, h1.title")?.text()?.trim() ?: "Unknown"
             
-            // Cek apakah ini TV Series (TMDb mapping untuk TV Series rumit, jadi kita skip dan pakai manual)
-            val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
-            if (hasEpisodes) {
-                return loadManual(url, doc, TvType.TvSeries)
-            }
-
-            // 3. Proses Judul dan Tahun untuk pencarian TMDb
+            // 2. Proses Judul dan Tahun
             val yearRegex = Regex("""\((\d{4})\)""")
             val yearMatch = yearRegex.find(rawTitle)
             val cleanTitle = rawTitle.replace(yearRegex, "").trim()
             val year = yearMatch?.groupValues?.get(1)?.toIntOrNull()
 
-            // 4. Cari di TMDb
-            // PERBAIKAN: Menggunakan casting ke MovieSearchResponse untuk mengakses properti .year
+            // 3. Cari di TMDb dengan Safety Check
+            // Kita bungkus search ini karena film dewasa sering tidak ada di TMDb
             val tmdbSearch = this.search(cleanTitle)?.firstOrNull { 
                 val resYear = (it as? MovieSearchResponse)?.year
                 if (year != null && resYear != null) {
-                    abs(resYear - year) <= 1 // Toleransi selisih 1 tahun
+                    abs(resYear - year) <= 1 
                 } else {
                     true
                 }
             }
 
-            // 5. Jika ketemu di TMDb, gunakan metadatanya
+            // 4. Jika ketemu di TMDb, gunakan metadatanya
             if (tmdbSearch != null && tmdbSearch.url.isNotEmpty()) {
                 val tmdbLoad = super.load(tmdbSearch.url) as? MovieLoadResponse
                 
                 if (tmdbLoad != null) {
-                    // Buat ulang LoadResponse dengan Metadata TMDb TAPI Data URL Dramafull
+                    // Berhasil ambil data TMDb! Kembalikan response cantik.
                     return newMovieLoadResponse(tmdbLoad.name, url, TvType.Movie, url) { // 'data' diisi url asli
                         this.posterUrl = tmdbLoad.posterUrl
                         this.backgroundPosterUrl = tmdbLoad.backgroundPosterUrl
                         this.year = tmdbLoad.year
                         this.plot = tmdbLoad.plot
                         this.tags = tmdbLoad.tags
-                        
-                        // PERBAIKAN: Menggunakan .score (rating deprecated)
                         this.score = tmdbLoad.score
-                        
                         this.actors = tmdbLoad.actors
                         this.recommendations = tmdbLoad.recommendations
                         this.duration = tmdbLoad.duration
@@ -148,23 +151,18 @@ class AdiDewasa : TmdbProvider() {
                     }
                 }
             }
-
-            // 6. Jika tidak ketemu di TMDb, Fallback ke Manual
-            return loadManual(url, doc, TvType.Movie)
-
         } catch (e: Exception) {
+            // Jika terjadi error SAAT mencari ke TMDb (misal timeout atau parse error),
+            // JANGAN CRASH. Lanjut saja ke loadManual di bawah.
             e.printStackTrace()
-            // Jika terjadi error apapun, coba load manual sebagai upaya terakhir
-            return try {
-                loadManual(url, app.get(url).document, TvType.Movie)
-            } catch (ex: Exception) {
-                throw ErrorLoadingException("Failed to load content")
-            }
         }
+
+        // --- FALLBACK KE MANUAL ---
+        // Jika kode sampai sini, berarti film tidak ada di TMDb atau error.
+        return loadManual(url, doc, TvType.Movie)
     }
 
     // --- MANUAL LOAD (FALLBACK & TV SERIES) ---
-    // PERBAIKAN: Menambahkan keyword 'suspend'
     private suspend fun loadManual(url: String, doc: Document, type: TvType): LoadResponse {
         val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
@@ -209,7 +207,7 @@ class AdiDewasa : TmdbProvider() {
             }
         } else {
             val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
-            // PERBAIKAN: Menyesuaikan parameter newMovieLoadResponse
+            
             return newMovieLoadResponse(title, url, TvType.Movie, videoHref) {
                 this.year = year
                 this.tags = genre
@@ -228,29 +226,23 @@ class AdiDewasa : TmdbProvider() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            // 'data' di sini adalah URL Dramafull (baik dari TMDb hybrid maupun manual fallback)
             val doc = app.get(data).document
             val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
             
-            // Regex untuk mengambil token signedUrl dari script
             val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
                 ?: return false
             
-            // Request ke endpoint signedUrl untuk dapat list video
             val res = app.get(signedUrl).text
             val resJson = JSONObject(res)
             val videoSource = resJson.optJSONObject("video_source") ?: return false
             
-            // Sortir kualitas dari tertinggi
             val qualities = videoSource.keys().asSequence().toList()
                 .sortedByDescending { it.toIntOrNull() ?: 0 }
             
-            // Ambil semua kualitas yang tersedia
             var found = false
             qualities.forEach { qualityKey ->
                 val videoUrl = videoSource.optString(qualityKey)
                 if (videoUrl.isNotEmpty()) {
-                    // PERBAIKAN: Menggunakan blok lambda untuk set quality dan referer (seperti Adicinemax21)
                     callback(
                         newExtractorLink(
                             name,
@@ -266,14 +258,12 @@ class AdiDewasa : TmdbProvider() {
                 }
             }
 
-            // Ambil Subtitle
             val bestQualityKey = qualities.firstOrNull()
             if (bestQualityKey != null) {
                 val subJson = resJson.optJSONObject("sub")
                 subJson?.optJSONArray(bestQualityKey)?.let { array ->
                     for (i in 0 until array.length()) {
                         val subUrl = array.getString(i)
-                        // Perbaiki format URL jika perlu
                         val fixedSubUrl = if (subUrl.startsWith("http")) subUrl else mainUrl + subUrl
                         subtitleCallback(newSubtitleFile("English", fixedSubUrl))
                     }
@@ -287,7 +277,6 @@ class AdiDewasa : TmdbProvider() {
         return false
     }
 
-    // Search manual untuk pencarian langsung di aplikasi (bukan via TMDb)
     override suspend fun search(query: String): List<SearchResponse>? {
         try {
             val url = "$mainUrl/api/live-search/$query"
