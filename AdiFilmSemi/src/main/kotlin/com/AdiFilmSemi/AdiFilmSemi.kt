@@ -1,4 +1,4 @@
-package com.AdiFilmSem
+package com.AdiFilmSemi
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdiDewasa
