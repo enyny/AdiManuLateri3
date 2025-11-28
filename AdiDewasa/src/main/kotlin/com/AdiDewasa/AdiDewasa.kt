@@ -4,13 +4,14 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import kotlin.math.abs
 
-class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
+class AdiDewasa : TmdbProvider() {
     override var mainUrl = "https://dramafull.cc"
     override var name = "AdiDewasa"
     override val hasMainPage = true
@@ -114,9 +115,11 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
             val year = yearMatch?.groupValues?.get(1)?.toIntOrNull()
 
             // 4. Cari di TMDb
+            // PERBAIKAN: Menggunakan casting ke MovieSearchResponse untuk mengakses properti .year
             val tmdbSearch = this.search(cleanTitle)?.firstOrNull { 
-                if (year != null && it.year != null) {
-                    abs(it.year!! - year) <= 1 // Toleransi selisih 1 tahun
+                val resYear = (it as? MovieSearchResponse)?.year
+                if (year != null && resYear != null) {
+                    abs(resYear - year) <= 1 // Toleransi selisih 1 tahun
                 } else {
                     true
                 }
@@ -134,12 +137,14 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
                         this.year = tmdbLoad.year
                         this.plot = tmdbLoad.plot
                         this.tags = tmdbLoad.tags
-                        this.rating = tmdbLoad.rating
+                        
+                        // PERBAIKAN: Menggunakan .score (rating deprecated)
+                        this.score = tmdbLoad.score
+                        
                         this.actors = tmdbLoad.actors
                         this.recommendations = tmdbLoad.recommendations
                         this.duration = tmdbLoad.duration
                         this.comingSoon = tmdbLoad.comingSoon
-                        // Kita tidak addTrailer karena trailer TMDb mungkin beda versi
                     }
                 }
             }
@@ -159,7 +164,8 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
     }
 
     // --- MANUAL LOAD (FALLBACK & TV SERIES) ---
-    private fun loadManual(url: String, doc: Document, type: TvType): LoadResponse {
+    // PERBAIKAN: Menambahkan keyword 'suspend'
+    private suspend fun loadManual(url: String, doc: Document, type: TvType): LoadResponse {
         val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
         val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
@@ -188,7 +194,7 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
                     ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
 
                 if (episodeHref.isNotEmpty()) {
-                    newEpisode(episodeHref) { // Link episode masuk ke sini
+                    newEpisode(episodeHref) {
                         this.name = "Episode ${episodeNum ?: episodeText}"
                         this.episode = episodeNum
                     }
@@ -203,7 +209,8 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
             }
         } else {
             val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
-            return newMovieLoadResponse(title, url, TvType.Movie, videoHref) { // Link video masuk ke sini
+            // PERBAIKAN: Menyesuaikan parameter newMovieLoadResponse
+            return newMovieLoadResponse(title, url, TvType.Movie, videoHref) {
                 this.year = year
                 this.tags = genre
                 this.posterUrl = poster
@@ -240,17 +247,20 @@ class AdiDewasa : TmdbProvider() { // Menggunakan TmdbProvider
             
             // Ambil semua kualitas yang tersedia
             var found = false
-            qualities.forEach { quality ->
-                val videoUrl = videoSource.optString(quality)
+            qualities.forEach { qualityKey ->
+                val videoUrl = videoSource.optString(qualityKey)
                 if (videoUrl.isNotEmpty()) {
+                    // PERBAIKAN: Menggunakan blok lambda untuk set quality dan referer (seperti Adicinemax21)
                     callback(
                         newExtractorLink(
                             name,
-                            "$name $quality", // Nama source misal: AdiDewasa 1080
+                            "$name $qualityKey", 
                             videoUrl,
-                            referer = mainUrl,
-                            quality = quality.toIntOrNull() ?: 0
-                        )
+                            INFER_TYPE 
+                        ) {
+                            this.referer = mainUrl
+                            this.quality = qualityKey.toIntOrNull() ?: 0
+                        }
                     )
                     found = true
                 }
