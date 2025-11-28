@@ -2,6 +2,7 @@ package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -14,7 +15,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-// KEMBALI KE MainAPI AGAR STABIL (TIDAK ERROR NOT IMPLEMENTED)
 class AdiDewasa : MainAPI() {
     override var mainUrl = "https://dramafull.cc"
     override var name = "AdiDewasa"
@@ -23,7 +23,7 @@ class AdiDewasa : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // API Key TMDB Public (Generic)
+    // API Key TMDB Public
     private val tmdbApiKey = "8d6d91941230817f7807d643736e8412"
 
     // --- 1. HALAMAN UTAMA (ASLI DRAMAFULL) ---
@@ -102,10 +102,9 @@ class AdiDewasa : MainAPI() {
         }
     }
 
-    // --- 2. LOAD DETAIL (MANUAL HYBRID: DRAMAFULL URL -> TMDB DATA) ---
+    // --- 2. LOAD DETAIL (HYBRID) ---
     override suspend fun load(url: String): LoadResponse {
         try {
-            // A. Scrape data dasar dari Dramafull (untuk kepastian video)
             val doc = app.get(url).document
             val rawTitle = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
             val cleanTitle = rawTitle.replace(Regex("""\(\d{4}\)"""), "").trim()
@@ -114,14 +113,12 @@ class AdiDewasa : MainAPI() {
             val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
             val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
             
-            // B. Fetch Data TMDB secara MANUAL (Agar Tampilan Cantik)
+            // B. Fetch Data TMDB
             var tmdbDetails: TmdbDetails? = null
             try {
-                // 1. Search TMDB
                 val searchUrl = "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&query=$cleanTitle"
                 val searchRes = app.get(searchUrl).parsedSafe<TmdbSearchResponse>()
                 
-                // 2. Filter hasil (Cocokkan Tahun +/- 1 tahun & Tipe Media)
                 val match = searchRes?.results?.find { res ->
                     val resYear = res.release_date?.take(4)?.toIntOrNull() ?: res.first_air_date?.take(4)?.toIntOrNull()
                     val yearMatch = if (year != null && resYear != null) kotlin.math.abs(resYear - year) <= 1 else true
@@ -129,38 +126,40 @@ class AdiDewasa : MainAPI() {
                     yearMatch && typeMatch
                 }
 
-                // 3. Get Details
                 if (match != null) {
                     val detailUrl = "https://api.themoviedb.org/3/${match.media_type}/${match.id}?api_key=$tmdbApiKey&append_to_response=credits,recommendations,external_ids"
                     val detailsText = app.get(detailUrl).text
                     val json = JSONObject(detailsText)
                     
+                    // FIX: Mapping Actor ke ActorData agar kompatibel
+                    val actorDataList = json.optJSONObject("credits")?.optJSONArray("cast")?.let { cast ->
+                        (0 until cast.length()).take(10).map { i ->
+                            val c = cast.getJSONObject(i)
+                            val name = c.optString("name")
+                            val role = c.optString("character")
+                            val img = "https://image.tmdb.org/t/p/w200" + c.optString("profile_path")
+                            ActorData(Actor(name, img), roleString = role)
+                        }
+                    }
+
                     tmdbDetails = TmdbDetails(
                         overview = json.optString("overview"),
                         posterPath = "https://image.tmdb.org/t/p/w500" + json.optString("poster_path"),
                         backdropPath = "https://image.tmdb.org/t/p/original" + json.optString("backdrop_path"),
                         voteAverage = json.optDouble("vote_average"),
                         imdbId = json.optJSONObject("external_ids")?.optString("imdb_id"),
-                        actors = json.optJSONObject("credits")?.optJSONArray("cast")?.let { cast ->
-                            (0 until cast.length()).take(5).map { i ->
-                                val c = cast.getJSONObject(i)
-                                Actor(c.optString("name"), "https://image.tmdb.org/t/p/w200" + c.optString("profile_path"))
-                            }
-                        }
+                        actors = actorDataList
                     )
                 }
-            } catch (e: Exception) {
-                // Ignore TMDB errors, fallback ke data website
-            }
+            } catch (e: Exception) { }
 
             // C. Link Video Dramafull
             val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
             
-            // Helper Payload
             fun makePayload(epNum: Int?, epUrl: String): String {
                 return LinkData(
                     url = epUrl,
-                    imdbId = tmdbDetails?.imdbId, // Kirim ID IMDb yang didapat dari TMDB
+                    imdbId = tmdbDetails?.imdbId,
                     title = cleanTitle,
                     year = year,
                     episode = epNum,
@@ -169,7 +168,7 @@ class AdiDewasa : MainAPI() {
                 ).toJson()
             }
 
-            // D. Return LoadResponse (Gabungan)
+            // D. Return LoadResponse
             val posterUrl = tmdbDetails?.posterPath ?: doc.selectFirst("meta[property=og:image]")?.attr("content")
             val bgUrl = tmdbDetails?.backdropPath
             val plot = tmdbDetails?.overview ?: doc.selectFirst("div.right-info p.summary-content, .summary p")?.text()
@@ -224,7 +223,6 @@ class AdiDewasa : MainAPI() {
             val linkData = try { parseJson<LinkData>(data) } catch (e: Exception) { LinkData(data) }
             val url = linkData.url 
             
-            // Subtitle Automation
             CoroutineScope(Dispatchers.IO).launch {
                 var finalImdbId = linkData.imdbId
                 if (finalImdbId.isNullOrBlank() && !linkData.title.isNullOrBlank()) {
@@ -239,7 +237,6 @@ class AdiDewasa : MainAPI() {
                 }
             }
 
-            // Video Extraction (Dramafull)
             val doc = app.get(url).document
             val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
             val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") ?: return false
@@ -262,15 +259,16 @@ class AdiDewasa : MainAPI() {
         return false
     }
 
-    // Helper classes for internal TMDB scraping
     data class TmdbSearchResponse(val results: List<TmdbResult>?)
     data class TmdbResult(val id: Int, val title: String?, val name: String?, val release_date: String?, val first_air_date: String?, val media_type: String?)
+    
+    // FIX: Menggunakan List<ActorData>?
     data class TmdbDetails(
         val overview: String?, 
         val posterPath: String?, 
         val backdropPath: String?, 
         val voteAverage: Double, 
         val imdbId: String?,
-        val actors: List<Actor>?
+        val actors: List<ActorData>?
     )
 }
