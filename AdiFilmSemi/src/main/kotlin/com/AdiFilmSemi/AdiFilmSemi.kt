@@ -86,28 +86,23 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // Menggunakan filter bahasa Tagalog (tl) + FIX Kategori Kosong
+    // Menggunakan filter bahasa Tagalog (tl) dan ID Cast Aktris Vivamax Populer
+    // Kategori dikurangi sesuai permintaan
     override val mainPage = mainPageOf(
         // 1. Popular (Tagalog/Vivamax)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&sort_by=popularity.desc&include_adult=true" to "Vivamax Popular",
         
-        // 2. Film Semi Erotis (FIXED: Menggunakan Genre Horror/27 karena Keyword Erotic kosong di Tagalog. Horror Vivamax = Erotis)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=27&sort_by=popularity.desc&include_adult=true" to "Film Semi Erotis",
-
-        // 3. Film Semi Romantis (Genre: Romance / 10749)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Film Semi Romantis",
-
-        // 4. Film Tema Perselingkuhan (FIXED: Menggunakan Keyword 'Love Triangle' / 236 karena 'Adultery' kosong)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_keywords=236&sort_by=popularity.desc&include_adult=true" to "Film Tema Perselingkuhan",
-
-        // 5. Angeli Khang Specials (ID: 3194176)
+        // 2. Angeli Khang Specials (ID: 3194176)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_cast=3194176&sort_by=primary_release_date.desc&include_adult=true" to "Angeli Khang Specials",
         
-        // 6. Pinoy Sexy Drama (Genre: Drama)
+        // 3. Pinoy Erotic Thriller (Genre: Thriller + Tagalog)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=53&sort_by=popularity.desc&include_adult=true" to "Pinoy Erotic Thriller",
+        
+        // 4. Pinoy Sexy Drama (Genre: Drama + Tagalog)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=18&sort_by=popularity.desc&include_adult=true" to "Pinoy Sexy Drama",
         
-        // 7. Pinoy Erotic Thriller (Genre: Thriller)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=53&sort_by=popularity.desc&include_adult=true" to "Pinoy Erotic Thriller"
+        // 5. Pinoy Mature Romance (Genre: Romance + Tagalog)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Pinoy Mature Romance"
     )
 
     private fun getImageUrl(link: String?): String? {
