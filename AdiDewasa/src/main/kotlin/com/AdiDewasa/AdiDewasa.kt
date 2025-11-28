@@ -2,10 +2,9 @@ package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.lagradost.cloudstream3.runAllAsync 
 
 class AdiDewasa : MainAPI() {
     override var mainUrl = "https://dramafull.cc"
@@ -15,7 +14,9 @@ class AdiDewasa : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // --- Main Page Configuration ---
+    // Gunakan Header dari Helper
+    private val headers = AdiDewasaHelper.headers
+
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
@@ -53,7 +54,7 @@ class AdiDewasa : MainAPI() {
             }""".trimIndent()
 
             val payload = jsonPayload.toRequestBody("application/json".toMediaType())
-            val response = app.post("$mainUrl/api/filter", requestBody = payload, headers = AdiDewasaHelper.headers)
+            val response = app.post("$mainUrl/api/filter", requestBody = payload, headers = headers)
             val homeResponse = response.parsedSafe<HomeResponse>()
             
             if (homeResponse?.success == false) return newHomePageResponse(emptyList(), hasNext = false)
@@ -91,7 +92,7 @@ class AdiDewasa : MainAPI() {
         try {
             val cleanQuery = AdiDewasaHelper.normalizeQuery(query)
             val url = "$mainUrl/api/live-search/$cleanQuery"
-            val response = app.get(url, headers = AdiDewasaHelper.headers)
+            val response = app.get(url, headers = headers)
             val searchResponse = response.parsedSafe<ApiSearchResponse>()
             return searchResponse?.data?.mapNotNull { it.toSearchResult() }
         } catch (e: Exception) { return null }
@@ -99,7 +100,7 @@ class AdiDewasa : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         try {
-            val doc = app.get(url, headers = AdiDewasaHelper.headers).document
+            val doc = app.get(url, headers = headers).document
             val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
             val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
             val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
@@ -162,8 +163,8 @@ class AdiDewasa : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         
-        // Ambil metadata untuk keperluan subtitle
-        val doc = app.get(data, headers = AdiDewasaHelper.headers).document
+        // Ambil metadata
+        val doc = app.get(data, headers = headers).document
         val pageTitle = doc.selectFirst("h1.title")?.text() ?: ""
         val year = Regex("""\((\d{4})\)""").find(pageTitle)?.groupValues?.get(1)?.toIntOrNull()
         val cleanTitle = pageTitle.replace(Regex("""\(\d{4}\)"""), "").replace(Regex("Episode.*"), "").trim()
@@ -173,8 +174,7 @@ class AdiDewasa : MainAPI() {
         val seasonNum = if (isSeries) 1 else null
         val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-        // 1. Panggil Extractor (AdiDewasaExtractor)
-        // Ini akan menangani pengambilan video dan subtitle internal
+        // 1. Panggil Extractor (Video Internal)
         AdiDewasaExtractor.invokeAdiDewasa(
             title = cleanTitle,
             year = year,
@@ -184,8 +184,7 @@ class AdiDewasa : MainAPI() {
             callback = callback
         )
         
-        // 2. Panggil Subtitle Eksternal (OpenSubtitles & WyZIE)
-        // Dijalankan paralel
+        // 2. Panggil Subtitle Eksternal (Parallel)
         runAllAsync(
             {
                 val imdbId = getImdbIdFromTitle(cleanTitle, year, type)
