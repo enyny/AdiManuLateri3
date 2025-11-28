@@ -1,15 +1,14 @@
 package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.metaproviders.TmdbProvider
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import org.jsoup.nodes.Document
-import kotlin.math.abs
 
-class AdiDewasa : TmdbProvider() {
+class AdiDewasa : MainAPI() {
     override var mainUrl = "https://dramafull.cc"
     override var name = "AdiDewasa"
     override val hasMainPage = true
@@ -17,29 +16,48 @@ class AdiDewasa : TmdbProvider() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // --- MAIN PAGE CONFIGURATION ---
+    // UPDATE: Menggunakan 15 Kategori yang PASTI ADA isinya.
+    // Menghapus filter 'Country' yang menyebabkan daftar kosong.
+    // Format Data: "Type:Sort:Adult"
+    // Type: 2=Movie, 1=TV, -1=All
+    // Sort: 1=Latest, 2=Oldest/Year, 3=A-Z, 5=Most Watched, 6=Top Rated
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
+                // --- Kategori FILM (Movies) ---
                 MainPageData("Adult Movies - Baru Rilis", "2:1:adult"),
                 MainPageData("Adult Movies - Paling Populer", "2:5:adult"),
                 MainPageData("Adult Movies - Rating Tertinggi", "2:6:adult"),
                 MainPageData("Adult Movies - Sesuai Abjad (A-Z)", "2:3:adult"),
+                MainPageData("Adult Movies - Klasik & Retro (Oldest)", "2:2:adult"),
+
+                // --- Kategori SERIAL TV (Shows) ---
                 MainPageData("Adult TV Shows - Episode Baru", "1:1:adult"),
                 MainPageData("Adult TV Shows - Paling Populer", "1:5:adult"),
+                MainPageData("Adult TV Shows - Rating Tertinggi", "1:6:adult"),
+                MainPageData("Adult TV Shows - Sesuai Abjad (A-Z)", "1:3:adult"),
+                MainPageData("Adult TV Shows - Terlama (Oldest)", "1:2:adult"),
+
+                // --- Kategori CAMPURAN (All) ---
                 MainPageData("All Collections - Baru Ditambahkan", "-1:1:adult"),
-                MainPageData("All Collections - Paling Sering Ditonton", "-1:5:adult")
+                MainPageData("All Collections - Paling Sering Ditonton", "-1:5:adult"),
+                MainPageData("All Collections - Rekomendasi Terbaik", "-1:6:adult"),
+                MainPageData("All Collections - Arsip Lengkap (A-Z)", "-1:3:adult"),
+                MainPageData("All Collections - Arsip Lama", "-1:2:adult")
             )
         }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         try {
+            // MODIFIKASI: Kembali ke format 3 parameter yang stabil
             val dataParts = request.data.split(":")
             val type = dataParts.getOrNull(0) ?: "-1"
             val sort = dataParts.getOrNull(1)?.toIntOrNull() ?: 1
             val adultFlag = dataParts.getOrNull(2) ?: "normal"
+
             val isAdultSection = adultFlag == "adult"
 
+            // PENTING: 'country' di-set ke -1 (Semua Negara) agar tidak ada daftar kosong
             val jsonPayload = """{
                 "page": $page,
                 "type": "$type",
@@ -53,9 +71,11 @@ class AdiDewasa : TmdbProvider() {
             }""".trimIndent()
 
             val payload = jsonPayload.toRequestBody("application/json".toMediaType())
-            val response = app.post("$mainUrl/api/filter", requestBody = payload)
-            val homeResponse = response.parsedSafe<HomeResponse>()
 
+            val response = app.post("$mainUrl/api/filter", requestBody = payload)
+            
+            val homeResponse = response.parsedSafe<HomeResponse>()
+            
             if (homeResponse?.success == false) {
                 return newHomePageResponse(emptyList(), hasNext = false)
             }
@@ -78,140 +98,110 @@ class AdiDewasa : TmdbProvider() {
     }
 
     private fun MediaItem.toSearchResult(): SearchResponse? {
-        val itemTitle = this.title ?: this.name ?: return null
-        val itemSlug = this.slug ?: return null
-        val itemImage = this.image ?: this.poster ?: ""
-        val href = "$mainUrl/film/$itemSlug"
-        val posterUrl = if (itemImage.isNotEmpty()) {
-            if (itemImage.startsWith("http")) itemImage else mainUrl + itemImage
-        } else { "" }
+        try {
+            val itemTitle = this.title ?: this.name ?: "Unknown Title"
+            val itemSlug = this.slug ?: return null
+            val itemImage = this.image ?: this.poster ?: ""
 
-        return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
-            this.posterUrl = posterUrl
-        }
-    }
+            val href = "$mainUrl/film/$itemSlug"
+            val posterUrl = if (itemImage.isNotEmpty()) {
+                if (itemImage.startsWith("http")) itemImage else mainUrl + itemImage
+            } else {
+                ""
+            }
 
-    // --- HYBRID LOAD LOGIC ---
-    override suspend fun load(url: String): LoadResponse? {
-        // Ambil dokumen asli dari dramafull.cc terlebih dahulu
-        val doc = try {
-            app.get(url).document
+            return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
+                this.posterUrl = posterUrl
+            }
         } catch (e: Exception) {
             return null
         }
+    }
 
-        // Cek apakah ini TV Series (TMDb mapping untuk TV Series rumit, jadi kita skip dan pakai manual)
-        val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
-        if (hasEpisodes) {
-            return loadManual(url, doc, TvType.TvSeries)
-        }
-
-        // --- BLOK PENCARIAN TMDB (SAFE MODE) ---
+    override suspend fun search(query: String): List<SearchResponse>? {
         try {
-            // 1. Ambil informasi dasar untuk pencarian
-            val rawTitle = doc.selectFirst("div.right-info h1, h1.title")?.text()?.trim() ?: "Unknown"
-            
-            // 2. Proses Judul dan Tahun
-            val yearRegex = Regex("""\((\d{4})\)""")
-            val yearMatch = yearRegex.find(rawTitle)
-            val cleanTitle = rawTitle.replace(yearRegex, "").trim()
-            val year = yearMatch?.groupValues?.get(1)?.toIntOrNull()
+            val url = "$mainUrl/api/live-search/$query"
+            val response = app.get(url)
+            val searchResponse = response.parsedSafe<ApiSearchResponse>()
+            return searchResponse?.data?.mapNotNull { it.toSearchResult() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
 
-            // 3. Cari di TMDb dengan Safety Check
-            val tmdbSearch = this.search(cleanTitle)?.firstOrNull { 
-                val resYear = (it as? MovieSearchResponse)?.year
-                if (year != null && resYear != null) {
-                    abs(resYear - year) <= 1 
+    override suspend fun load(url: String): LoadResponse {
+        try {
+            val doc = app.get(url).document
+            val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
+            val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
+            val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
+            val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
+            val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() ?: ""
+            
+            val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
+            val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
+            
+            val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
+
+            val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
+                val title = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
+                val image = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
+                val itemHref = it.selectFirst("a")?.attr("href") ?: ""
+                
+                if (title.isNotEmpty() && itemHref.isNotEmpty()) {
+                    newMovieSearchResponse(title, itemHref, TvType.Movie) {
+                        this.posterUrl = if (image.isNotEmpty()) {
+                            if (image.startsWith("http")) image else mainUrl + image
+                        } else {
+                            ""
+                        }
+                    }
                 } else {
-                    true
+                    null
                 }
             }
 
-            // 4. Jika ketemu di TMDb, gunakan metadatanya
-            if (tmdbSearch != null && tmdbSearch.url.isNotEmpty()) {
-                val tmdbLoad = super.load(tmdbSearch.url) as? MovieLoadResponse
-                
-                if (tmdbLoad != null) {
-                    // Berhasil ambil data TMDb! Kembalikan response cantik.
-                    return newMovieLoadResponse(tmdbLoad.name, url, TvType.Movie, url) { // 'data' diisi url asli
-                        this.posterUrl = tmdbLoad.posterUrl
-                        this.backgroundPosterUrl = tmdbLoad.backgroundPosterUrl
-                        this.year = tmdbLoad.year
-                        this.plot = tmdbLoad.plot
-                        this.tags = tmdbLoad.tags
-                        this.score = tmdbLoad.score // Menggunakan sistem score baru
-                        this.actors = tmdbLoad.actors
-                        this.recommendations = tmdbLoad.recommendations
-                        this.duration = tmdbLoad.duration
-                        this.comingSoon = tmdbLoad.comingSoon
+            if (type == TvType.TvSeries) {
+                val episodes = doc.select("div.episode-item a, .episode-list a").mapNotNull {
+                    val episodeText = it.text().trim()
+                    val episodeHref = it.attr("href")
+                    val episodeNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
+                        .find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+
+                    if (episodeHref.isNotEmpty()) {
+                        newEpisode(episodeHref) {
+                            this.name = "Episode ${episodeNum ?: episodeText}"
+                            this.episode = episodeNum
+                        }
+                    } else {
+                        null
                     }
+                }
+
+                return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.year = year
+                    this.tags = genre
+                    this.posterUrl = poster
+                    this.plot = description
+                    this.recommendations = recs
+                }
+            } else {
+                return newMovieLoadResponse(title, url, TvType.Movie, videoHref) {
+                    this.year = year
+                    this.tags = genre
+                    this.posterUrl = poster
+                    this.plot = description
+                    this.recommendations = recs
                 }
             }
         } catch (e: Exception) {
-            // Jika terjadi error saat ke TMDb, lanjut ke manual
             e.printStackTrace()
-        }
-
-        // --- FALLBACK KE MANUAL ---
-        return loadManual(url, doc, TvType.Movie)
-    }
-
-    // --- MANUAL LOAD (FALLBACK & TV SERIES) ---
-    private suspend fun loadManual(url: String, doc: Document, type: TvType): LoadResponse {
-        val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
-        val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
-        val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
-        val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
-        val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() ?: ""
-        
-        val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
-            val recTitle = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
-            val recImg = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
-            val recHref = it.selectFirst("a")?.attr("href") ?: ""
-            
-            if (recTitle.isNotEmpty() && recHref.isNotEmpty()) {
-                newMovieSearchResponse(recTitle, recHref, TvType.Movie) {
-                    this.posterUrl = if (recImg.startsWith("http")) recImg else mainUrl + recImg
-                }
-            } else null
-        }
-
-        if (type == TvType.TvSeries) {
-            val episodes = doc.select("div.episode-item a, .episode-list a").mapNotNull {
-                val episodeText = it.text().trim()
-                val episodeHref = it.attr("href")
-                val episodeNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
-                    .find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
-                    ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
-
-                if (episodeHref.isNotEmpty()) {
-                    newEpisode(episodeHref) {
-                        this.name = "Episode ${episodeNum ?: episodeText}"
-                        this.episode = episodeNum
-                    }
-                } else null
-            }
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.year = year
-                this.tags = genre
-                this.posterUrl = poster
-                this.plot = description
-                this.recommendations = recs
-            }
-        } else {
-            val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
-            
-            return newMovieLoadResponse(title, url, TvType.Movie, videoHref) {
-                this.year = year
-                this.tags = genre
-                this.posterUrl = poster
-                this.plot = description
-                this.recommendations = recs
-            }
+            throw e
         }
     }
 
-    // --- EXTRACTOR ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -231,54 +221,32 @@ class AdiDewasa : TmdbProvider() {
             
             val qualities = videoSource.keys().asSequence().toList()
                 .sortedByDescending { it.toIntOrNull() ?: 0 }
-            
-            var found = false
-            qualities.forEach { qualityKey ->
-                val videoUrl = videoSource.optString(qualityKey)
-                if (videoUrl.isNotEmpty()) {
-                    callback(
-                        newExtractorLink(
-                            name,
-                            "$name $qualityKey", 
-                            videoUrl,
-                            INFER_TYPE 
-                        ) {
-                            this.referer = mainUrl
-                            this.quality = qualityKey.toIntOrNull() ?: 0
-                        }
-                    )
-                    found = true
-                }
-            }
+            val bestQualityKey = qualities.firstOrNull() ?: return false
+            val bestQualityUrl = videoSource.optString(bestQualityKey)
 
-            val bestQualityKey = qualities.firstOrNull()
-            if (bestQualityKey != null) {
+            if (bestQualityUrl.isNotEmpty()) {
+                callback(
+                    newExtractorLink(
+                        name,
+                        name,
+                        bestQualityUrl
+                    )
+                )
+                
                 val subJson = resJson.optJSONObject("sub")
                 subJson?.optJSONArray(bestQualityKey)?.let { array ->
                     for (i in 0 until array.length()) {
                         val subUrl = array.getString(i)
-                        val fixedSubUrl = if (subUrl.startsWith("http")) subUrl else mainUrl + subUrl
-                        subtitleCallback(newSubtitleFile("English", fixedSubUrl))
+                        subtitleCallback(newSubtitleFile("English", mainUrl + subUrl))
                     }
                 }
+                
+                return true
             }
-            
-            return found
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        
         return false
-    }
-
-    override suspend fun search(query: String): List<SearchResponse>? {
-        try {
-            val url = "$mainUrl/api/live-search/$query"
-            val response = app.get(url)
-            val searchResponse = response.parsedSafe<ApiSearchResponse>()
-            return searchResponse?.data?.mapNotNull { it.toSearchResult() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
-        }
     }
 }
