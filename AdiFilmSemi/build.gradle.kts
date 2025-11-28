@@ -1,12 +1,12 @@
 // use an integer for version numbers
-version = 247
+version = 88
 
 cloudstream {
     language = "en"
     // All of these properties are optional, you can safely remove them
 
      description = "#1 best extention based on MultiAPI"
-     authors = listOf("Adicinemax21", "Sora")
+     authors = listOf("AdiManusiwa")
 
     /**
      * Status int as the following:
