@@ -39,10 +39,13 @@ data class ApiSearchResponse(
     @JsonProperty("success") val success: Boolean? = null
 )
 
-// Data class untuk mengirim info dari halaman detail ke player
+// Data class utama untuk komunikasi antara Load dan LoadLinks
 data class LinkData(
-    @JsonProperty("url") val url: String,
-    @JsonProperty("imdbId") val imdbId: String? = null,
-    @JsonProperty("season") val season: Int? = null,
-    @JsonProperty("episode") val episode: Int? = null
+    val url: String,
+    val imdbId: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val title: String? = null,
+    val year: Int? = null,
+    val type: String? = null // "movie" atau "series"
 )
