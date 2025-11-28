@@ -9,11 +9,16 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.nicehttp.RequestBodyTypes
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
+import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
 
 object Adicinemax21Extractor : Adicinemax21() {
 
@@ -991,11 +996,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
             
-            // SMART FILTER:
-            // 1. Blokir server "bad"
-            // 2. Prioritaskan server "Rizz"
-            
-            // Daftar server yang PASTI diblokir
+            // DAFTAR SERVER YANG DIBLOKIR
             val blockedServers = listOf(
                 "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", 
                 "Apollo", "Kratos", "Flick", "Hollywood", 
@@ -1051,6 +1052,93 @@ object Adicinemax21Extractor : Adicinemax21() {
             }
         } catch (e: Exception) {
             // Error handling
+        }
+    }
+
+    // ================== PLAYER4U SOURCE ==================
+    suspend fun invokePlayer4U(
+        title: String? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        year: Int? = null,
+        callback: (ExtractorLink) -> Unit
+    ) = coroutineScope {
+        val queryWithEpisode = season?.let { "$title S${"%02d".format(it)}E${"%02d".format(episode)}" }
+        val baseQuery = queryWithEpisode ?: title.orEmpty()
+        val encodedQuery = baseQuery.replace(" ", "+")
+
+        // Fetch pages concurrently (up to 5 pages)
+        val pageRange = 0..4
+        val deferredPages = pageRange.map { page ->
+            async {
+                val url = "$Player4uApi/embed?key=$encodedQuery" + if (page > 0) "&page=$page" else ""
+                runCatching { app.get(url, timeout = 20).document }.getOrNull()?.let { doc ->
+                    extractPlayer4uLinks(doc, season, episode, title.toString(), year)
+                } ?: emptyList()
+            }
+        }
+
+        val allLinks = deferredPages.awaitAll().flatten().toMutableSet()
+
+        // Fallback if no links found and season is null
+        if (allLinks.isEmpty() && season == null) {
+            val fallbackUrl = "$Player4uApi/embed?key=${title?.replace(" ", "+")}"
+            val fallbackDoc = runCatching { app.get(fallbackUrl, timeout = 20).document }.getOrNull()
+            if (fallbackDoc != null) {
+                allLinks += extractPlayer4uLinks(fallbackDoc, season, episode, title.toString(), year)
+            }
+        }
+
+        // Process each link concurrently
+        allLinks.distinctBy { it.name }.map { link ->
+            async {
+                try {
+                    val namePart = link.name.split("|").lastOrNull()?.trim().orEmpty()
+                    val displayName = buildString {
+                        append("Player4U")
+                        if (namePart.isNotEmpty()) append(" {$namePart}")
+                    }
+
+                    val qualityMatch = Regex(
+                        """(\d{3,4}p|4K|CAM|HQ|HD|SD|WEBRip|DVDRip|BluRay|HDRip|TVRip|HDTC|PREDVD)""",
+                        RegexOption.IGNORE_CASE
+                    ).find(displayName)?.value?.uppercase() ?: "UNKNOWN"
+
+                    val quality = getPlayer4UQuality(qualityMatch)
+                    val subPath = Regex("""go\('(.*?)'\)""").find(link.url)?.groupValues?.get(1) ?: return@async null
+
+                    val iframeSrc = runCatching {
+                        app.get("$Player4uApi$subPath", timeout = 10, referer = Player4uApi)
+                            .document.selectFirst("iframe")?.attr("src")
+                    }.getOrNull() ?: return@async null
+
+                    getPlayer4uUrl(
+                        displayName,
+                        quality,
+                        "https://uqloads.xyz/e/$iframeSrc",
+                        Player4uApi,
+                        callback
+                    )
+                } catch (_: Exception) { null }
+            }
+        }.awaitAll()
+    }
+
+    private fun extractPlayer4uLinks(document: Document, season:Int?, episode:Int?, title:String, year:Int?): List<Player4uLinkData> {
+        return document.select(".playbtnx").mapNotNull { element ->
+            val titleText = element.text()?.split(" | ")?.lastOrNull() ?: return@mapNotNull null
+            //fix adult content
+            if (season == null && episode == null) {
+                if (year != null && (titleText.startsWith("$title $year", ignoreCase = true) ||
+                            titleText.startsWith("$title ($year)", ignoreCase = true))) {
+                    Player4uLinkData(name = titleText, url = element.attr("onclick"))
+                } else null
+            } else {
+                if (season != null && episode != null &&
+                    titleText.startsWith("$title S${"%02d".format(season)}E${"%02d".format(episode)}", ignoreCase = true)) {
+                    Player4uLinkData(name = titleText, url = element.attr("onclick"))
+                } else null
+            }
         }
     }
 
