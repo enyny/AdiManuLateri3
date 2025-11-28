@@ -127,10 +127,11 @@ class AdiDewasa : TmdbProvider() {
             
             // Helper untuk membuat JSON LinkData
             fun makeData(epNum: Int?, epUrl: String): String {
+                // FIX: Menggunakan .url bukan .data untuk mengambil payload TMDB
                 val tmdbImdbId = if (tmdbLoadResponse is MovieLoadResponse) {
-                    try { parseJson<LinkData>(tmdbLoadResponse.data).imdbId } catch(e:Exception){null}
+                    try { parseJson<LinkData>(tmdbLoadResponse.url).imdbId } catch(e:Exception){null}
                 } else if (tmdbLoadResponse is TvSeriesLoadResponse) {
-                    try { parseJson<LinkData>(tmdbLoadResponse.data).imdbId } catch(e:Exception){null}
+                    try { parseJson<LinkData>(tmdbLoadResponse.url).imdbId } catch(e:Exception){null}
                 } else null
 
                 return LinkData(
@@ -160,7 +161,8 @@ class AdiDewasa : TmdbProvider() {
                     }
                     return tmdbLoadResponse.copy(episodes = realEpisodes)
                 } else if (type == TvType.Movie && tmdbLoadResponse is MovieLoadResponse) {
-                    return tmdbLoadResponse.copy(data = makeData(null, videoHref))
+                    // FIX: Menggunakan parameter 'url' pada fungsi copy
+                    return tmdbLoadResponse.copy(url = makeData(null, videoHref))
                 }
             } 
 
