@@ -6,11 +6,10 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-// --- IMPORTS PERBAIKAN ---
+import com.lagradost.cloudstream3.CommonActivity.showToast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-// -------------------------
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -124,76 +123,79 @@ class AdiDewasa : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         try {
-            val doc = app.get(url).document
+            val response = app.get(url)
+            val doc = response.document
+            val fullHtml = response.text
+
             val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
             val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
             val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
             val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
+            // Bersihkan judul dari tahun, misal "Eva (2021)" menjadi "Eva"
+            val cleanTitle = title.replace(Regex("""\(\d{4}\)"""), "").trim() 
             val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() ?: ""
             
-            // Scraping IMDb ID untuk Subtitle
-            val imdbId = doc.select("a[href*='imdb.com']").attr("href")
-                .let { Regex("""tt\d+""").find(it)?.value }
+            // Coba scrape ID sederhana
+            val scrapedImdbId = Regex("""tt\d{7,8}""").find(fullHtml)?.value
 
             val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
             val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
-            
-            val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
+            val cinemetaType = if (type == TvType.Movie) "movie" else "series"
 
+            val videoHref = doc.selectFirst("div.last-episode a, .watch-button a")?.attr("href") ?: url
+            
             val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
-                val title = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
-                val image = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
-                val itemHref = it.selectFirst("a")?.attr("href") ?: ""
-                
-                if (title.isNotEmpty() && itemHref.isNotEmpty()) {
-                    newMovieSearchResponse(title, itemHref, TvType.Movie) {
-                        this.posterUrl = if (image.isNotEmpty()) {
-                            if (image.startsWith("http")) image else mainUrl + image
-                        } else {
-                            ""
-                        }
+                val rTitle = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
+                val rImage = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
+                val rHref = it.selectFirst("a")?.attr("href") ?: ""
+                if (rTitle.isNotEmpty() && rHref.isNotEmpty()) {
+                    newMovieSearchResponse(rTitle, rHref, TvType.Movie) {
+                        this.posterUrl = if (rImage.isNotEmpty() && !rImage.startsWith("http")) mainUrl + rImage else rImage
                     }
-                } else {
-                    null
-                }
+                } else null
             }
 
             if (type == TvType.TvSeries) {
                 val episodes = doc.select("div.episode-item a, .episode-list a").mapNotNull {
                     val episodeText = it.text().trim()
                     val episodeHref = it.attr("href")
-                    val episodeNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
-                        .find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
-                        ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+                    val episodeNum = Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
 
                     if (episodeHref.isNotEmpty()) {
-                        val data = LinkData(episodeHref, imdbId, null, episodeNum).toJson()
+                        // PASSING JUDUL DAN TAHUN KE LINKDATA
+                        val data = LinkData(
+                            url = episodeHref, 
+                            imdbId = scrapedImdbId, 
+                            season = null, 
+                            episode = episodeNum,
+                            title = cleanTitle,
+                            year = year,
+                            type = cinemetaType
+                        ).toJson()
                         
                         newEpisode(data) {
                             this.name = "Episode ${episodeNum ?: episodeText}"
                             this.episode = episodeNum
                         }
-                    } else {
-                        null
-                    }
+                    } else null
                 }
-
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                    this.year = year
-                    this.tags = genre
-                    this.posterUrl = poster
-                    this.plot = description
-                    this.recommendations = recs
+                    this.year = year; this.posterUrl = poster; this.plot = description; this.tags = genre; this.recommendations = recs
                 }
             } else {
-                val data = LinkData(videoHref, imdbId, null, null).toJson()
+                // PASSING JUDUL DAN TAHUN KE LINKDATA
+                val data = LinkData(
+                    url = videoHref, 
+                    imdbId = scrapedImdbId, 
+                    season = null, 
+                    episode = null,
+                    title = cleanTitle,
+                    year = year,
+                    type = cinemetaType
+                ).toJson()
                 
                 return newMovieLoadResponse(title, url, TvType.Movie, data) {
-                    this.year = year
-                    this.tags = genre
-                    this.posterUrl = poster
-                    this.plot = description
-                    this.recommendations = recs
+                    this.year = year; this.posterUrl = poster; this.plot = description; this.tags = genre; this.recommendations = recs
                 }
             }
         } catch (e: Exception) {
@@ -209,60 +211,47 @@ class AdiDewasa : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            val linkData = try {
-                parseJson<LinkData>(data)
-            } catch (e: Exception) {
-                LinkData(data)
-            }
-            
+            val linkData = try { parseJson<LinkData>(data) } catch (e: Exception) { LinkData(data) }
             val url = linkData.url
-            val imdbId = linkData.imdbId
-            val season = linkData.season
-            val episode = linkData.episode
+            
+            // --- LOGIKA PENCARIAN ID OTOMATIS (ULTIMATE FIX) ---
+            CoroutineScope(Dispatchers.IO).launch {
+                var finalImdbId = linkData.imdbId
 
-            // --- PERBAIKAN DI SINI (Gunakan CoroutineScope + launch) ---
-            if (!imdbId.isNullOrBlank()) {
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        AdiDewasaSubtitles.invokeSubtitleAPI(imdbId, season, episode, subtitleCallback)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                // Jika ID tidak ditemukan saat scraping (null), cari via Cinemeta
+                if (finalImdbId.isNullOrBlank() && !linkData.title.isNullOrBlank()) {
+                    finalImdbId = AdiDewasaSubtitles.getImdbIdFromCinemeta(
+                        linkData.title, 
+                        linkData.year, 
+                        linkData.type ?: "movie"
+                    )
                 }
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        AdiDewasaSubtitles.invokeWyZIESUBAPI(imdbId, season, episode, subtitleCallback)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+
+                if (!finalImdbId.isNullOrBlank()) {
+                    showToast("ID ditemukan: $finalImdbId. Memuat Subtitle...")
+                    AdiDewasaSubtitles.invokeSubtitleAPI(finalImdbId, linkData.season, linkData.episode, subtitleCallback)
+                    AdiDewasaSubtitles.invokeWyZIESUBAPI(finalImdbId, linkData.season, linkData.episode, subtitleCallback)
+                } else {
+                    // showToast("Gagal menemukan ID. Subtitle mungkin tidak tersedia.")
                 }
             }
-            // -----------------------------------------------------------
+            // ----------------------------------------------------
 
             val doc = app.get(url).document
             val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
+            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") ?: return false
             
-            val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
-                ?: return false
-            
-            val res = app.get(signedUrl).text
-            val resJson = JSONObject(res)
+            val resJson = JSONObject(app.get(signedUrl).text)
             val videoSource = resJson.optJSONObject("video_source") ?: return false
             
-            val qualities = videoSource.keys().asSequence().toList()
-                .sortedByDescending { it.toIntOrNull() ?: 0 }
+            val qualities = videoSource.keys().asSequence().toList().sortedByDescending { it.toIntOrNull() ?: 0 }
             val bestQualityKey = qualities.firstOrNull() ?: return false
             val bestQualityUrl = videoSource.optString(bestQualityKey)
 
             if (bestQualityUrl.isNotEmpty()) {
-                callback(
-                    newExtractorLink(
-                        name,
-                        name,
-                        bestQualityUrl
-                    )
-                )
+                callback(newExtractorLink(name, name, bestQualityUrl))
                 
+                // Native Subtitles (jika ada di player asli)
                 val subJson = resJson.optJSONObject("sub")
                 subJson?.optJSONArray(bestQualityKey)?.let { array ->
                     for (i in 0 until array.length()) {
@@ -270,13 +259,9 @@ class AdiDewasa : MainAPI() {
                         subtitleCallback(newSubtitleFile("English (Source)", mainUrl + subUrl))
                     }
                 }
-                
                 return true
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        
+        } catch (e: Exception) { e.printStackTrace() }
         return false
     }
 }
