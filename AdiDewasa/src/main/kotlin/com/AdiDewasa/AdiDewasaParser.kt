@@ -34,8 +34,48 @@ data class Link(
     @JsonProperty("active") val active: Boolean? = null
 )
 
-// Ganti nama class SearchResponse untuk menghindari konflik
 data class ApiSearchResponse(
     @JsonProperty("data") val data: List<MediaItem>? = null,
     @JsonProperty("success") val success: Boolean? = null
+)
+
+// ================== SUBTITLE MODELS (NEW) ==================
+
+// Model untuk OpenSubtitles v3 (Stremio)
+data class SubtitlesAPI(
+    @JsonProperty("subtitles") val subtitles: List<Subtitle>? = null,
+    @JsonProperty("cacheMaxAge") val cacheMaxAge: Long? = null,
+)
+
+data class Subtitle(
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("url") val url: String,
+    @JsonProperty("lang") val lang: String,
+    @JsonProperty("SubEncoding") val subEncoding: String? = null,
+)
+
+// Model untuk WyZIE Subs
+data class WyZIESUB(
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("url") val url: String,
+    @JsonProperty("display") val display: String,
+    @JsonProperty("language") val language: String? = null,
+)
+
+// Model untuk pencarian TMDB (Diperlukan untuk mendapatkan IMDB ID)
+data class TmdbSearchResponse(
+    @JsonProperty("results") val results: List<TmdbResult>? = null
+)
+
+data class TmdbResult(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("first_air_date") val firstAirDate: String? = null,
+    @JsonProperty("release_date") val releaseDate: String? = null,
+)
+
+data class TmdbExternalIds(
+    @JsonProperty("imdb_id") val imdb_id: String? = null,
+    @JsonProperty("tvdb_id") val tvdb_id: Int? = null,
 )
