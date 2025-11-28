@@ -1,4 +1,4 @@
-package com.AdiDewas
+package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.app
