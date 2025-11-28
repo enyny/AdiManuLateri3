@@ -6,7 +6,11 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import kotlinx.coroutines.launch // Penting untuk async
+// --- IMPORTS PERBAIKAN ---
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+// -------------------------
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -127,11 +131,9 @@ class AdiDewasa : MainAPI() {
             val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
             val description = doc.selectFirst("div.right-info p.summary-content, .summary p")?.text() ?: ""
             
-            // --- UPDATE: Scraping IMDb ID untuk Subtitle ---
-            // Mencari link imdb di halaman (biasanya ada di detail)
+            // Scraping IMDb ID untuk Subtitle
             val imdbId = doc.select("a[href*='imdb.com']").attr("href")
                 .let { Regex("""tt\d+""").find(it)?.value }
-            // ----------------------------------------------
 
             val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
             val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
@@ -165,7 +167,6 @@ class AdiDewasa : MainAPI() {
                         ?: Regex("""(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
 
                     if (episodeHref.isNotEmpty()) {
-                        // Bungkus data untuk loadLinks (URL + Metadata IMDb)
                         val data = LinkData(episodeHref, imdbId, null, episodeNum).toJson()
                         
                         newEpisode(data) {
@@ -185,7 +186,6 @@ class AdiDewasa : MainAPI() {
                     this.recommendations = recs
                 }
             } else {
-                // Bungkus data untuk loadLinks (URL + Metadata IMDb)
                 val data = LinkData(videoHref, imdbId, null, null).toJson()
                 
                 return newMovieLoadResponse(title, url, TvType.Movie, data) {
@@ -209,11 +209,10 @@ class AdiDewasa : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            // --- UPDATE: Parsing LinkData & Memanggil Subtitle StreamPlay ---
             val linkData = try {
                 parseJson<LinkData>(data)
             } catch (e: Exception) {
-                LinkData(data) // Fallback jika data masih format lama (hanya string URL)
+                LinkData(data)
             }
             
             val url = linkData.url
@@ -221,18 +220,24 @@ class AdiDewasa : MainAPI() {
             val season = linkData.season
             val episode = linkData.episode
 
-            // Jalankan pencari subtitle eksternal secara async (background)
-            // Menggunakan scope plugin (ioSafe atau launch biasa)
+            // --- PERBAIKAN DI SINI (Gunakan CoroutineScope + launch) ---
             if (!imdbId.isNullOrBlank()) {
-                // Kita jalankan paralel agar tidak memblokir loading video
-                ioSafe {
-                    AdiDewasaSubtitles.invokeSubtitleAPI(imdbId, season, episode, subtitleCallback)
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        AdiDewasaSubtitles.invokeSubtitleAPI(imdbId, season, episode, subtitleCallback)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
-                ioSafe {
-                    AdiDewasaSubtitles.invokeWyZIESUBAPI(imdbId, season, episode, subtitleCallback)
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        AdiDewasaSubtitles.invokeWyZIESUBAPI(imdbId, season, episode, subtitleCallback)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
-            // -------------------------------------------------------------
+            // -----------------------------------------------------------
 
             val doc = app.get(url).document
             val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
@@ -258,7 +263,6 @@ class AdiDewasa : MainAPI() {
                     )
                 )
                 
-                // Subtitle bawaan AdiDewasa tetap dipertahankan
                 val subJson = resJson.optJSONObject("sub")
                 subJson?.optJSONArray(bestQualityKey)?.let { array ->
                     for (i in 0 until array.length()) {
