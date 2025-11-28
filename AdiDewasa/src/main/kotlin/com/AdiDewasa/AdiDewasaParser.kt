@@ -2,21 +2,32 @@ package com.AdiDewasa
 
 import com.fasterxml.jackson.annotation.JsonProperty
 
-// Data class untuk Search internal Dramafull (Dipakai di loadLinks)
+// Respon Search dari API Dramafull
 data class ApiSearchResponse(
     @JsonProperty("data") val data: List<MediaItem>? = null,
     @JsonProperty("success") val success: Boolean? = null
 )
 
+// Item media dari Dramafull
 data class MediaItem(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("title") val title: String? = null,
-    @JsonProperty("slug") val slug: String? = null
+    @JsonProperty("slug") val slug: String? = null,
+    @JsonProperty("image") val image: String? = null,
+    @JsonProperty("poster") val poster: String? = null
 )
 
-// Data class standar TMDB Provider Cloudstream
-// Ini wajib ada agar fungsi loadLinks bisa menerima data dari TmdbProvider
+// Respon Halaman Utama (Filter) Dramafull
+data class HomeResponse(
+    @JsonProperty("current_page") val currentPage: Int? = null,
+    @JsonProperty("data") val data: List<MediaItem>? = null,
+    @JsonProperty("success") val success: Boolean? = null,
+    @JsonProperty("next_page_url") val nextPageUrl: String? = null
+)
+
+// Data class untuk komunikasi antar fungsi (Wajib untuk LoadLinks)
 data class LinkData(
+    val url: String,
     val imdbId: String? = null,
     val tmdbId: Int? = null,
     val title: String? = null,
