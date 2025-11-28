@@ -1,15 +1,10 @@
 package com.AdiDewasa
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import com.lagradost.cloudstream3.runAllAsync
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class AdiDewasa : MainAPI() {
     override var mainUrl = "https://dramafull.cc"
@@ -19,14 +14,7 @@ class AdiDewasa : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // Header wajib agar tidak diblokir situs
-    private val headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Referer" to "$mainUrl/"
-    )
-
-    // --- Main Page Configuration ---
+    // --- KATEGORI HALAMAN UTAMA ---
     override val mainPage: List<MainPageData>
         get() {
             return listOf(
@@ -43,6 +31,7 @@ class AdiDewasa : MainAPI() {
             )
         }
 
+    // --- LOGIKA HALAMAN UTAMA ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         try {
             val dataParts = request.data.split(":")
@@ -51,6 +40,7 @@ class AdiDewasa : MainAPI() {
             val adultFlag = dataParts.getOrNull(2) ?: "normal"
             val isAdultSection = adultFlag == "adult"
 
+            // Payload JSON untuk API Filter
             val jsonPayload = """{
                 "page": $page,
                 "type": "$type",
@@ -64,7 +54,9 @@ class AdiDewasa : MainAPI() {
             }""".trimIndent()
 
             val payload = jsonPayload.toRequestBody("application/json".toMediaType())
-            val response = app.post("$mainUrl/api/filter", requestBody = payload, headers = headers)
+            
+            // Menggunakan headers dari Helper agar konsisten
+            val response = app.post("$mainUrl/api/filter", requestBody = payload, headers = AdiDewasaHelper.headers)
             val homeResponse = response.parsedSafe<HomeResponse>()
             
             if (homeResponse?.success == false) return newHomePageResponse(emptyList(), hasNext = false)
@@ -82,12 +74,14 @@ class AdiDewasa : MainAPI() {
         }
     }
 
+    // Konversi data JSON ke SearchResponse CloudStream
     private fun MediaItem.toSearchResult(): SearchResponse? {
         try {
             val itemTitle = this.title ?: this.name ?: "Unknown Title"
             val itemSlug = this.slug ?: return null
             val itemImage = this.image ?: this.poster ?: ""
             val href = "$mainUrl/film/$itemSlug"
+            
             val posterUrl = if (itemImage.isNotEmpty()) {
                 if (itemImage.startsWith("http")) itemImage else mainUrl + itemImage
             } else ""
@@ -98,18 +92,25 @@ class AdiDewasa : MainAPI() {
         } catch (e: Exception) { return null }
     }
 
+    // --- LOGIKA PENCARIAN ---
     override suspend fun search(query: String): List<SearchResponse>? {
         try {
-            val url = "$mainUrl/api/live-search/$query"
-            val response = app.get(url, headers = headers)
+            // Menggunakan Helper untuk normalisasi query sebelum dikirim ke API
+            val cleanQuery = AdiDewasaHelper.normalizeQuery(query)
+            val url = "$mainUrl/api/live-search/$cleanQuery"
+            
+            val response = app.get(url, headers = AdiDewasaHelper.headers)
             val searchResponse = response.parsedSafe<ApiSearchResponse>()
             return searchResponse?.data?.mapNotNull { it.toSearchResult() }
         } catch (e: Exception) { return null }
     }
 
+    // --- LOGIKA MEMUAT DETAIL FILM/SERIES ---
     override suspend fun load(url: String): LoadResponse {
         try {
-            val doc = app.get(url, headers = headers).document
+            val doc = app.get(url, headers = AdiDewasaHelper.headers).document
+            
+            // Scraping Metadata
             val title = doc.selectFirst("div.right-info h1, h1.title")?.text() ?: "Unknown"
             val poster = doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
             val genre = doc.select("div.genre-list a, .genres a").map { it.text() }
@@ -119,6 +120,7 @@ class AdiDewasa : MainAPI() {
             val hasEpisodes = doc.select("div.tab-content.episode-button, .episodes-list").isNotEmpty()
             val cleanTitle = title.replace(Regex("""\(\d{4}\)"""), "").trim()
 
+            // Rekomendasi
             val recs = doc.select("div.film_list-wrap div.flw-item, .recommendations .item").mapNotNull {
                 val t = it.selectFirst("img")?.attr("alt") ?: it.selectFirst("h3, .title")?.text() ?: ""
                 val i = it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src") ?: ""
@@ -165,86 +167,46 @@ class AdiDewasa : MainAPI() {
         } catch (e: Exception) { throw e }
     }
 
+    // --- LOGIKA MEMUAT LINK VIDEO ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        try {
-            // FIX: Tambahkan headers saat request halaman video agar tidak diblokir
-            val doc = app.get(data, headers = headers).document
-            
-            // Metadata extraction
-            val pageTitle = doc.selectFirst("h1.title")?.text() ?: ""
-            val year = Regex("""\((\d{4})\)""").find(pageTitle)?.groupValues?.get(1)?.toIntOrNull()
-            val cleanTitle = pageTitle.replace(Regex("""\(\d{4}\)"""), "").replace(Regex("Episode.*"), "").trim()
-            val episodeNum = Regex("""Episode\s*(\d+)""").find(pageTitle)?.groupValues?.get(1)?.toIntOrNull()
-            val isSeries = episodeNum != null
-            val seasonNum = if (isSeries) 1 else null
-            val type = if (isSeries) TvType.TvSeries else TvType.Movie
+        
+        // Ambil metadata dasar dari halaman untuk keperluan pencarian subtitle
+        val doc = app.get(data, headers = AdiDewasaHelper.headers).document
+        val pageTitle = doc.selectFirst("h1.title")?.text() ?: ""
+        val year = Regex("""\((\d{4})\)""").find(pageTitle)?.groupValues?.get(1)?.toIntOrNull()
+        val cleanTitle = pageTitle.replace(Regex("""\(\d{4}\)"""), "").replace(Regex("Episode.*"), "").trim()
+        
+        val episodeNum = Regex("""Episode\s*(\d+)""").find(pageTitle)?.groupValues?.get(1)?.toIntOrNull()
+        val isSeries = episodeNum != null
+        val seasonNum = if (isSeries) 1 else null
+        val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            // FIX: Pencarian script yang lebih luas
-            val scripts = doc.select("script").joinToString(" ") { it.data() }
-            
-            // FIX: Regex yang lebih fleksibel (menerima petik satu ' atau dua ")
-            val signedUrl = Regex("""signedUrl\s*=\s*["']([^"']+)["']""").find(scripts)?.groupValues?.get(1)?.replace("\\/", "/") 
-                ?: return false // Jika gagal di sini, berarti proteksi website berubah
-            
-            // Request ke Signed URL dengan Referer yang benar
-            val res = app.get(signedUrl, headers = headers, referer = data).text
-            val resJson = tryParseJson<JSONObject>(res) ?: return false
-            
-            val videoSource = resJson.optJSONObject("video_source") ?: return false
-            
-            // Urutkan kualitas (1080p > 720p > 360p)
-            val qualities = videoSource.keys().asSequence().toList().sortedByDescending { it.toIntOrNull() ?: 0 }
-            val bestQualityKey = qualities.firstOrNull()
-            
-            var linkFound = false
-
-            videoSource.keys().forEach { quality ->
-                 val link = videoSource.optString(quality)
-                 if (link.isNotEmpty()) {
-                     linkFound = true
-                     callback(
-                        newExtractorLink(
-                            name,
-                            "$name ($quality)",
-                            link,
-                            INFER_TYPE
-                        )
-                     )
-                 }
+        // Memanggil Extractor untuk menangani video
+        // Kita passing judul, tahun, dll untuk keperluan subtitle eksternal di dalam extractor nanti
+        AdiDewasaExtractor.invokeAdiDewasa(
+            title = cleanTitle,
+            year = year,
+            season = seasonNum,
+            episode = episodeNum,
+            subtitleCallback = subtitleCallback,
+            callback = callback
+        )
+        
+        // Jalankan pencarian subtitle eksternal (IMDB + OpenSubtitles) secara Asynchronous
+        // Kita gunakan helper yang sudah dibuat di Utils
+        runAllAsync {
+            val imdbId = getImdbIdFromTitle(cleanTitle, year, type)
+            if (imdbId != null) {
+                invokeSubtitleAPI(imdbId, seasonNum, episodeNum, subtitleCallback)
+                invokeWyZIESUBAPI(imdbId, seasonNum, episodeNum, subtitleCallback)
             }
-            
-            if (bestQualityKey != null) {
-                val subJson = resJson.optJSONObject("sub")
-                subJson?.optJSONArray(bestQualityKey)?.let { array ->
-                    for (i in 0 until array.length()) {
-                        val subUrl = array.getString(i)
-                        // Pastikan URL subtitle lengkap
-                        val finalSubUrl = if(subUrl.startsWith("http")) subUrl else mainUrl + subUrl
-                        subtitleCallback(newSubtitleFile("English (Internal)", finalSubUrl))
-                    }
-                }
-            }
-
-            // Jalankan pencarian subtitle eksternal secara parallel
-            runAllAsync(
-                 {
-                     val imdbId = getImdbIdFromTitle(cleanTitle, year, type)
-                     if (imdbId != null) {
-                         invokeSubtitleAPI(imdbId, seasonNum, episodeNum, subtitleCallback)
-                         invokeWyZIESUBAPI(imdbId, seasonNum, episodeNum, subtitleCallback)
-                     }
-                 }
-            )
-
-            return linkFound
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
-        return false
+
+        return true
     }
 }
