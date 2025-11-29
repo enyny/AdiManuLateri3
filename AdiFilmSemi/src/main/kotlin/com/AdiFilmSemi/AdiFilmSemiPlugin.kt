@@ -10,11 +10,11 @@ class AdiFilmSemiPlugin : Plugin() {
         // Register Main Provider
         registerMainAPI(AdiFilmSemi())
         
-        // Register Existing Extractors
+        // Register Existing Extractor
         registerExtractorAPI(Jeniusplay2())
         
         // Register NEW Yflix/MegaUp Extractors
-        // Ini wajib didaftarkan agar loadExtractor("https://megaup.live/...") berfungsi
+        // Wajib didaftarkan agar fungsi Yflix berjalan lancar
         registerExtractorAPI(MegaUp())
         registerExtractorAPI(Fourspromax())
         registerExtractorAPI(Rapidairmax())
