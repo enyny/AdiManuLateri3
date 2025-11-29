@@ -2,8 +2,8 @@ package com.AdiFilmSemi
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdiDewasa
-import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeYflix // YFLIX
-import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeKisskh // KISSKH (Sudah ditambahkan)
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeYflix // Integrasi YFLIX
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeKisskh // Integrasi KISSKH
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeGomovies
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeIdlix
@@ -88,34 +88,32 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // UPDATE SESUAI REQUEST KHUSUS:
-    // 3 Kat Sexual Obsession (459), 3 Kat Erotic Thriller (207767), 
-    // 3 Kat Infidelity (1326), 3 Kat Eroticism (1664), Vivamax Movie & Series
+    // UPDATE: Semua kategori difilter "gte=2020-01-01" (Tahun 2020 ke atas)
     
     override val mainPage = mainPageOf(
-        // GROUP 1: Sexual Obsession (Keyword 459)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=primary_release_date.desc&include_adult=true" to "Sexual Obsession (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=popularity.desc&include_adult=true" to "Sexual Obsession (Popular)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Sexual Obsession (Top Rated)",
+        // GROUP 1: Sexual Obsession (Keyword 459) - 2020+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=primary_release_date.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Sexual Obsession (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=popularity.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Sexual Obsession Popular (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true&primary_release_date.gte=2020-01-01" to "Sexual Obsession Top Rated (2020+)",
 
-        // GROUP 2: Erotic Thriller (Keyword 207767)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=primary_release_date.desc&include_adult=true" to "Erotic Thriller (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=popularity.desc&include_adult=true" to "Erotic Thriller (Popular)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Erotic Thriller (Top Rated)",
+        // GROUP 2: Erotic Thriller (Keyword 207767) - 2020+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=primary_release_date.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Erotic Thriller (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=popularity.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Erotic Thriller Popular (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true&primary_release_date.gte=2020-01-01" to "Erotic Thriller Top Rated (2020+)",
 
-        // GROUP 3: Infidelity / Perselingkuhan (Keyword 1326)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=primary_release_date.desc&include_adult=true" to "Infidelity/Selingkuh (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=popularity.desc&include_adult=true" to "Infidelity/Selingkuh (Popular)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Infidelity/Selingkuh (Top Rated)",
+        // GROUP 3: Infidelity / Perselingkuhan (Keyword 1326) - 2020+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=primary_release_date.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Infidelity/Selingkuh (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=popularity.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Infidelity Popular (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true&primary_release_date.gte=2020-01-01" to "Infidelity Top Rated (2020+)",
 
-        // GROUP 4: Eroticism (Keyword 1664)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=primary_release_date.desc&include_adult=true" to "Eroticism (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=popularity.desc&include_adult=true" to "Eroticism (Popular)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Eroticism (Top Rated)",
+        // GROUP 4: Eroticism (Keyword 1664) - 2020+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=primary_release_date.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Eroticism (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=popularity.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Eroticism Popular (2020+)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1664&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true&primary_release_date.gte=2020-01-01" to "Eroticism Top Rated (2020+)",
 
-        // GROUP 5: VIVAMAX OFFICIAL (Company ID 149142)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_companies=149142&sort_by=primary_release_date.desc&include_adult=true" to "Vivamax Movies (Official)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_companies=149142&sort_by=first_air_date.desc&include_adult=true" to "Vivamax Series (Official)"
+        // GROUP 5: VIVAMAX OFFICIAL (Company ID 149142) - 2020+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_companies=149142&sort_by=primary_release_date.desc&include_adult=true&primary_release_date.gte=2020-01-01" to "Vivamax Movies (2020+)",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_companies=149142&sort_by=first_air_date.desc&include_adult=true&first_air_date.gte=2020-01-01" to "Vivamax Series (2020+)"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -339,7 +337,7 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 1. KISSKH (NEW! - Asian & Anime)
+            // 1. KISSKH (Asian Drama & Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -350,7 +348,7 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 2. YFLIX (NEW! - MegaUp/Rapidshare)
+            // 2. YFLIX (MegaUp Source)
             {
                 invokeYflix(
                     res.title ?: return@runAllAsync,
