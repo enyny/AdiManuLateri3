@@ -2,7 +2,8 @@ package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
-import com.Adicinemax21.Adicinemax21Extractor.invokeYflix // <-- NEW: Import Yflix
+import com.Adicinemax21.Adicinemax21Extractor.invokeYflix // <-- Import Yflix
+import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh // <-- Import Kisskh
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
@@ -344,7 +345,18 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 1. YFLIX INTEGRATED (NEW!)
+            // 1. KISSKH (NEW! Asian Drama/Anime)
+            {
+                invokeKisskh(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 2. YFLIX (NEW! General Movies)
             {
                 invokeYflix(
                     res.title ?: return@runAllAsync,
@@ -355,7 +367,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. Adimoviebox (Direct Source)
+            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -366,7 +378,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 3. JeniusPlay (via Idlix)
+            // 4. JeniusPlay (via Idlix)
             {
                 invokeIdlix(
                     res.title,
@@ -377,11 +389,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vidlink
+            // 5. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 5. Vidplay (via Vidsrccc)
+            // 6. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -392,11 +404,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 6. Vixsrc (Alpha)
+            // 7. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. CinemaOS (Smart Filtered)
+            // 8. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -409,7 +421,7 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 8. Player4U
+            // 9. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
