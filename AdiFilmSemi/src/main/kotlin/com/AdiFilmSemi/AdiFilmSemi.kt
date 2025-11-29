@@ -86,52 +86,53 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // Menggunakan filter kategori Softcore (15 Kategori)
+    // UPDATE: 15 Kategori Softcore Strict (No Hardcore/AV)
+    // Menggunakan filter vote_count untuk membuang film sampah/bokep Jepang
     override val mainPage = mainPageOf(
-        // 1. Trending Global Softcore
-        "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=popularity.desc&include_adult=true&with_genres=10749" to "Trending Softcore",
+        // 1. Trending Global Softcore (Romance/Thriller)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=popularity.desc&include_adult=true&with_genres=10749,53" to "Trending Softcore Hits",
         
-        // 2. Vivamax Popular (Pinoy)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&sort_by=popularity.desc&include_adult=true" to "Vivamax Hits",
+        // 2. Vivamax & Pinoy Sexy (Tagalog - Drama/Romance)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&sort_by=popularity.desc&include_adult=true&with_genres=18" to "Pinoy Sexy Movies",
         
-        // 3. Erotic Thrillers (Global)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53,10749&sort_by=popularity.desc&include_adult=true" to "Erotic Thrillers",
+        // 3. Korean Erotic Drama (Chungmuro Style - High Quality)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=10749&sort_by=popularity.desc&include_adult=true&vote_count.gte=50" to "Korean Erotic Drama",
         
-        // 4. Steamy Romance
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&sort_by=vote_count.desc&include_adult=true" to "Steamy Romance",
+        // 4. Japanese Pinku Cinema (Romance Only - Filtered > 50 Votes to remove AV)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ja&with_genres=10749&sort_by=popularity.desc&include_adult=true&vote_count.gte=50" to "Japanese Romance Cinema",
         
-        // 5. Pinoy Sexy Drama
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=18&sort_by=popularity.desc&include_adult=true" to "Pinoy Sexy Drama",
+        // 5. Erotic Thrillers (Suspense + Steam)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&sort_by=vote_count.desc&include_adult=true&with_keywords=9826" to "Erotic Thrillers",
         
-        // 6. Japanese Adult Drama
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ja&with_genres=18&sort_by=popularity.desc&include_adult=true" to "Japanese Adult Drama",
+        // 6. Western Steamy Romance (English)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=en&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Western Steamy Romance",
         
-        // 7. Korean Mature Romance
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Korean Mature Romance",
-        
-        // 8. Western Seduction (English)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=en&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Western Seduction",
-        
-        // 9. Forbidden Passion (Drama + Romance)
+        // 7. Forbidden Love (Affair/Seduction Theme)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18,10749&sort_by=revenue.desc&include_adult=true" to "Forbidden Passion",
         
-        // 10. French Romance (European Style)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=fr&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "French Romance",
+        // 8. French Art of Seduction (European Softcore)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=fr&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "French Art of Seduction",
         
-        // 11. Spanish Passion
+        // 9. Spanish Passion (Latin Heat)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=es&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Spanish Passion",
         
-        // 12. Chinese Adult Hits
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=zh&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Chinese Adult Hits",
+        // 10. Chinese/Hong Kong Cat III (Classic Erotica)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=zh&with_genres=18&sort_by=vote_count.desc&include_adult=true&vote_count.gte=20" to "Asian Softcore Classics",
 
-        // 13. Classic 90s Seduction (Oldies)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&primary_release_date.lte=2000-01-01&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Classic 90s Seduction",
+        // 11. 90s Erotic Classics (The Golden Era)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&primary_release_date.lte=2000-01-01&with_genres=10749,53&sort_by=popularity.desc&include_adult=true" to "90s Erotic Classics",
         
-        // 14. Modern Softcore (New Releases)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&primary_release_date.gte=2023-01-01&sort_by=popularity.desc&include_adult=true" to "Modern Softcore 2024+",
+        // 12. Modern Softcore (New Releases 2023-2025)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&primary_release_date.gte=2023-01-01&sort_by=popularity.desc&include_adult=true&with_genres=10749" to "Modern Softcore 2024+",
         
-        // 15. Top Rated Softcore
-        "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=vote_average.desc&vote_count.gte=150&include_adult=true&with_genres=10749" to "Top Rated Softcore"
+        // 13. Girls Love (GL/Lesbian Romance)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=156948&sort_by=popularity.desc&include_adult=true" to "Femme Fatale / GL",
+        
+        // 14. Thai Erotic Horror/Romance
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc&include_adult=true" to "Thai Erotic Hits",
+
+        // 15. Top Rated Erotica (Critical Acclaim)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=vote_average.desc&vote_count.gte=200&include_adult=true&with_genres=10749" to "Critics Choice Erotica"
     )
 
     private fun getImageUrl(link: String?): String? {
