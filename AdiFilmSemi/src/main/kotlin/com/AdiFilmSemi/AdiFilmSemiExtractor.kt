@@ -19,13 +19,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
-import org.json.JSONObject // <--- INI YANG HILANG TADI
+import org.json.JSONObject 
 import com.AdiFilmSemi.AdiFilmSemi.Companion.cinemaOSApi
 import com.AdiFilmSemi.AdiFilmSemi.Companion.Player4uApi
 
 object AdiFilmSemiExtractor : AdiFilmSemi() {
 
-    // ================== ADIDEWASA / DRAMAFULL SOURCE (NEW) ==================
+    // ================== ADIDEWASA / DRAMAFULL SOURCE ==================
     @Suppress("UNCHECKED_CAST")
     suspend fun invokeAdiDewasa(
         title: String,
@@ -37,16 +37,13 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL
         val cleanQuery = AdiDewasaHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
 
         try {
-            // Gunakan Header untuk SEARCHING (Wajib ada)
             val searchRes = app.get(searchUrl, headers = AdiDewasaHelper.headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. PENCOCOKAN JUDUL
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 AdiDewasaHelper.isFuzzyMatch(title, itemTitle)
@@ -57,11 +54,9 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
 
-            // 3. LOAD HALAMAN FILM
             val doc = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
 
             if (season != null && episode != null) {
-                // SERIAL TV
                 val episodeHref = doc.select("div.episode-item a, .episode-list a").find { 
                     val text = it.text().trim()
                     val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
@@ -71,7 +66,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                 if (episodeHref == null) return
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
-                // FILM MOVIE
                 val selectors = listOf(
                     "a.btn-watch", 
                     "a.watch-now", 
@@ -94,7 +88,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                 if (foundUrl != null) targetUrl = foundUrl
             }
 
-            // 5. EKSTRAKSI VIDEO
             val docPage = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
@@ -118,16 +111,13 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                 }
             }
              
-             // SUBTITLE
              val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
              val subJson = jsonObject["sub"] as? Map<String, Any>
              val subs = subJson?.get(bestQualityKey) as? List<String>
              subs?.forEach { subPath ->
                  val subUrl = fixUrl(subPath, baseUrl)
                  subtitleCallback.invoke(
-                     newSubtitleFile(
-                         "English", subUrl
-                     )
+                     newSubtitleFile("English", subUrl)
                  )
              }
              
@@ -135,6 +125,109 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
             e.printStackTrace()
         }
     }
+
+    // ================== KISSKH SOURCE (INTEGRATED) ==================
+    // NEW ADDITION: Asian Drama & Anime Source
+    
+    suspend fun invokeKisskh(
+        title: String,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val mainUrl = "https://kisskh.ovh"
+        // Kunci API Rahasia yang ditemukan di classes.dex (Source 294 & 332)
+        val KISSKH_API = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
+        val KISSKH_SUB_API = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
+
+        try {
+            // 1. SEARCH
+            val searchRes = app.get("$mainUrl/api/DramaList/Search?q=$title&type=0").text
+            val searchList = tryParseJson<ArrayList<KisskhMedia>>(searchRes) ?: return
+
+            // 2. MATCHING
+            val matched = searchList.find { 
+                it.title.equals(title, true) 
+            } ?: searchList.firstOrNull { it.title?.contains(title, true) == true } ?: return
+
+            val dramaId = matched.id ?: return
+            
+            // 3. GET EPISODE LIST
+            val detailRes = app.get("$mainUrl/api/DramaList/Drama/$dramaId?isq=false").parsedSafe<KisskhDetail>() ?: return
+            val episodes = detailRes.episodes ?: return
+
+            // 4. FIND TARGET EPISODE
+            val targetEp = if (season == null) {
+                // Movie: Ambil episode terakhir/satu-satunya
+                episodes.lastOrNull()
+            } else {
+                // Series: Hitung berdasarkan season & episode
+                episodes.find { it.number?.toInt() == episode }
+            } ?: return
+
+            val epsId = targetEp.id ?: return
+
+            // 5. GET KKEY (Video Token)
+            val kkeyVideo = app.get("$KISSKH_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
+
+            // 6. GET VIDEO SOURCES
+            // Endpoint disamarkan sebagai .png
+            val videoUrl = "$mainUrl/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkeyVideo"
+            val sources = app.get(videoUrl).parsedSafe<KisskhSources>()
+
+            val videoLink = sources?.video
+            val thirdParty = sources?.thirdParty
+
+            listOfNotNull(videoLink, thirdParty).forEach { link ->
+                if (link.contains(".m3u8")) {
+                    M3u8Helper.generateM3u8(
+                        "Kisskh",
+                        link,
+                        referer = "$mainUrl/",
+                        headers = mapOf("Origin" to mainUrl)
+                    ).forEach(callback)
+                } else if (link.contains(".mp4")) {
+                    callback.invoke(
+                        newExtractorLink(
+                            "Kisskh",
+                            "Kisskh",
+                            link,
+                            ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = mainUrl
+                        }
+                    )
+                }
+            }
+
+            // 7. GET SUBTITLES
+            val kkeySub = app.get("$KISSKH_SUB_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
+            val subJson = app.get("$mainUrl/api/Sub/$epsId?kkey=$kkeySub").text
+            
+            tryParseJson<List<KisskhSubtitle>>(subJson)?.forEach { sub ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        sub.label ?: "Unknown",
+                        sub.src ?: return@forEach
+                    )
+                )
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Data Classes Khusus Kisskh (Private agar tidak konflik)
+    private data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
+    private data class KisskhDetail(@JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>?)
+    private data class KisskhEpisode(@JsonProperty("id") val id: Int?, @JsonProperty("number") val number: Double?)
+    private data class KisskhKey(@JsonProperty("key") val key: String?)
+    private data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
+    private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
+
 
     // ================== ADIMOVIEBOX SOURCE ==================
     suspend fun invokeAdimoviebox(
