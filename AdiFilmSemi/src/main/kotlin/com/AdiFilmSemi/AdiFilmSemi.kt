@@ -86,19 +86,52 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // Kategori Global Erotica yang diminta
+    // Menggunakan filter Keyword TMDB untuk Erotica (226161), Sexual Obsession (160812), dll.
     override val mainPage = mainPageOf(
-        // 1. Global: Erotica (Keyword ID: 190370 - Erotica)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=190370&sort_by=popularity.desc&include_adult=true" to "Global: Erotica",
+        // 1. Softcore (Keyword: Eroticism)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=226161&sort_by=popularity.desc&include_adult=true" to "Softcore Selection",
         
-        // 2. Softcore (Keyword ID: 15654 - Softcore)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=15654&sort_by=popularity.desc&include_adult=true" to "Softcore",
+        // 2. Sexual Obsession (Keyword: Sexual Obsession)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=160812&sort_by=popularity.desc&include_adult=true" to "Sexual Obsession",
         
-        // 3. Sexual obsession (Keyword ID: 160474 - Sexual Obsession)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=160474&sort_by=popularity.desc&include_adult=true" to "Sexual obsession",
+        // 3. Erotic Thriller (Genre: Thriller + Eroticism)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&with_keywords=226161|9799&sort_by=popularity.desc&include_adult=true" to "Erotic Thriller",
         
-        // 4. Erotic thriller (Genre: Thriller (53) + Keyword: Erotica (190370))
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&with_keywords=190370&sort_by=popularity.desc&include_adult=true" to "Erotic thriller"
+        // 4. Steamy Romance (Genre: Romance + Eroticism)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&with_keywords=226161&sort_by=popularity.desc&include_adult=true" to "Steamy Romance",
+        
+        // 5. Forbidden Love (Keyword: Forbidden Love)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=2072&sort_by=popularity.desc&include_adult=true" to "Forbidden Love",
+        
+        // 6. Seduction (Keyword: Seduction)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=3808&sort_by=popularity.desc&include_adult=true" to "Seduction",
+        
+        // 7. Infidelity & Affairs (Keyword: Adultery)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=9799&sort_by=popularity.desc&include_adult=true" to "Infidelity & Affairs",
+        
+        // 8. Femme Fatale (Keyword: Femme Fatale)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=9536&sort_by=popularity.desc&include_adult=true" to "Femme Fatale",
+        
+        // 9. Nudity & Art (Keyword: Nudity)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=9844&sort_by=popularity.desc&include_adult=true" to "Nudity & Art",
+        
+        // 10. Adult Drama (Genre: Drama + Eroticism)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&with_keywords=226161&sort_by=popularity.desc&include_adult=true" to "Adult Drama",
+        
+        // 11. Erotic Horror (Genre: Horror + Eroticism/Nudity)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&with_keywords=226161|9844&sort_by=popularity.desc&include_adult=true" to "Erotic Horror",
+        
+        // 12. Asian Softcore (Vivamax/Tagalog focus)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&sort_by=popularity.desc&include_adult=true" to "Asian Softcore",
+        
+        // 13. French Erotique (Language: French + Eroticism)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=fr&with_keywords=226161&sort_by=popularity.desc&include_adult=true" to "French Erotique",
+        
+        // 14. LGBTQ+ Erotica
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=234063|9844&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "LGBTQ+ Erotica",
+        
+        // 15. Cult Erotica (General Adult Filter)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&include_adult=true&with_keywords=15034&sort_by=popularity.desc" to "Cult Erotica"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -112,11 +145,11 @@ open class AdiFilmSemi : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // PERBAIKAN: Menghapus logika 'without_keywords' yang memblokir konten dewasa
-        // Sekarang kode akan langsung memuat URL apa adanya.
+        val adultQuery =
+            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        val home = app.get("${request.data}&page=$page")
+        val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
@@ -137,7 +170,7 @@ open class AdiFilmSemi : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=true")
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
