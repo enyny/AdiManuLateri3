@@ -7,8 +7,17 @@ import android.content.Context
 @CloudstreamPlugin
 class Adicinemax21Plugin : Plugin() {
     override fun load(context: Context) {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
+        // Register Main Provider
         registerMainAPI(Adicinemax21())
+        
+        // Register Existing Extractor
         registerExtractorAPI(Jeniusplay2())
+        
+        // Register NEW Yflix/MegaUp Extractors
+        // Wajib didaftarkan agar loadExtractor("https://megaup.live/...") berfungsi
+        registerExtractorAPI(MegaUp())
+        registerExtractorAPI(Fourspromax())
+        registerExtractorAPI(Rapidairmax())
+        registerExtractorAPI(Rapidshare())
     }
 }
