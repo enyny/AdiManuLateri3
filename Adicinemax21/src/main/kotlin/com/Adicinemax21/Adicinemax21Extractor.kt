@@ -18,12 +18,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
+import org.json.JSONObject // Penting: Import ini diperlukan untuk Yflix
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
 import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
 
 object Adicinemax21Extractor : Adicinemax21() {
 
-    // ================== ADIDEWASA / DRAMAFULL SOURCE (NEW) ==================
+    // ================== ADIDEWASA / DRAMAFULL SOURCE ==================
     @Suppress("UNCHECKED_CAST")
     suspend fun invokeAdiDewasa(
         title: String,
@@ -35,16 +36,13 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL
         val cleanQuery = AdiDewasaHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
 
         try {
-            // Gunakan Header untuk SEARCHING (Wajib ada)
             val searchRes = app.get(searchUrl, headers = AdiDewasaHelper.headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. PENCOCOKAN JUDUL
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 AdiDewasaHelper.isFuzzyMatch(title, itemTitle)
@@ -55,11 +53,9 @@ object Adicinemax21Extractor : Adicinemax21() {
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
 
-            // 3. LOAD HALAMAN FILM
             val doc = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
 
             if (season != null && episode != null) {
-                // SERIAL TV
                 val episodeHref = doc.select("div.episode-item a, .episode-list a").find { 
                     val text = it.text().trim()
                     val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
@@ -69,7 +65,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 if (episodeHref == null) return
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
-                // FILM MOVIE
                 val selectors = listOf(
                     "a.btn-watch", 
                     "a.watch-now", 
@@ -92,7 +87,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 if (foundUrl != null) targetUrl = foundUrl
             }
 
-            // 5. EKSTRAKSI VIDEO
             val docPage = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
@@ -116,7 +110,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
             }
              
-             // SUBTITLE
              val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
              val subJson = jsonObject["sub"] as? Map<String, Any>
              val subs = subJson?.get(bestQualityKey) as? List<String>
@@ -1241,6 +1234,131 @@ object Adicinemax21Extractor : Adicinemax21() {
                     Player4uLinkData(name = titleText, url = element.attr("onclick"))
                 } else null
             }
+        }
+    }
+
+    // ================== YFLIX SOURCE (INTEGRATED) ==================
+    // Requires: MegaUp Extractor in Extractors.kt
+    
+    suspend fun invokeYflix(
+        title: String,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val mainUrl = "https://yflix.to"
+        
+        // --- API KEYS RAHASIA (DARI CLASSES.DEX) ---
+        // Digunakan untuk mengenkripsi query search & decode ID
+        val YFX_ENC_API = "https://enc-dec.app/api/enc-movies-flix" 
+        // Digunakan untuk decrypt iframe final
+        val YFX_DEC_API = "https://enc-dec.app/api/dec-movies-flix" 
+
+        try {
+            // 1. HELPER: Fungsi Decode/Encode sesuai logika Yflix.kt
+            suspend fun yflixDecode(text: String): String? {
+                return try {
+                    // Yflix.kt menggunakan GET ke endpoint ENC untuk decode ID (aneh tapi begitu kodenya)
+                    val res = app.get("$YFX_ENC_API?text=$text").text
+                    JSONObject(res).getString("result")
+                } catch (e: Exception) { null }
+            }
+
+            suspend fun yflixDecodeReverse(text: String): String? {
+                return try {
+                    val jsonBody = """{"text":"$text"}""".toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+                    val res = app.post(YFX_DEC_API, requestBody = jsonBody).text
+                    JSONObject(res).getString("result")
+                } catch (e: Exception) { null }
+            }
+
+            // 2. SEARCHING
+            // Yflix butuh delay agar terlihat seperti manusia
+            // delay(1000) 
+
+            val searchHeaders = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Referer" to "$mainUrl/"
+            )
+
+            val searchUrl = "$mainUrl/browser?keyword=$title"
+            val searchDoc = app.get(searchUrl, headers = searchHeaders).document
+            
+            // Cari item yang cocok (Title & Year)
+            val targetItem = searchDoc.select("div.film-section.md div.item").find { 
+                val iTitle = it.select("a.title").text().trim()
+                val iLink = it.select("a.poster").attr("href")
+                // Logika pencocokan sederhana
+                iTitle.equals(title, true) || iTitle.contains(title, true)
+            }
+
+            val itemPath = targetItem?.select("a.poster")?.attr("href") ?: return
+            val keyword = itemPath.substringAfter("/watch/").substringBefore(".")
+            
+            // 3. LOAD PAGE & DATA ID
+            val pageUrl = fixUrl(itemPath, mainUrl)
+            val pageDoc = app.get(pageUrl, headers = searchHeaders).document
+            
+            val dataId = pageDoc.select("#movie-rating").attr("data-id")
+            val decodedDataId = yflixDecode(dataId) ?: return
+
+            // 4. GET EPISODES / LINKS
+            val ajaxUrl = "$mainUrl/ajax/episodes/list?keyword=$keyword&id=$dataId&_=$decodedDataId"
+            val ajaxDoc = Jsoup.parse(app.get(ajaxUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()?.getDocument()?.outerHtml() ?: return)
+
+            val targetEid = if (season != null && episode != null) {
+                // Logic TV Series
+                val seasonBlock = ajaxDoc.select("ul.episodes[data-season=$season]")
+                seasonBlock.select("a[num=$episode]").attr("eid")
+            } else {
+                // Logic Movie
+                ajaxDoc.select("ul.episodes a").firstOrNull()?.attr("eid")
+            } ?: return
+
+            if (targetEid.isEmpty()) return
+
+            // 5. GET SERVER LIST
+            val decodedEid = yflixDecode(targetEid)
+            val linksUrl = "$mainUrl/ajax/links/list?eid=$targetEid&_=$decodedEid"
+            val linksDoc = Jsoup.parse(app.get(linksUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()?.getDocument()?.outerHtml() ?: return)
+
+            // 6. PROCESS SERVERS
+            linksDoc.select("li.server").forEach { server ->
+                val lid = server.attr("data-lid")
+                if (lid.isNotBlank()) {
+                    val decodedLid = yflixDecode(lid)
+                    val viewUrl = "$mainUrl/ajax/links/view?id=$lid&_=$decodedLid"
+                    
+                    val viewJson = app.get(viewUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()
+                    val resultEncrypted = viewJson?.result
+                    
+                    if (!resultEncrypted.isNullOrBlank()) {
+                        val finalJson = yflixDecodeReverse(resultEncrypted)
+                        if (finalJson != null) {
+                            val iframeUrl = JSONObject(finalJson).optString("url")
+                            if (iframeUrl.isNotEmpty()) {
+                                // PANGGIL EXTRACTOR MEGAUP YANG SUDAH KITA SIAPKAN
+                                loadExtractor(iframeUrl, "Yflix", subtitleCallback, callback)
+                            }
+                        }
+                    }
+                }
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Class helper untuk parsing JSON respon Yflix
+    data class YflixAjaxResponse(
+        @JsonProperty("status") val status: Boolean,
+        @JsonProperty("result") val result: String
+    ) {
+        fun getDocument(): Document {
+            return Jsoup.parse(result)
         }
     }
 
