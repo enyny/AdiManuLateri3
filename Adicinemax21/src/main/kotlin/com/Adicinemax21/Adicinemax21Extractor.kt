@@ -1,5 +1,6 @@
 package com.Adicinemax21
 
+import com.fasterxml.jackson.annotation.JsonProperty // <-- SUDAH DITAMBAHKAN
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.capitalize
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
@@ -18,7 +19,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
-import org.json.JSONObject // Penting: Import ini diperlukan untuk Yflix
+import org.json.JSONObject 
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
 import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
 
