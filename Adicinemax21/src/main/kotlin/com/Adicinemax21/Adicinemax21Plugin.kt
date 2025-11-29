@@ -15,6 +15,7 @@ class Adicinemax21Plugin : Plugin() {
         
         // Register NEW Yflix/MegaUp Extractors
         // Wajib didaftarkan agar loadExtractor("https://megaup.live/...") berfungsi
+        // Extractor ini digunakan oleh fungsi invokeYflix
         registerExtractorAPI(MegaUp())
         registerExtractorAPI(Fourspromax())
         registerExtractorAPI(Rapidairmax())
