@@ -86,23 +86,19 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // Menggunakan filter bahasa Tagalog (tl) dan ID Cast Aktris Vivamax Populer
-    // Kategori dikurangi sesuai permintaan
+    // Menggunakan filter Global dengan Keyword TMDB yang sesuai permintaan
     override val mainPage = mainPageOf(
-        // 1. Popular (Tagalog/Vivamax)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&sort_by=popularity.desc&include_adult=true" to "Vivamax Popular",
+        // 1. Global: Erotica (Keyword ID: 190370 - Erotica)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=190370&sort_by=popularity.desc&include_adult=true" to "Global: Erotica",
         
-        // 2. Angeli Khang Specials (ID: 3194176)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_cast=3194176&sort_by=primary_release_date.desc&include_adult=true" to "Angeli Khang Specials",
+        // 2. Softcore (Keyword ID: 15654 - Softcore)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=15654&sort_by=popularity.desc&include_adult=true" to "Softcore",
         
-        // 3. Pinoy Erotic Thriller (Genre: Thriller + Tagalog)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=53&sort_by=popularity.desc&include_adult=true" to "Pinoy Erotic Thriller",
+        // 3. Sexual obsession (Keyword ID: 160474 - Sexual Obsession)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=160474&sort_by=popularity.desc&include_adult=true" to "Sexual obsession",
         
-        // 4. Pinoy Sexy Drama (Genre: Drama + Tagalog)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=18&sort_by=popularity.desc&include_adult=true" to "Pinoy Sexy Drama",
-        
-        // 5. Pinoy Mature Romance (Genre: Romance + Tagalog)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=tl&with_genres=10749&sort_by=popularity.desc&include_adult=true" to "Pinoy Mature Romance"
+        // 4. Erotic thriller (Genre: Thriller (53) + Keyword: Erotica (190370))
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&with_keywords=190370&sort_by=popularity.desc&include_adult=true" to "Erotic thriller"
     )
 
     private fun getImageUrl(link: String?): String? {
