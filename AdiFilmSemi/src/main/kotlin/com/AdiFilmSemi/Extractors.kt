@@ -19,7 +19,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 // ==============================
-// EXISTING ADIFILMSEMI EXTRACTOR
+// EXISTING EXTRACTOR (JENIUSPLAY)
 // ==============================
 
 open class Jeniusplay2 : ExtractorApi() {
@@ -92,7 +92,7 @@ open class Jeniusplay2 : ExtractorApi() {
 }
 
 // ==============================
-// NEW YFLIX EXTRACTORS (INTEGRATED)
+// NEW YFLIX EXTRACTORS (MEGAUP & CLONES)
 // ==============================
 
 class Fourspromax : MegaUp() {
@@ -115,7 +115,7 @@ open class MegaUp : ExtractorApi() {
     override var mainUrl = "https://megaup.live"
     override val requiresReferer = true
 
-    // KUNCI API RAHASIA (Didapat dari analisis classes.dex Yflix)
+    // KUNCI RAHASIA DARI YFLIX (Decoded from classes.dex)
     private val SECRET_API_URL = "https://enc-dec.app/api/dec-mega"
 
     companion object {
@@ -143,14 +143,14 @@ open class MegaUp : ExtractorApi() {
         val mediaUrl = url.replace("/e/", "/media/").replace("/e2/", "/media/")
         val displayName = referer ?: this.name
 
-        // 1. Ambil HTML Mentah dari MegaUp/Rapidshare
+        // 1. Ambil HTML Mentah
         val encodedResult = app.get(mediaUrl, headers = HEADERS)
             .parsedSafe<YflixResponse>()
             ?.result
 
         if (encodedResult == null) return
 
-        // 2. Siapkan Payload untuk API Dekripsi Rahasia
+        // 2. Siapkan Payload untuk API Rahasia
         val body = """
         {
         "text": "$encodedResult",
@@ -160,7 +160,7 @@ open class MegaUp : ExtractorApi() {
             .trim()
             .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
-        // 3. Kirim ke Server API Phisher98
+        // 3. Kirim ke API Dekripsi
         val m3u8Data = app.post(SECRET_API_URL, requestBody = body).text
         
         if (m3u8Data.isBlank()) return
@@ -169,7 +169,7 @@ open class MegaUp : ExtractorApi() {
             val root = JSONObject(m3u8Data)
             val result = root.optJSONObject("result") ?: return
 
-            // 4. Ambil Link M3U8
+            // 4. Ambil Video
             val sources = result.optJSONArray("sources") ?: JSONArray()
             if (sources.length() > 0) {
                 val firstSourceObj = sources.optJSONObject(0)
@@ -192,7 +192,7 @@ open class MegaUp : ExtractorApi() {
                 }
             }
             
-            // 6. Coba Ambil Subtitle dari URL Parameter (Fallback)
+            // 6. Ambil Subtitle (URL Parameter - Fallback)
             try {
                 if (url.contains("sub.list=")) {
                     val subtitleUrl = URLDecoder.decode(
@@ -209,7 +209,7 @@ open class MegaUp : ExtractorApi() {
                     }
                 }
             } catch (e: Exception) {
-               // Ignore subtitle errors
+               // Ignore errors
             }
 
         } catch (e: Exception) {
