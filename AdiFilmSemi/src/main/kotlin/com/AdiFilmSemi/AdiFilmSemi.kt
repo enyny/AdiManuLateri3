@@ -86,7 +86,7 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // Menggunakan filter Global dengan Keyword TMDB yang sesuai permintaan
+    // Kategori Global Erotica yang diminta
     override val mainPage = mainPageOf(
         // 1. Global: Erotica (Keyword ID: 190370 - Erotica)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=190370&sort_by=popularity.desc&include_adult=true" to "Global: Erotica",
@@ -112,11 +112,11 @@ open class AdiFilmSemi : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val adultQuery =
-            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        // PERBAIKAN: Menghapus logika 'without_keywords' yang memblokir konten dewasa
+        // Sekarang kode akan langsung memuat URL apa adanya.
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        val home = app.get("${request.data}$adultQuery&page=$page")
+        val home = app.get("${request.data}&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
@@ -137,7 +137,7 @@ open class AdiFilmSemi : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=true")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
