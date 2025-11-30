@@ -3,11 +3,10 @@ version = 1
 
 
 cloudstream {
-    // All of these properties are optional, you can safely remove them
 
-    description = "Nonton sampe biji mata kaluar" // Deskripsi yang diperbarui
-    language    = "en" // Bahasa dari Moviebox
-    authors = listOf("AdiManuLateri3") // Ganti sesuai keinginan Anda
+    description = "Nonton sampe biji mata kaluar"
+    language    = "id" // Bahasa dari Moviebox
+    authors = listOf("AdiManuLateri3")
 
     /**
     * Status int as the following:
@@ -16,7 +15,7 @@ cloudstream {
     * 2: Slow
     * 3: Beta only
     * */
-    status = 1 // will be 3 if unspecified
+    status = 1
 
     // List of video source types. Users are able to filter for extensions in a given category.
     // Anda mendukung semua tipe dari Moviebox
