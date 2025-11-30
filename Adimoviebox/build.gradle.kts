@@ -7,7 +7,7 @@ cloudstream {
 
     description = "Nonton sampe biji mata kaluar" // Deskripsi yang diperbarui
     language    = "en" // Bahasa dari Moviebox
-    authors = listOf("AdimovieboxUser") // Ganti sesuai keinginan Anda
+    authors = listOf("AdiManuLateri3") // Ganti sesuai keinginan Anda
 
     /**
     * Status int as the following:
