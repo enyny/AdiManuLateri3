@@ -5,7 +5,7 @@ version = 1
 cloudstream {
     // All of these properties are optional, you can safely remove them
 
-    description = "AdiManuLateri3" // Deskripsi yang diperbarui
+    description = "Nonton sampe biji mata kaluar" // Deskripsi yang diperbarui
     language    = "en" // Bahasa dari Moviebox
     authors = listOf("AdimovieboxUser") // Ganti sesuai keinginan Anda
 
