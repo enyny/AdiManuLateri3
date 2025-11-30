@@ -14,5 +14,5 @@ cloudstream {
     **/
     status  = 1 // will be 3 if unspecified
     tvTypes = listOf("NSFW")
-    iconUrl = "http://mangoporn.net/wp-content/uploads/2024/07/mangoporn.net_.png"
+    iconUrl = "https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/papi.png"
 }
