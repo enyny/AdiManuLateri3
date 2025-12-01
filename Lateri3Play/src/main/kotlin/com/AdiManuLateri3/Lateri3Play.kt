@@ -6,7 +6,6 @@ import androidx.annotation.RequiresApi
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.Actor
 import com.lagradost.cloudstream3.ActorData
-import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
@@ -35,6 +34,8 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+
+// Import fungsi dari Extractor Object
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI
 
 // Import Wajib
@@ -379,13 +380,14 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
-        // PENTING: Fungsi buildProviders() harus didefinisikan di file terpisah (ProvidersList.kt)
-        val providersList = buildProviders() 
+        // buildProviders akan tersedia dari file ProvidersList.kt
+        val providersList = buildProviders()
         val authToken = token
         
         runLimitedAsync(concurrency = 10,
             {
                 try {
+                    // Panggilan ini sekarang aman karena sudah di-import
                     invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
                 } catch (_: Throwable) {}
             },
