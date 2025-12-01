@@ -17,7 +17,6 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.Session
@@ -31,7 +30,6 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLDecoder
 import java.util.ArrayList
-import com.AdiManuLateri3.BuildConfig // PENTING: Impor BuildConfig agar dikenali
 
 val session = Session(Requests().baseClient)
 
@@ -79,7 +77,6 @@ object Lateri3PlayExtractor : Lateri3Play() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Menggunakan domain dari JSON di GitHub atau fallback
         val multimoviesApi = getDomains()?.multiMovies ?: "https://multimovies.cloud"
         val fixTitle = title.createSlug()
 
@@ -385,11 +382,11 @@ object Lateri3PlayExtractor : Lateri3Play() {
     ) {
         if (title.isNullOrBlank()) return
         val Watch32 = "https://watch32.sx"
-        val searchUrl = "$Watch32/search/${title.trim().replace(" ", "-")}"
+        val searchUrl = "$Watch32/search/${title?.trim()?.replace(" ", "-")}"
         try {
             val doc = app.get(searchUrl).documentLarge
             val matchedElement = doc.select("div.flw-item").firstOrNull { 
-                it.selectFirst("h2.film-name a")?.text()?.contains(title, true) == true 
+                it.selectFirst("h2.film-name a")?.text()?.contains(title ?: "", true) == true 
             }?.selectFirst("h2.film-name a") ?: return
             
             val detailUrl = Watch32 + matchedElement.attr("href")
@@ -527,7 +524,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         try {
             val response = app.post(url, headers = headers, requestBody = jsonBody.toRequestBody("application/json".toMediaType()))
             if (response.code == 200) {
-                // Parsing logic simplified
+                // Placeholder
             }
         } catch (e: Exception) { Log.e("MovieBox", "$e") }
         return true
@@ -539,6 +536,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
     }
 
     // --- 16. Dramadrip ---
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun invokeDramadrip(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val dramadripAPI = getDomains()?.dramadrip ?: "https://dramadrip.com"
         try {
@@ -568,8 +566,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
     }
 
     suspend fun invokeHdhub4u(imdbId: String?, title: String?, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-         val baseUrl = getDomains()?.hdhub4u ?: "https://hdhub4u.tv"
-         // Logic serupa dengan 4kHdhub
+         // Logic serupa
     }
 
     // --- 18. Vidrock ---
@@ -596,7 +593,6 @@ object Lateri3PlayExtractor : Lateri3Play() {
     // --- 20. WatchSoMuch ---
     suspend fun invokeWatchsomuch(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
         val id = imdbId?.removePrefix("tt") ?: return
-        val url = "https://watchsomuch.tv/Watch/ajMovieTorrents.aspx"
     }
 
     // --- 21. Wyzie Subtitle ---
@@ -611,7 +607,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
     }
 }
 
-// Data classes for parsing
+// Data classes
 data class ResponseHash(val embed_url: String)
 data class KisskhResults(val id: Int?, val title: String?)
 data class KisskhDetail(val episodes: ArrayList<KisskhEpisodes>?)
