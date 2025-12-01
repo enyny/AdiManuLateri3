@@ -9,12 +9,9 @@ import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import kotlinx.coroutines.CoroutineScope
+import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -28,9 +25,8 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import com.fasterxml.jackson.annotation.JsonProperty // Pastikan dependensi jackson ada, atau gunakan Gson
 
-// --- Data Classes for Utils ---
+// --- Data Classes ---
 data class DomainsParser(
     val moviesdrive: String?,
     val hdhub4u: String?,
@@ -121,15 +117,9 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers ---
+// --- Extractor Helpers (FIXED: suspend added, removed extra launch) ---
 
-// Note: Fungsi ini dipanggil dari dalam suspend function (provider.invoke),
-// jadi kita bisa menggunakan coroutineScope untuk launch, ATAU biarkan ini sebagai helper biasa
-// yang meluncurkan scope global/IO. 
-// Revisi: Agar aman dari error "Suspension functions can only be called...", 
-// kita hapus modifier suspend di wrapper ini karena dia me-launch coroutine baru.
-
-fun loadSourceNameExtractor(
+suspend fun loadSourceNameExtractor(
     source: String,
     url: String,
     referer: String? = null,
@@ -137,46 +127,39 @@ fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
 ) {
-    // Menggunakan GlobalScope atau CoroutineScope local (disarankan)
-    // Untuk plugin Cloudstream, biasanya aman melempar ke IO dispatchers
-    CoroutineScope(Dispatchers.IO).launch {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            callback.invoke(
-                newExtractorLink(
-                    "$source [${link.source}]",
-                    "$source [${link.source}]",
-                    link.url,
-                ) {
-                    this.quality = quality ?: link.quality
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.headers = link.headers
-                }
-            )
-        }
+    loadExtractor(url, referer, subtitleCallback) { link ->
+        callback.invoke(
+            newExtractorLink(
+                "$source [${link.source}]",
+                "$source [${link.source}]",
+                link.url,
+            ) {
+                this.quality = quality ?: link.quality
+                this.type = link.type
+                this.referer = link.referer
+                this.headers = link.headers
+            }
+        )
     }
 }
 
-fun loadCustomExtractor(
+suspend fun loadCustomExtractor(
     name: String,
     url: String,
     referer: String? = null,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    CoroutineScope(Dispatchers.IO).launch {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            callback.invoke(
-                newExtractorLink(name, name, link.url) {
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.quality = link.quality
-                }
-            )
-        }
+    loadExtractor(url, referer, subtitleCallback) { link ->
+        callback.invoke(
+            newExtractorLink(name, name, link.url) {
+                this.type = link.type
+                this.referer = link.referer
+                this.quality = link.quality
+            }
+        )
     }
 }
-
 
 suspend fun dispatchToExtractor(
     link: String,
@@ -279,7 +262,7 @@ fun generateXTrSignature(
 suspend fun hdhubgetRedirectLinks(url: String): String {
     return try {
         val doc = app.get(url).text
-        url 
+        url // Simplified return for now
     } catch (e: Exception) { "" }
 }
 
