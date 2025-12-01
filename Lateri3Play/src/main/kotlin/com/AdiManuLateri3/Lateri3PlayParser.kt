@@ -204,7 +204,7 @@ data class Watch32(val link: String)
 
 data class WyZIESUB(val display: String, val url: String)
 
-// New Data Class for VidFast
+// New Data Class for VidFast & MovieBox (Ported from StreamPlay)
 data class VidFastServer(
     val name: String,
     val description: String,
