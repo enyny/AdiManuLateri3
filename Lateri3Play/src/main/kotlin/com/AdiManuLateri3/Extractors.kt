@@ -3,17 +3,23 @@ package com.AdiManuLateri3
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.amap
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.loadExtractor
 import okhttp3.FormBody
 import org.json.JSONObject
 import java.net.URI
 import java.net.URL
+
+// Helper local untuk file ini
+private fun getIndexQuality(str: String?): Int {
+    return Regex("(\\d{3,4})[pP]").find(str.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
+        ?: Qualities.P1080.value
+}
 
 // --- HubCloud Extractor ---
 class HubCloud : ExtractorApi() {
@@ -48,9 +54,7 @@ class HubCloud : ExtractorApi() {
             Log.e("HubCloud", "Failed to extract href: ${e.message}")
             ""
         }
-        if (href.isBlank()) {
-            return
-        }
+        if (href.isBlank()) return
 
         val document = app.get(href).document
         val size = document.selectFirst("i#size")?.text().orEmpty()
@@ -81,16 +85,33 @@ class HubCloud : ExtractorApi() {
                         ) { this.quality = quality }
                     )
                 }
+                text.contains("10Gbps", ignoreCase = true) -> {
+                     try {
+                        val redirectUrl = app.get(link, allowRedirects = false).headers["location"]
+                        if (redirectUrl != null && "link=" in redirectUrl) {
+                            val finalLink = redirectUrl.substringAfter("link=")
+                            callback(
+                                newExtractorLink(
+                                    "10Gbps",
+                                    "10Gbps $labelExtras",
+                                    finalLink
+                                ) { this.quality = quality }
+                            )
+                        }
+                    } catch (e: Exception) {}
+                }
                 else -> {
+                    // Gunakan loadExtractor standar Cloudstream untuk link generic lainnya
                     loadExtractor(link, "", subtitleCallback, callback)
                 }
             }
         }
     }
-
-    private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: Qualities.P1080.value // Default to 1080p if unknown
+    
+    private fun getBaseUrl(url: String): String {
+        return try {
+            URI(url).let { "${it.scheme}://${it.host}" }
+        } catch (e: Exception) { "" }
     }
 }
 
@@ -128,7 +149,7 @@ open class PixelDrain : ExtractorApi() {
     }
 }
 
-// --- GDFlix Extractor ---
+// --- GDFlix Extractor (Ported Logic) ---
 open class GDFlix : ExtractorApi() {
     override val name = "GDFlix"
     override val mainUrl = "https://new6.gdflix.dad"
@@ -136,10 +157,11 @@ open class GDFlix : ExtractorApi() {
 
     override suspend fun getUrl(
         url: String,
-        referer: String?, // Reuse referer as source name usually
+        referer: String?, 
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Handle Refresh Meta Tag
         val newUrl = try {
             app.get(url)
                 .document
@@ -147,14 +169,16 @@ open class GDFlix : ExtractorApi() {
                 ?.attr("content")
                 ?.substringAfter("url=")
         } catch (e: Exception) {
-            Log.e("GDFlix", "Failed to fetch redirect: ${e.localizedMessage}")
-            return
+            url
         } ?: url
 
         val document = app.get(newUrl).document
-        val fileName = document.select("ul > li.list-group-item:contains(Name)").text()
-            .substringAfter("Name : ")
+        val fileName = document.select("ul > li.list-group-item:contains(Name)").text().substringAfter("Name : ")
+        val fileSize = document.select("ul > li.list-group-item:contains(Size)").text().substringAfter("Size : ")
         
+        val quality = getIndexQuality(fileName)
+        val sourceName = referer ?: "GDFlix"
+
         document.select("div.text-center a").amap { anchor ->
             val text = anchor.select("a").text()
             val href = anchor.attr("href")
@@ -167,8 +191,8 @@ open class GDFlix : ExtractorApi() {
                         
                         if (link.isNotBlank()) {
                             callback.invoke(
-                                newExtractorLink("GDFlix Instant", "GDFlix Instant", link) {
-                                    this.quality = Qualities.Unknown.value
+                                newExtractorLink("$sourceName Instant", "$sourceName Instant [$fileSize]", link) {
+                                    this.quality = quality
                                 }
                             )
                         }
@@ -176,8 +200,18 @@ open class GDFlix : ExtractorApi() {
                 }
                 text.contains("PixelDrain", ignoreCase = true) -> {
                      callback.invoke(
-                        newExtractorLink("GDFlix PixelDrain", "GDFlix PixelDrain", href) {
-                            this.quality = Qualities.Unknown.value
+                        newExtractorLink("$sourceName PixelDrain", "$sourceName PixelDrain [$fileSize]", href) {
+                            this.quality = quality
+                        }
+                    )
+                }
+                 text.contains("Gofile", ignoreCase = true) -> {
+                     Gofile().getUrl(href, referer, subtitleCallback, callback)
+                }
+                 text.contains("CLOUD DOWNLOAD", ignoreCase = true) -> {
+                    callback.invoke(
+                        newExtractorLink("$sourceName Cloud", "$sourceName Cloud [$fileSize]", href) {
+                            this.quality = quality
                         }
                     )
                 }
