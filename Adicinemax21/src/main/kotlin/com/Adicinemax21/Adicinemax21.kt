@@ -1,4 +1,4 @@
-package com.Adicinemax21
+package com.Adicinemax2
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
