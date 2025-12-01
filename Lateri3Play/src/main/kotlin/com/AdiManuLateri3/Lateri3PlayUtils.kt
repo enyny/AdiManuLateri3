@@ -3,6 +3,7 @@ package com.AdiManuLateri3
 import android.os.Build
 import androidx.annotation.RequiresApi
 import android.util.Base64
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
@@ -20,13 +21,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.net.URI
+import java.net.URL
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import androidx.core.net.toUri
+import org.json.JSONArray
 
 // --- General String Utils ---
 
@@ -99,7 +104,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED) ---
+// --- Extractor Helpers (With CoroutineScope Fix) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -110,7 +115,6 @@ suspend fun loadSourceNameExtractor(
     quality: Int? = null
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        // FIX: Menggunakan CoroutineScope untuk menghindari error suspension di dalam callback
         CoroutineScope(Dispatchers.IO).launch {
             callback.invoke(
                 newExtractorLink(
@@ -136,7 +140,6 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        // FIX: Menggunakan CoroutineScope
         CoroutineScope(Dispatchers.IO).launch {
             callback.invoke(
                 newExtractorLink(name, name, link.url) {
@@ -155,8 +158,6 @@ suspend fun dispatchToExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    // Jika ada logika khusus untuk HubCloud/PixelDrain, tambahkan di sini
-    // Untuk saat ini kita gunakan default loadSourceNameExtractor
     loadSourceNameExtractor(source, link, "", subtitleCallback, callback)
 }
 
@@ -196,6 +197,147 @@ suspend fun cinematickitloadBypass(url: String): String? {
     } catch (e: Exception) { null }
 }
 
+// --- MovieBox & VidFast Utils (Ported from StreamPlay) ---
+
+private fun md5(input: ByteArray): String {
+    return MessageDigest.getInstance("MD5").digest(input)
+        .joinToString("") { "%02x".format(it) }
+}
+
+private fun reverseString(input: String): String = input.reversed()
+
+fun generateXClientToken(hardcodedTimestamp: Long? = null): String {
+    val timestamp = (hardcodedTimestamp ?: System.currentTimeMillis()).toString()
+    val reversed = reverseString(timestamp)
+    val hash = md5(reversed.toByteArray())
+    return "$timestamp,$hash"
+}
+
+fun generateXTrSignature(
+    method: String,
+    accept: String? = "application/json",
+    contentType: String? = "application/json",
+    url: String,
+    body: String? = null,
+    useAltKey: Boolean = false,
+    hardcodedTimestamp: Long? = null
+): String {
+    val timestamp = hardcodedTimestamp ?: System.currentTimeMillis()
+
+    val canonical = buildCanonicalString(
+        method = method,
+        accept = accept,
+        contentType = contentType,
+        url = url,
+        body = body,
+        timestamp = timestamp
+    )
+    val secretKey = if (useAltKey) {
+        BuildConfig.MOVIEBOX_SECRET_KEY_ALT
+    } else {
+        BuildConfig.MOVIEBOX_SECRET_KEY_DEFAULT
+    }
+    val secretBytes = Base64.decode(secretKey, Base64.DEFAULT)
+    val mac = Mac.getInstance("HmacMD5").apply {
+        init(SecretKeySpec(secretBytes, "HmacMD5"))
+    }
+    val rawSignature = mac.doFinal(canonical.toByteArray(Charsets.UTF_8))
+    val signatureBase64 = Base64.encodeToString(rawSignature, Base64.NO_WRAP)
+    return "$timestamp|2|$signatureBase64"
+}
+
+private fun buildCanonicalString(
+    method: String,
+    accept: String?,
+    contentType: String?,
+    url: String,
+    body: String?,
+    timestamp: Long
+): String {
+    val parsed = url.toUri()
+    val path = parsed.path ?: ""
+    val query = if (parsed.queryParameterNames.isNotEmpty()) {
+        parsed.queryParameterNames.sorted().joinToString("&") { key ->
+            parsed.getQueryParameters(key).joinToString("&") { value ->
+                "$key=$value" 
+            }
+        }
+    } else ""
+
+    val canonicalUrl = if (query.isNotEmpty()) "$path?$query" else path
+    val bodyBytes = body?.toByteArray(Charsets.UTF_8)
+    val bodyHash = if (bodyBytes != null) {
+        val trimmed = if (bodyBytes.size > 102400) bodyBytes.copyOfRange(0, 102400) else bodyBytes
+        md5(trimmed)
+    } else ""
+
+    val bodyLength = bodyBytes?.size?.toString() ?: ""
+    return "${method.uppercase()}\n" +
+            "${accept ?: ""}\n" +
+            "${contentType ?: ""}\n" +
+            "$bodyLength\n" +
+            "$timestamp\n" +
+            "$bodyHash\n" +
+            canonicalUrl
+}
+
+// --- VidFast Specific Helper Functions ---
+
+fun hexStringToByteArray2(hex: String): ByteArray {
+    val result = ByteArray(hex.length / 2)
+    for (i in hex.indices step 2) {
+        val value = hex.substring(i, i + 2).toInt(16)
+        result[i / 2] = value.toByte()
+    }
+    return result
+}
+
+fun padData(data: ByteArray, blockSize: Int): ByteArray {
+    val padding = blockSize - (data.size % blockSize)
+    val result = ByteArray(data.size + padding)
+    System.arraycopy(data, 0, result, 0, data.size)
+    for (i in data.size until result.size) {
+        result[i] = padding.toByte()
+    }
+    return result
+}
+
+fun customEncode(input: ByteArray): String {
+    val sourceChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    val targetChars = "4stjqN6BT05-L8rQe_HxWmAVv9icYKaCDzIP1fZ7kwXRyFhd2GEng3SMJlUubOop"
+
+    val translationMap = sourceChars.zip(targetChars).toMap()
+    val encoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(input)
+    } else {
+        Base64.encodeToString(input, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    }
+
+    return encoded.map { char ->
+        translationMap[char] ?: char
+    }.joinToString("")
+}
+
+fun parseServers(jsonString: String): List<VidFastServer> {
+    val servers = mutableListOf<VidFastServer>()
+    try {
+        val jsonArray = JSONArray(jsonString)
+        for (i in 0 until jsonArray.length()) {
+            val jsonObject = jsonArray.getJSONObject(i)
+            val server = VidFastServer(
+                name = jsonObject.getString("name"),
+                description = jsonObject.getString("description"),
+                image = jsonObject.getString("image"),
+                data = jsonObject.getString("data")
+            )
+            servers.add(server)
+        }
+    } catch (e: Exception) {
+        Log.e("Lateri3Play", "Manual parsing failed: ${e.message}")
+    }
+    return servers
+}
+
 // --- Decryption & Keys ---
 
 fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
@@ -223,30 +365,6 @@ fun generateVrfAES(movieId: String, userId: String): String {
     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
     val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
     return Base64.encodeToString(encrypted, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-}
-
-private fun md5(input: ByteArray): String {
-    return MessageDigest.getInstance("MD5").digest(input)
-        .joinToString("") { "%02x".format(it) }
-}
-
-fun generateXClientToken(): String {
-    val timestamp = System.currentTimeMillis().toString()
-    val reversed = timestamp.reversed()
-    val hash = md5(reversed.toByteArray())
-    return "$timestamp,$hash"
-}
-
-fun generateXTrSignature(
-    method: String,
-    url: String,
-    body: String? = null
-): String {
-    val timestamp = System.currentTimeMillis()
-    val secretKey = "YOUR_MOVIEBOX_SECRET_HERE" 
-    val data = "$method$url${body ?: ""}$timestamp$secretKey"
-    val signature = Base64.encodeToString(md5(data.toByteArray()).toByteArray(), Base64.NO_WRAP)
-    return "$timestamp|2|$signature"
 }
 
 suspend fun hdhubgetRedirectLinks(url: String): String {
@@ -295,7 +413,7 @@ suspend fun extractMdrive(url: String): List<String> {
     } catch (e: Exception) { emptyList() }
 }
 
-// --- Stubs for compatibility ---
+// --- Stubs ---
 fun extractIframeUrl(url: String): String? = null
 fun extractProrcpUrl(url: String): String? = null
 fun extractAndDecryptSource(url: String, ref: String): List<Any> = emptyList()
