@@ -9,7 +9,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.network.CloudflareKiller
-// WebViewResolver dipanggil dengan Fully Qualified Name di bawah untuk menghindari error impor
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -648,8 +647,8 @@ object Lateri3PlayExtractor : Lateri3Play() {
 
                                     callback.invoke(
                                         newExtractorLink(
-                                            source = "MovieBox ($language)",
-                                            name = "MovieBox ($language) [$subjectTitle]",
+                                            source = "MovieBox (${language})",
+                                            name = "MovieBox (${language}) [$subjectTitle]",
                                             url = resUrl,
                                             type = when {
                                                 resUrl.startsWith("magnet:", true) -> ExtractorLinkType.MAGNET
@@ -674,8 +673,8 @@ object Lateri3PlayExtractor : Lateri3Play() {
                                 if(singleUrl.isNotEmpty()) {
                                     callback.invoke(
                                         newExtractorLink(
-                                            source = "MovieBox ($language)",
-                                            name = "MovieBox ($language) [$subjectTitle]",
+                                            source = "MovieBox (${language})",
+                                            name = "MovieBox (${language}) [$subjectTitle]",
                                             url = singleUrl,
                                             type = when {
                                                 singleUrl.startsWith("magnet:", true) -> ExtractorLinkType.MAGNET
@@ -754,7 +753,8 @@ object Lateri3PlayExtractor : Lateri3Play() {
         tmdbId: Int? = null,
         season: Int? = null,
         episode: Int? = null,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val STATIC_PATH = "hezushon/ira/2264ec23bfa5e4891e26d563e5daac61bcb05688/b544e02b"
         val url = if (season == null) "$vidfastProApi/movie/$tmdbId" else "$vidfastProApi/tv/$tmdbId/$season/$episode"
@@ -775,7 +775,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
             return
         }
         
-        // AES encryption setup (Keys from dump)
+        // AES encryption setup
         val keyHex = "1f9b96f4e6604062c39f69f4c2edd92210d44d185434b0d569b077a72975bf08"
         val ivHex = "70ed610a03c6a59c7967abf77db57f71"
         val aesKey = hexStringToByteArray2(keyHex)
