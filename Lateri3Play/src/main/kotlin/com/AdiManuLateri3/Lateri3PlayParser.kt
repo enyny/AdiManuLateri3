@@ -202,9 +202,15 @@ data class RidoUrl(val url: String?)
 
 data class Watch32(val link: String)
 
-data class WyZIESUB(val display: String, val url: String)
+// FIX: Diperbarui sesuai dump agar parsing tidak error
+data class WyZIESUB(
+    val id: String? = null,
+    val url: String,
+    val display: String,
+    val format: String? = null,
+    val language: String? = null
+)
 
-// New Data Class for VidFast & MovieBox (Ported from StreamPlay)
 data class VidFastServer(
     val name: String,
     val description: String,
