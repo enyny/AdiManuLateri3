@@ -105,7 +105,9 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (With CoroutineScope Fix) ---
+// --- Extractor Helpers (FIXED: REMOVED CoroutineScope) ---
+// Ini memperbaiki masalah "No links found" karena sekarang berjalan sinkron
+// dengan flow utama Cloudstream, sehingga hasilnya ditunggu.
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -116,20 +118,18 @@ suspend fun loadSourceNameExtractor(
     quality: Int? = null
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        CoroutineScope(Dispatchers.IO).launch {
-            callback.invoke(
-                newExtractorLink(
-                    "$source [${link.source}]",
-                    "$source [${link.source}]",
-                    link.url,
-                ) {
-                    this.quality = quality ?: link.quality
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.headers = link.headers
-                }
-            )
-        }
+        callback.invoke(
+            newExtractorLink(
+                "$source [${link.source}]",
+                "$source [${link.source}]",
+                link.url,
+            ) {
+                this.quality = quality ?: link.quality
+                this.type = link.type
+                this.referer = link.referer
+                this.headers = link.headers
+            }
+        )
     }
 }
 
@@ -141,15 +141,13 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        CoroutineScope(Dispatchers.IO).launch {
-            callback.invoke(
-                newExtractorLink(name, name, link.url) {
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.quality = link.quality
-                }
-            )
-        }
+        callback.invoke(
+            newExtractorLink(name, name, link.url) {
+                this.type = link.type
+                this.referer = link.referer
+                this.quality = link.quality
+            }
+        )
     }
 }
 
@@ -198,7 +196,7 @@ suspend fun cinematickitloadBypass(url: String): String? {
     } catch (e: Exception) { null }
 }
 
-// --- MovieBox & VidFast Utils (Ported from StreamPlay Dump) ---
+// --- MovieBox & VidFast Utils ---
 
 private fun md5(input: ByteArray): String {
     return MessageDigest.getInstance("MD5").digest(input)
@@ -233,12 +231,16 @@ fun generateXTrSignature(
         body = body,
         timestamp = timestamp
     )
-    // Mengambil key dari BuildConfig (pastikan key ini benar di build.gradle.kts)
+    // PENTING: Pastikan Keys ini diisi di build.gradle.kts
     val secretKey = if (useAltKey) {
         BuildConfig.MOVIEBOX_SECRET_KEY_ALT
     } else {
         BuildConfig.MOVIEBOX_SECRET_KEY_DEFAULT
     }
+    
+    // Cegah crash jika key masih placeholder
+    if (secretKey.contains("PlaceHolder")) return ""
+
     val secretBytes = Base64.decode(secretKey, Base64.DEFAULT)
     val mac = Mac.getInstance("HmacMD5").apply {
         init(SecretKeySpec(secretBytes, "HmacMD5"))
@@ -283,7 +285,7 @@ private fun buildCanonicalString(
             canonicalUrl
 }
 
-// --- VidFast Specific Helper Functions (Parsed from Dump) ---
+// --- VidFast Utils ---
 
 fun hexStringToByteArray2(hex: String): ByteArray {
     val result = ByteArray(hex.length / 2)
