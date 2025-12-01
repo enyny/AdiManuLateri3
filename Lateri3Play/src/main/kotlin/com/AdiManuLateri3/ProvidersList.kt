@@ -69,7 +69,7 @@ fun buildProviders(): List<Provider> {
             invokeRidomovies(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback)
         },
         Provider("watch32", "Watch32") { res, subtitleCallback, callback, _, _ ->
-            invokeWatch32APIHQ(res.title, res.season, res.episode, subtitleCallback, callback)
+            invokeWatch32APIHQ(res.title, res.season, res.episode, res.year, subtitleCallback, callback)
         },
         Provider("vidsrcxyz", "VidSrcXyz") { res, _, callback, _, _ ->
             invokeVidSrcXyz(res.imdbId, res.season, res.episode, callback)
