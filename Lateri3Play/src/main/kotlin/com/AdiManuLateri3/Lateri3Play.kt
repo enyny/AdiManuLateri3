@@ -4,33 +4,13 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.lagradost.api.Log
-import com.lagradost.cloudstream3.Actor
-import com.lagradost.cloudstream3.ActorData
-import com.lagradost.cloudstream3.ErrorLoadingException
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addSimklId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SearchResponseList
-import com.lagradost.cloudstream3.ShowStatus
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDate
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.network.CloudflareKiller
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -379,17 +359,17 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = parseJson<LinkData>(data)
-        
-        // buildProviders akan tersedia dari file ProvidersList.kt
         val providersList = buildProviders()
         val authToken = token
         
         runLimitedAsync(concurrency = 10,
             {
                 try {
-                    // Panggilan ini sekarang aman karena sudah di-import
+                    // FIX: Log jika Wyzie error
                     invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
-                } catch (_: Throwable) {}
+                } catch (e: Throwable) {
+                    Log.e("Lateri3Play", "Wyzie Error: ${e.localizedMessage}")
+                }
             },
             *providersList.map { provider ->
                 suspend {
@@ -401,7 +381,10 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
                             authToken ?: "",
                             "" 
                         )
-                    } catch (_: Throwable) {}
+                    } catch (e: Throwable) {
+                        // FIX: Log error dari setiap provider agar kelihatan di Logcat
+                        Log.e("Lateri3Play", "Provider ${provider.name} Failed: ${e.localizedMessage}")
+                    }
                 }
             }.toTypedArray()
         )
