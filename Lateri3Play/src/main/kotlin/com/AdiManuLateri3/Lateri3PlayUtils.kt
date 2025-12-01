@@ -1,5 +1,8 @@
 package com.AdiManuLateri3
 
+import android.os.Build
+import androidx.annotation.RequiresApi
+import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
@@ -24,9 +27,6 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import android.os.Build
-import androidx.annotation.RequiresApi
-import android.util.Base64
 
 // --- General String Utils ---
 
@@ -99,7 +99,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED based on StreamPlayUtils) ---
+// --- Extractor Helpers (FIXED) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -110,7 +110,7 @@ suspend fun loadSourceNameExtractor(
     quality: Int? = null
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch seperti StreamPlay
+        // FIX: Menggunakan CoroutineScope untuk menghindari error suspension di dalam callback
         CoroutineScope(Dispatchers.IO).launch {
             callback.invoke(
                 newExtractorLink(
@@ -136,7 +136,7 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit
 ) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch seperti StreamPlay
+        // FIX: Menggunakan CoroutineScope
         CoroutineScope(Dispatchers.IO).launch {
             callback.invoke(
                 newExtractorLink(name, name, link.url) {
@@ -155,6 +155,8 @@ suspend fun dispatchToExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
+    // Jika ada logika khusus untuk HubCloud/PixelDrain, tambahkan di sini
+    // Untuk saat ini kita gunakan default loadSourceNameExtractor
     loadSourceNameExtractor(source, link, "", subtitleCallback, callback)
 }
 
@@ -293,6 +295,7 @@ suspend fun extractMdrive(url: String): List<String> {
     } catch (e: Exception) { emptyList() }
 }
 
+// --- Stubs for compatibility ---
 fun extractIframeUrl(url: String): String? = null
 fun extractProrcpUrl(url: String): String? = null
 fun extractAndDecryptSource(url: String, ref: String): List<Any> = emptyList()
