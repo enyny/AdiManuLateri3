@@ -37,11 +37,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI
-// Pastikan Utils di-import
-import com.AdiManuLateri3.DomainsParser
-import com.AdiManuLateri3.runLimitedAsync
-// Import BuildConfig dari package kita sendiri
-import com.AdiManuLateri3.BuildConfig
+
+// IMPORT FIX
+import com.AdiManuLateri3.BuildConfig 
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -428,7 +426,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         val nametitle: String? = null,
     )
 
-    // (Data class lainnya sama seperti sebelumnya, tidak diulang untuk menghemat tempat)
     data class Data(val id: Int? = null, val type: String? = null)
     data class Results(@param:JsonProperty("results") val results: ArrayList<Media>? = arrayListOf())
     data class Media(
