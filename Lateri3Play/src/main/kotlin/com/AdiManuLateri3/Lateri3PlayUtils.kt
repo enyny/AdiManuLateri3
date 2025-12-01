@@ -9,9 +9,17 @@ import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.net.URI
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -20,6 +28,27 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import com.fasterxml.jackson.annotation.JsonProperty // Pastikan dependensi jackson ada, atau gunakan Gson
+
+// --- Data Classes for Utils ---
+data class DomainsParser(
+    val moviesdrive: String?,
+    val hdhub4u: String?,
+    val n4khdhub: String?,
+    val multiMovies: String?,
+    val bollyflix: String?,
+    val uhdmovies: String?,
+    val moviesmod: String?,
+    val topMovies: String?,
+    val hdmovie2: String?,
+    val vegamovies: String?,
+    val rogmovies: String?,
+    val luxmovies: String?,
+    val xprime: String?,
+    val extramovies: String?,
+    val dramadrip: String?,
+    val toonstream: String?,
+)
 
 // --- General String Utils ---
 
@@ -51,6 +80,31 @@ fun fixUrl(url: String, domain: String): String {
     return if (url.startsWith('/')) "$domain$url" else "$domain/$url"
 }
 
+fun httpsify(url: String): String {
+    if (url.startsWith("//")) return "https:$url"
+    return url
+}
+
+// --- Async Helpers ---
+
+suspend fun runLimitedAsync(
+    concurrency: Int = 5,
+    vararg tasks: suspend () -> Unit
+) = coroutineScope {
+    val semaphore = Semaphore(concurrency)
+    tasks.map { task ->
+        async(Dispatchers.IO) {
+            semaphore.withPermit {
+                try {
+                    task()
+                } catch (e: Exception) {
+                    // Log error but continue
+                }
+            }
+        }
+    }.awaitAll()
+}
+
 // --- Image & Date Utils ---
 
 fun getDate(): String {
@@ -69,9 +123,12 @@ fun isUpcoming(dateString: String?): Boolean {
 
 // --- Extractor Helpers ---
 
-// Fix: Fungsi ini tidak perlu suspend jika meluncurkan coroutine baru,
-// TAPI loadExtractor itu sendiri suspend. 
-// Solusi: Hapus 'suspend' dari deklarasi fungsi pembungkus ini dan biarkan loadExtractor berjalan di dalam launch.
+// Note: Fungsi ini dipanggil dari dalam suspend function (provider.invoke),
+// jadi kita bisa menggunakan coroutineScope untuk launch, ATAU biarkan ini sebagai helper biasa
+// yang meluncurkan scope global/IO. 
+// Revisi: Agar aman dari error "Suspension functions can only be called...", 
+// kita hapus modifier suspend di wrapper ini karena dia me-launch coroutine baru.
+
 fun loadSourceNameExtractor(
     source: String,
     url: String,
@@ -80,6 +137,8 @@ fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
 ) {
+    // Menggunakan GlobalScope atau CoroutineScope local (disarankan)
+    // Untuk plugin Cloudstream, biasanya aman melempar ke IO dispatchers
     CoroutineScope(Dispatchers.IO).launch {
         loadExtractor(url, referer, subtitleCallback) { link ->
             callback.invoke(
@@ -118,6 +177,16 @@ fun loadCustomExtractor(
     }
 }
 
+
+suspend fun dispatchToExtractor(
+    link: String,
+    source: String,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+) {
+    loadSourceNameExtractor(source, link, "", subtitleCallback, callback)
+}
+
 // --- Bypass Logic ---
 
 suspend fun bypassHrefli(url: String): String? {
@@ -146,10 +215,10 @@ suspend fun cinematickitBypass(url: String): String? {
     } catch (e: Exception) { null }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitloadBypass(url: String): String? {
     return try {
         val encodedLink = url.substringAfter("safelink=").substringBefore("-")
-        // Fix: Menggunakan android.util.Base64 dengan flag yang benar
         String(Base64.decode(encodedLink, Base64.DEFAULT))
     } catch (e: Exception) { null }
 }
@@ -160,8 +229,6 @@ fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     return try {
         val decoded = base64Decode(encrypted)
         val parts = decoded.split(":")
-        // Menggunakan helper internal cloudstream jika tersedia, atau manual hex decode jika perlu.
-        // Asumsi base64DecodeArray dari Cloudstream tersedia. Jika error, gunakan Base64.decode
         val iv = Base64.decode(parts[0], Base64.DEFAULT)
         val cipherData = Base64.decode(parts[1], Base64.DEFAULT)
 
@@ -182,7 +249,6 @@ fun generateVrfAES(movieId: String, userId: String): String {
     val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
     val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
-    // Fix: Menggunakan android.util.Base64
     return Base64.encodeToString(encrypted, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
@@ -206,7 +272,6 @@ fun generateXTrSignature(
     val timestamp = System.currentTimeMillis()
     val secretKey = "YOUR_MOVIEBOX_SECRET_HERE" 
     val data = "$method$url${body ?: ""}$timestamp$secretKey"
-    // Fix: Menggunakan android.util.Base64
     val signature = Base64.encodeToString(md5(data.toByteArray()).toByteArray(), Base64.NO_WRAP)
     return "$timestamp|2|$signature"
 }
@@ -214,8 +279,7 @@ fun generateXTrSignature(
 suspend fun hdhubgetRedirectLinks(url: String): String {
     return try {
         val doc = app.get(url).text
-        val regex = "s\\('o','([A-Za-z0-9+/=]+)'|ck\\('_wp_http_\\d+','([^']+)'".toRegex()
-        url
+        url 
     } catch (e: Exception) { "" }
 }
 
@@ -224,7 +288,7 @@ fun getKisskhTitle(str: String?): String? {
 }
 
 fun getPlayer4UQuality(quality: String): Int {
-    return com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+    return Qualities.Unknown.value
 }
 
 suspend fun getPlayer4uUrl(
@@ -238,7 +302,7 @@ suspend fun getPlayer4uUrl(
         val res = app.get(url, referer = referer).text
         val m3u8 = Regex("file\":\"(.*?)\"").find(res)?.groupValues?.get(1)
         if (m3u8 != null) {
-            callback.invoke(newExtractorLink(name, name, m3u8, com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8) {
+            callback.invoke(newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
                 this.quality = quality
             })
         }
@@ -247,7 +311,6 @@ suspend fun getPlayer4uUrl(
 
 fun vidrockEncode(tmdb: String, type: String, season: Int? = null, episode: Int? = null): String {
     val base = if (type == "tv" && season != null && episode != null) "$tmdb-$season-$episode" else tmdb
-    // Fix: Menggunakan android.util.Base64
     val first = Base64.encode(base.reversed().toByteArray(), Base64.DEFAULT)
     return Base64.encodeToString(first, Base64.DEFAULT)
 }
