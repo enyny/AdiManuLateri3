@@ -6,12 +6,15 @@ import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -117,7 +120,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (Fixed: Added 'suspend') ---
+// --- Extractor Helpers ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -212,7 +215,6 @@ fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     return try {
         val decoded = base64Decode(encrypted)
         val parts = decoded.split(":")
-        // Menggunakan Base64 android util untuk dekripsi manual
         val iv = Base64.decode(parts[0], Base64.DEFAULT)
         val cipherData = Base64.decode(parts[1], Base64.DEFAULT)
 
@@ -272,12 +274,7 @@ fun getKisskhTitle(str: String?): String? {
 }
 
 fun getPlayer4UQuality(quality: String): Int {
-    return when {
-        quality.contains("2160") || quality.contains("4K") -> Qualities.P2160.value
-        quality.contains("1080") -> Qualities.P1080.value
-        quality.contains("720") -> Qualities.P720.value
-        else -> Qualities.Unknown.value
-    }
+    return Qualities.Unknown.value
 }
 
 suspend fun getPlayer4uUrl(
