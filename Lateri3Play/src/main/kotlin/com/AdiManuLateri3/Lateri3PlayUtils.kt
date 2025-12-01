@@ -6,15 +6,12 @@ import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
-import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -31,22 +28,22 @@ import javax.crypto.spec.SecretKeySpec
 
 // --- Data Classes ---
 data class DomainsParser(
-    val moviesdrive: String?,
-    val hdhub4u: String?,
-    val n4khdhub: String?,
-    val multiMovies: String?,
-    val bollyflix: String?,
-    val uhdmovies: String?,
-    val moviesmod: String?,
-    val topMovies: String?,
-    val hdmovie2: String?,
-    val vegamovies: String?,
-    val rogmovies: String?,
-    val luxmovies: String?,
-    val xprime: String?,
-    val extramovies: String?,
-    val dramadrip: String?,
-    val toonstream: String?,
+    val moviesdrive: String? = null,
+    val hdhub4u: String? = null,
+    val n4khdhub: String? = null,
+    val multiMovies: String? = null,
+    val bollyflix: String? = null,
+    val uhdmovies: String? = null,
+    val moviesmod: String? = null,
+    val topMovies: String? = null,
+    val hdmovie2: String? = null,
+    val vegamovies: String? = null,
+    val rogmovies: String? = null,
+    val luxmovies: String? = null,
+    val xprime: String? = null,
+    val extramovies: String? = null,
+    val dramadrip: String? = null,
+    val toonstream: String? = null,
 )
 
 // --- General String Utils ---
@@ -120,7 +117,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers ---
+// --- Extractor Helpers (FIXED: Added 'suspend') ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -130,6 +127,7 @@ suspend fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
 ) {
+    // loadExtractor adalah fungsi suspend, jadi wrapper ini juga harus suspend
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(
@@ -153,6 +151,7 @@ suspend fun loadCustomExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
+    // loadExtractor adalah fungsi suspend, jadi wrapper ini juga harus suspend
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(name, name, link.url) {
