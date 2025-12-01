@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.network.CloudflareKiller
+// import com.lagradost.cloudstream3.network.WebViewResolver // Kita panggil langsung di bawah
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -387,7 +388,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         } catch (e: Exception) { Log.e("RidoMovies", "$e") }
     }
 
-    // --- 9. Watch32 ---
+    // --- 9. Watch32 (FIXED with year parameter) ---
     suspend fun invokeWatch32APIHQ(
         title: String?,
         season: Int? = null,
@@ -887,7 +888,8 @@ object Lateri3PlayExtractor : Lateri3Play() {
     suspend fun invokeVidlink(tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val vidlink = "https://vidlink.pro"
         val url = if (season == null) "$vidlink/movie/$tmdbId" else "$vidlink/tv/$tmdbId/$season/$episode"
-        val resolver = WebViewResolver(Regex("""\.pro/api/b.*"""))
+        // Gunakan Fully Qualified Name untuk menghindari error Unresolved reference
+        val resolver = com.lagradost.cloudstream3.network.WebViewResolver(Regex("""\.pro/api/b.*"""))
         val iframe = app.get(url, interceptor = resolver).url
     }
 
