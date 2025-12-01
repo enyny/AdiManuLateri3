@@ -1,8 +1,5 @@
 package com.AdiManuLateri3
 
-import android.os.Build
-import androidx.annotation.RequiresApi
-import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
@@ -11,10 +8,12 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.net.URI
@@ -25,26 +24,9 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-
-// --- Data Classes ---
-data class DomainsParser(
-    val moviesdrive: String? = null,
-    val hdhub4u: String? = null,
-    val n4khdhub: String? = null,
-    val multiMovies: String? = null,
-    val bollyflix: String? = null,
-    val uhdmovies: String? = null,
-    val moviesmod: String? = null,
-    val topMovies: String? = null,
-    val hdmovie2: String? = null,
-    val vegamovies: String? = null,
-    val rogmovies: String? = null,
-    val luxmovies: String? = null,
-    val xprime: String? = null,
-    val extramovies: String? = null,
-    val dramadrip: String? = null,
-    val toonstream: String? = null,
-)
+import android.os.Build
+import androidx.annotation.RequiresApi
+import android.util.Base64
 
 // --- General String Utils ---
 
@@ -117,7 +99,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED with coroutineScope) ---
+// --- Extractor Helpers (FIXED based on StreamPlayUtils) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -126,20 +108,23 @@ suspend fun loadSourceNameExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) = coroutineScope { // FIX: Tambahkan coroutineScope
+) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        callback.invoke(
-            newExtractorLink(
-                "$source [${link.source}]",
-                "$source [${link.source}]",
-                link.url,
-            ) {
-                this.quality = quality ?: link.quality
-                this.type = link.type
-                this.referer = link.referer
-                this.headers = link.headers
-            }
-        )
+        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch seperti StreamPlay
+        CoroutineScope(Dispatchers.IO).launch {
+            callback.invoke(
+                newExtractorLink(
+                    "$source [${link.source}]",
+                    "$source [${link.source}]",
+                    link.url,
+                ) {
+                    this.quality = quality ?: link.quality
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.headers = link.headers
+                }
+            )
+        }
     }
 }
 
@@ -149,15 +134,18 @@ suspend fun loadCustomExtractor(
     referer: String? = null,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
-) = coroutineScope { // FIX: Tambahkan coroutineScope
+) {
     loadExtractor(url, referer, subtitleCallback) { link ->
-        callback.invoke(
-            newExtractorLink(name, name, link.url) {
-                this.type = link.type
-                this.referer = link.referer
-                this.quality = link.quality
-            }
-        )
+        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch seperti StreamPlay
+        CoroutineScope(Dispatchers.IO).launch {
+            callback.invoke(
+                newExtractorLink(name, name, link.url) {
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.quality = link.quality
+                }
+            )
+        }
     }
 }
 
