@@ -117,7 +117,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED: Added 'suspend') ---
+// --- Extractor Helpers (FIXED with coroutineScope) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -126,8 +126,7 @@ suspend fun loadSourceNameExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) {
-    // loadExtractor adalah fungsi suspend, jadi wrapper ini juga harus suspend
+) = coroutineScope { // FIX: Tambahkan coroutineScope
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(
@@ -150,8 +149,7 @@ suspend fun loadCustomExtractor(
     referer: String? = null,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
-) {
-    // loadExtractor adalah fungsi suspend, jadi wrapper ini juga harus suspend
+) = coroutineScope { // FIX: Tambahkan coroutineScope
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(name, name, link.url) {
