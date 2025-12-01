@@ -12,12 +12,10 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.net.URI
@@ -105,9 +103,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED: REMOVED CoroutineScope) ---
-// Ini memperbaiki masalah "No links found" karena sekarang berjalan sinkron
-// dengan flow utama Cloudstream, sehingga hasilnya ditunggu.
+// --- Extractor Helpers (FIXED with coroutineScope) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -116,7 +112,7 @@ suspend fun loadSourceNameExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) {
+) = coroutineScope { // FIX: Menggunakan coroutineScope body
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(
@@ -139,7 +135,7 @@ suspend fun loadCustomExtractor(
     referer: String? = null,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
-) {
+) = coroutineScope { // FIX: Menggunakan coroutineScope body
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(name, name, link.url) {
@@ -231,6 +227,7 @@ fun generateXTrSignature(
         body = body,
         timestamp = timestamp
     )
+    
     // PENTING: Pastikan Keys ini diisi di build.gradle.kts
     val secretKey = if (useAltKey) {
         BuildConfig.MOVIEBOX_SECRET_KEY_ALT
