@@ -105,7 +105,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED) ---
+// --- Extractor Helpers (FINAL FIX: Removed expression body, added IO scope for callback) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -115,22 +115,26 @@ suspend fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
     size: String = ""
-) = coroutineScope { // FIX: Ditambahkan coroutineScope
+) {
     val fixSize = if(size.isNotEmpty()) " $size" else ""
+    // FIX: Panggilan langsung di dalam suspend function, bukan di dalam = coroutineScope
     loadExtractor(url, referer, subtitleCallback) { link ->
-        callback.invoke(
-            newExtractorLink(
-                "$source[${link.source}$fixSize]",
-                "$source[${link.source}$fixSize]",
-                link.url,
-            ) {
-                this.quality = quality ?: link.quality
-                this.type = link.type
-                this.referer = link.referer
-                this.headers = link.headers
-                this.extractorData = link.extractorData
-            }
-        )
+        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch agar aman dan sesuai StreamPlay
+        CoroutineScope(Dispatchers.IO).launch {
+            callback.invoke(
+                newExtractorLink(
+                    "$source[${link.source}$fixSize]",
+                    "$source[${link.source}$fixSize]",
+                    link.url,
+                ) {
+                    this.quality = quality ?: link.quality
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.headers = link.headers
+                    this.extractorData = link.extractorData
+                }
+            )
+        }
     }
 }
 
@@ -141,15 +145,21 @@ suspend fun loadCustomExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) = coroutineScope { // FIX: Ditambahkan coroutineScope
+) {
+    // FIX: Panggilan langsung di dalam suspend function
     loadExtractor(url, referer, subtitleCallback) { link ->
-        callback.invoke(
-            newExtractorLink(name, name, link.url) {
-                this.type = link.type
-                this.referer = link.referer
-                this.quality = link.quality
-            }
-        )
+        // FIX: Menggunakan CoroutineScope(Dispatchers.IO).launch
+        CoroutineScope(Dispatchers.IO).launch {
+            callback.invoke(
+                newExtractorLink(name, name, link.url) {
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.quality = link.quality
+                    this.headers = link.headers
+                    this.extractorData = link.extractorData
+                }
+            )
+        }
     }
 }
 
@@ -188,6 +198,7 @@ suspend fun cinematickitBypass(url: String): String? {
         if (encodedLink.isEmpty()) return null
         val decodedUrl = base64Decode(encodedLink)
         
+        // Logika tambahan dari StreamPlay untuk redirect
         val doc = app.get(decodedUrl).documentLarge
         val goValue = doc.select("form#landing input[name=go]").attr("value")
         if (goValue.isNotBlank()) {
