@@ -6,14 +6,12 @@ import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
-import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.jsoup.Jsoup
 import java.net.URI
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -71,7 +69,10 @@ fun isUpcoming(dateString: String?): Boolean {
 
 // --- Extractor Helpers ---
 
-suspend fun loadSourceNameExtractor(
+// Fix: Fungsi ini tidak perlu suspend jika meluncurkan coroutine baru,
+// TAPI loadExtractor itu sendiri suspend. 
+// Solusi: Hapus 'suspend' dari deklarasi fungsi pembungkus ini dan biarkan loadExtractor berjalan di dalam launch.
+fun loadSourceNameExtractor(
     source: String,
     url: String,
     referer: String? = null,
@@ -79,8 +80,8 @@ suspend fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
 ) {
-    loadExtractor(url, referer, subtitleCallback) { link ->
-        CoroutineScope(Dispatchers.IO).launch {
+    CoroutineScope(Dispatchers.IO).launch {
+        loadExtractor(url, referer, subtitleCallback) { link ->
             callback.invoke(
                 newExtractorLink(
                     "$source [${link.source}]",
@@ -97,25 +98,27 @@ suspend fun loadSourceNameExtractor(
     }
 }
 
-suspend fun loadCustomExtractor(
+fun loadCustomExtractor(
     name: String,
     url: String,
     referer: String? = null,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    loadExtractor(url, referer, subtitleCallback) { link ->
-        callback.invoke(
-            newExtractorLink(name, name, link.url) {
-                this.type = link.type
-                this.referer = link.referer
-                this.quality = link.quality
-            }
-        )
+    CoroutineScope(Dispatchers.IO).launch {
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            callback.invoke(
+                newExtractorLink(name, name, link.url) {
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.quality = link.quality
+                }
+            )
+        }
     }
 }
 
-// --- Bypass Logic (Hrefli, Cinematic, etc) ---
+// --- Bypass Logic ---
 
 suspend fun bypassHrefli(url: String): String? {
     try {
@@ -143,11 +146,11 @@ suspend fun cinematickitBypass(url: String): String? {
     } catch (e: Exception) { null }
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitloadBypass(url: String): String? {
     return try {
         val encodedLink = url.substringAfter("safelink=").substringBefore("-")
-        String(Base64.getDecoder().decode(encodedLink))
+        // Fix: Menggunakan android.util.Base64 dengan flag yang benar
+        String(Base64.decode(encodedLink, Base64.DEFAULT))
     } catch (e: Exception) { null }
 }
 
@@ -157,8 +160,10 @@ fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     return try {
         val decoded = base64Decode(encrypted)
         val parts = decoded.split(":")
-        val iv = com.lagradost.cloudstream3.base64DecodeArray(parts[0])
-        val cipherData = com.lagradost.cloudstream3.base64DecodeArray(parts[1])
+        // Menggunakan helper internal cloudstream jika tersedia, atau manual hex decode jika perlu.
+        // Asumsi base64DecodeArray dari Cloudstream tersedia. Jika error, gunakan Base64.decode
+        val iv = Base64.decode(parts[0], Base64.DEFAULT)
+        val cipherData = Base64.decode(parts[1], Base64.DEFAULT)
 
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         val secretKey = SecretKeySpec(key, "AES")
@@ -177,7 +182,8 @@ fun generateVrfAES(movieId: String, userId: String): String {
     val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
     val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(encrypted)
+    // Fix: Menggunakan android.util.Base64
+    return Base64.encodeToString(encrypted, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
 private fun md5(input: ByteArray): String {
@@ -200,7 +206,8 @@ fun generateXTrSignature(
     val timestamp = System.currentTimeMillis()
     val secretKey = "YOUR_MOVIEBOX_SECRET_HERE" 
     val data = "$method$url${body ?: ""}$timestamp$secretKey"
-    val signature = com.lagradost.cloudstream3.base64Encode(md5(data.toByteArray()).toByteArray())
+    // Fix: Menggunakan android.util.Base64
+    val signature = Base64.encodeToString(md5(data.toByteArray()).toByteArray(), Base64.NO_WRAP)
     return "$timestamp|2|$signature"
 }
 
@@ -208,7 +215,6 @@ suspend fun hdhubgetRedirectLinks(url: String): String {
     return try {
         val doc = app.get(url).text
         val regex = "s\\('o','([A-Za-z0-9+/=]+)'|ck\\('_wp_http_\\d+','([^']+)'".toRegex()
-        // Simplifikasi: kembalikan url langsung jika dekripsi gagal
         url
     } catch (e: Exception) { "" }
 }
@@ -241,9 +247,9 @@ suspend fun getPlayer4uUrl(
 
 fun vidrockEncode(tmdb: String, type: String, season: Int? = null, episode: Int? = null): String {
     val base = if (type == "tv" && season != null && episode != null) "$tmdb-$season-$episode" else tmdb
-    return com.lagradost.cloudstream3.base64Encode(
-        com.lagradost.cloudstream3.base64Encode(base.reversed().toByteArray()).toByteArray()
-    )
+    // Fix: Menggunakan android.util.Base64
+    val first = Base64.encode(base.reversed().toByteArray(), Base64.DEFAULT)
+    return Base64.encodeToString(first, Base64.DEFAULT)
 }
 
 suspend fun extractMdrive(url: String): List<String> {
