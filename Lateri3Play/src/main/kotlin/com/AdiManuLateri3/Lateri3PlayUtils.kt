@@ -105,7 +105,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers ---
+// --- Extractor Helpers (FIXED) ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -115,7 +115,7 @@ suspend fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
     size: String = ""
-) {
+) = coroutineScope {
     val fixSize = if(size.isNotEmpty()) " $size" else ""
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
@@ -141,7 +141,7 @@ suspend fun loadCustomExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) {
+) = coroutineScope {
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(name, name, link.url) {
@@ -187,6 +187,22 @@ suspend fun cinematickitBypass(url: String): String? {
         val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
         if (encodedLink.isEmpty()) return null
         val decodedUrl = base64Decode(encodedLink)
+        
+        // Logika tambahan dari StreamPlay untuk redirect
+        val doc = app.get(decodedUrl).documentLarge
+        val goValue = doc.select("form#landing input[name=go]").attr("value")
+        if (goValue.isNotBlank()) {
+             val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
+             val responseDoc = app.get(decodedGoUrl).documentLarge
+             val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data()
+             val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
+             val match = regex.find(script ?: "")
+             val redirectPath = match?.groupValues?.get(1)
+             if (redirectPath != null) {
+                 return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
+             }
+        }
+        
         if (decodedUrl.startsWith("http")) decodedUrl else null
     } catch (e: Exception) { null }
 }
@@ -346,7 +362,6 @@ fun parseServers(jsonString: String): List<VidFastServer> {
 
 fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     return try {
-        // FIX: Menggunakan Base64 Android
         val decoded = Base64.decode(encrypted, Base64.DEFAULT)
         val parts = String(decoded).split(":")
         val iv = Base64.decode(parts[0], Base64.DEFAULT)
@@ -370,7 +385,6 @@ fun generateVrfAES(movieId: String, userId: String): String {
     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
     val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
     
-    // FIX: Menggunakan Base64 Android
     return Base64.encodeToString(encrypted, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
@@ -386,44 +400,71 @@ fun getKisskhTitle(str: String?): String? {
 }
 
 fun getPlayer4UQuality(quality: String): Int {
-    return Qualities.Unknown.value
+    return when (quality) {
+        "4K", "2160P" -> Qualities.P2160.value
+        "FHD", "1080P" -> Qualities.P1080.value
+        "HQ", "HD", "720P", "DVDRIP" -> Qualities.P720.value
+        "480P" -> Qualities.P480.value
+        else -> Qualities.Unknown.value
+    }
 }
 
 suspend fun getPlayer4uUrl(
     name: String,
     quality: Int,
     url: String,
-    referer: String,
+    referer: String?,
     callback: (ExtractorLink) -> Unit
 ) {
     try {
-        val res = app.get(url, referer = referer).text
-        val m3u8 = Regex("file\":\"(.*?)\"").find(res)?.groupValues?.get(1)
-        if (m3u8 != null) {
-            callback.invoke(newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
-                this.quality = quality
-            })
-        }
+        val response = app.get(url, referer = referer)
+        val m3u8 = Regex("\"hls2\":\\s*\"(.*?m3u8.*?)\"").find(response.text)?.groupValues?.getOrNull(1)
+            ?: return
+            
+        callback.invoke(newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
+            this.quality = quality
+        })
     } catch (e: Exception) {}
 }
 
 fun vidrockEncode(tmdb: String, type: String, season: Int? = null, episode: Int? = null): String {
-    val base = if (type == "tv" && season != null && episode != null) "$tmdb-$season-$episode" else tmdb
+    val base = if (type == "tv" && season != null && episode != null) {
+        "$tmdb-$season-$episode"
+    } else {
+        tmdb
+    }
     val first = Base64.encodeToString(base.reversed().toByteArray(), Base64.DEFAULT)
     return Base64.encodeToString(first.toByteArray(), Base64.DEFAULT)
 }
 
 suspend fun extractMdrive(url: String): List<String> {
+    val regex = Regex("hubcloud|gdflix|gdlink", RegexOption.IGNORE_CASE)
     return try {
-        app.get(url).document.select("a[href]").map { it.attr("href") }
-            .filter { it.contains("hubcloud") || it.contains("gdflix") }
+        app.get(url).documentLarge.select("a[href]").mapNotNull { 
+            val href = it.attr("href")
+            if(regex.containsMatchIn(href)) href else null 
+        }
     } catch (e: Exception) { emptyList() }
 }
 
-// --- Stubs ---
-fun extractIframeUrl(url: String): String? = null
-fun extractProrcpUrl(url: String): String? = null
-fun extractAndDecryptSource(url: String, ref: String): List<Any> = emptyList()
-fun extractMovieAPIlinks(s: String, m: String, api: String): String = ""
-fun generateWpKey(r: String, m: String): String = ""
-fun getLanguage(s: String): String = "English"
+fun extractMovieAPIlinks(s: String, m: String, api: String): String {
+    return "" 
+}
+
+fun generateWpKey(r: String, m: String): String {
+     val rList = r.split("\\x").toTypedArray()
+    var n = ""
+    val decodedM = String(Base64.decode(m.split("").reversed().joinToString(""), Base64.DEFAULT).toCharArray())
+    for (s in decodedM.split("|")) {
+        n += "\\x" + rList[Integer.parseInt(s) + 1]
+    }
+    return n
+}
+
+fun getLanguage(s: String): String {
+    return when (s.lowercase()) {
+        "en", "eng" -> "English"
+        "id", "ind" -> "Indonesian"
+        else -> s
+    }
+}
