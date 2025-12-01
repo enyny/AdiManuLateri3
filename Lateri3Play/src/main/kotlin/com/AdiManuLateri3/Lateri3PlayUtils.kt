@@ -32,6 +32,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import androidx.core.net.toUri
 import org.json.JSONArray
+import com.AdiManuLateri3.BuildConfig 
 
 // --- General String Utils ---
 
@@ -197,7 +198,7 @@ suspend fun cinematickitloadBypass(url: String): String? {
     } catch (e: Exception) { null }
 }
 
-// --- MovieBox & VidFast Utils (Ported from StreamPlay) ---
+// --- MovieBox & VidFast Utils (Ported from StreamPlay Dump) ---
 
 private fun md5(input: ByteArray): String {
     return MessageDigest.getInstance("MD5").digest(input)
@@ -232,6 +233,7 @@ fun generateXTrSignature(
         body = body,
         timestamp = timestamp
     )
+    // Mengambil key dari BuildConfig (pastikan key ini benar di build.gradle.kts)
     val secretKey = if (useAltKey) {
         BuildConfig.MOVIEBOX_SECRET_KEY_ALT
     } else {
@@ -281,7 +283,7 @@ private fun buildCanonicalString(
             canonicalUrl
 }
 
-// --- VidFast Specific Helper Functions ---
+// --- VidFast Specific Helper Functions (Parsed from Dump) ---
 
 fun hexStringToByteArray2(hex: String): ByteArray {
     val result = ByteArray(hex.length / 2)
