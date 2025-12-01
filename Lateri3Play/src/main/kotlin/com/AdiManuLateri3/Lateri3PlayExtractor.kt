@@ -17,7 +17,6 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.Session
@@ -31,9 +30,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLDecoder
 import java.util.ArrayList
-
-// CRITICAL IMPORT
-import com.AdiManuLateri3.BuildConfig
+import com.AdiManuLateri3.BuildConfig // PENTING: Import ini mengatasi error "Unresolved reference 'BuildConfig'"
 
 val session = Session(Requests().baseClient)
 
@@ -386,11 +383,11 @@ object Lateri3PlayExtractor : Lateri3Play() {
     ) {
         if (title.isNullOrBlank()) return
         val Watch32 = "https://watch32.sx"
-        val searchUrl = "$Watch32/search/${title?.trim()?.replace(" ", "-")}"
+        val searchUrl = "$Watch32/search/${title.trim().replace(" ", "-")}"
         try {
             val doc = app.get(searchUrl).documentLarge
             val matchedElement = doc.select("div.flw-item").firstOrNull { 
-                it.selectFirst("h2.film-name a")?.text()?.contains(title ?: "", true) == true 
+                it.selectFirst("h2.film-name a")?.text()?.contains(title, true) == true 
             }?.selectFirst("h2.film-name a") ?: return
             
             val detailUrl = Watch32 + matchedElement.attr("href")
@@ -528,7 +525,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         try {
             val response = app.post(url, headers = headers, requestBody = jsonBody.toRequestBody("application/json".toMediaType()))
             if (response.code == 200) {
-                // Parsing logic simplified
+                // Placeholder logic
             }
         } catch (e: Exception) { Log.e("MovieBox", "$e") }
         return true
@@ -598,7 +595,6 @@ object Lateri3PlayExtractor : Lateri3Play() {
     // --- 20. WatchSoMuch ---
     suspend fun invokeWatchsomuch(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
         val id = imdbId?.removePrefix("tt") ?: return
-        val url = "https://watchsomuch.tv/Watch/ajMovieTorrents.aspx"
     }
 
     // --- 21. Wyzie Subtitle ---
