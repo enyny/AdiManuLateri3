@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.network.CloudflareKiller
-// import com.lagradost.cloudstream3.network.WebViewResolver // Kita panggil langsung di bawah
+// WebViewResolver dipanggil dengan Fully Qualified Name di bawah untuk menghindari error impor
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -388,7 +388,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         } catch (e: Exception) { Log.e("RidoMovies", "$e") }
     }
 
-    // --- 9. Watch32 (FIXED with year parameter) ---
+    // --- 9. Watch32 ---
     suspend fun invokeWatch32APIHQ(
         title: String?,
         season: Int? = null,
@@ -524,7 +524,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         } catch (e: Exception) { Log.e("UHDMovies", "$e") }
     }
 
-    // --- 14. MovieBox (PORTED FROM STREAMPLAY) ---
+    // --- 14. MovieBox (PORTED & OPTIMIZED) ---
     suspend fun invokeMovieBox(
         title: String?,
         season: Int? = 0,
@@ -749,7 +749,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         }
     }
 
-    // --- 15. VidFast (PORTED FROM STREAMPLAY) ---
+    // --- 15. VidFast (PORTED & OPTIMIZED) ---
     suspend fun invokeVidFast(
         tmdbId: Int? = null,
         season: Int? = null,
@@ -775,7 +775,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
             return
         }
         
-        // AES encryption setup
+        // AES encryption setup (Keys from dump)
         val keyHex = "1f9b96f4e6604062c39f69f4c2edd92210d44d185434b0d569b077a72975bf08"
         val ivHex = "70ed610a03c6a59c7967abf77db57f71"
         val aesKey = hexStringToByteArray2(keyHex)
@@ -898,7 +898,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         val id = imdbId?.removePrefix("tt") ?: return
     }
 
-    // --- 21. Wyzie Subtitle ---
+    // --- 21. Wyzie Subtitle (FIXED) ---
     suspend fun invokeWyZIESUBAPI(imdbId: String? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit) {
         if (imdbId.isNullOrBlank()) return
         val url = if(season != null) "https://sub.wyzie.ru/search?id=$imdbId&season=$season&episode=$episode" else "https://sub.wyzie.ru/search?id=$imdbId"
