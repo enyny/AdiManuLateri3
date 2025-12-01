@@ -38,8 +38,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI
 
-// IMPORT FIX
+// Import Wajib
 import com.AdiManuLateri3.BuildConfig 
+import com.AdiManuLateri3.DomainsParser
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -50,6 +51,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
+    // ... (Isi file sama seperti sebelumnya)
     override var name = "Lateri3Play"
     override val hasMainPage = true
     override val instantLinkLoading = true
