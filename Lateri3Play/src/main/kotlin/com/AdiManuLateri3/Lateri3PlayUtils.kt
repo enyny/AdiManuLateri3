@@ -117,7 +117,7 @@ fun isUpcoming(dateString: String?): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- Extractor Helpers (FIXED: suspend added, removed extra launch) ---
+// --- Extractor Helpers (Fixed: Added 'suspend') ---
 
 suspend fun loadSourceNameExtractor(
     source: String,
@@ -173,7 +173,7 @@ suspend fun dispatchToExtractor(
 // --- Bypass Logic ---
 
 suspend fun bypassHrefli(url: String): String? {
-    try {
+    return try {
         val host = getBaseUrl(url)
         var res = app.get(url).document
         val formUrl = res.select("form#landing").attr("action")
@@ -185,8 +185,8 @@ suspend fun bypassHrefli(url: String): String? {
         val driveUrl = app.get("$host?go=$skToken", cookies = mapOf(skToken to "${formData["_wp_http2"]}")).document
             .selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
             
-        return driveUrl
-    } catch (e: Exception) { return null }
+        driveUrl
+    } catch (e: Exception) { null }
 }
 
 suspend fun cinematickitBypass(url: String): String? {
@@ -212,6 +212,7 @@ fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     return try {
         val decoded = base64Decode(encrypted)
         val parts = decoded.split(":")
+        // Menggunakan Base64 android util untuk dekripsi manual
         val iv = Base64.decode(parts[0], Base64.DEFAULT)
         val cipherData = Base64.decode(parts[1], Base64.DEFAULT)
 
@@ -262,7 +263,7 @@ fun generateXTrSignature(
 suspend fun hdhubgetRedirectLinks(url: String): String {
     return try {
         val doc = app.get(url).text
-        url // Simplified return for now
+        url 
     } catch (e: Exception) { "" }
 }
 
@@ -271,7 +272,12 @@ fun getKisskhTitle(str: String?): String? {
 }
 
 fun getPlayer4UQuality(quality: String): Int {
-    return Qualities.Unknown.value
+    return when {
+        quality.contains("2160") || quality.contains("4K") -> Qualities.P2160.value
+        quality.contains("1080") -> Qualities.P1080.value
+        quality.contains("720") -> Qualities.P720.value
+        else -> Qualities.Unknown.value
+    }
 }
 
 suspend fun getPlayer4uUrl(
