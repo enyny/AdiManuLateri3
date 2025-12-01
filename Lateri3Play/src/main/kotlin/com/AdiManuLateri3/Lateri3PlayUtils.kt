@@ -115,7 +115,7 @@ suspend fun loadSourceNameExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
     size: String = ""
-) = coroutineScope {
+) = coroutineScope { // FIX: Ditambahkan coroutineScope
     val fixSize = if(size.isNotEmpty()) " $size" else ""
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
@@ -141,7 +141,7 @@ suspend fun loadCustomExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null
-) = coroutineScope {
+) = coroutineScope { // FIX: Ditambahkan coroutineScope
     loadExtractor(url, referer, subtitleCallback) { link ->
         callback.invoke(
             newExtractorLink(name, name, link.url) {
@@ -188,7 +188,6 @@ suspend fun cinematickitBypass(url: String): String? {
         if (encodedLink.isEmpty()) return null
         val decodedUrl = base64Decode(encodedLink)
         
-        // Logika tambahan dari StreamPlay untuk redirect
         val doc = app.get(decodedUrl).documentLarge
         val goValue = doc.select("form#landing input[name=go]").attr("value")
         if (goValue.isNotBlank()) {
@@ -325,6 +324,7 @@ fun padData(data: ByteArray, blockSize: Int): ByteArray {
     return result
 }
 
+// FIX: Custom charset for VidFast
 fun customEncode(input: ByteArray): String {
     val sourceChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
     val targetChars = "7EkRi2WnMSlgLbXm_jy1vtO69ehrAV0-saUB5FGpoq3QuNIZ8wJ4PfdHxzTDKYCc"
@@ -454,9 +454,13 @@ fun extractMovieAPIlinks(s: String, m: String, api: String): String {
 fun generateWpKey(r: String, m: String): String {
      val rList = r.split("\\x").toTypedArray()
     var n = ""
-    val decodedM = String(Base64.decode(m.split("").reversed().joinToString(""), Base64.DEFAULT).toCharArray())
+    // FIX: Menggunakan String(...) dengan ByteArray dari Base64.decode
+    val decodedM = String(Base64.decode(m.split("").reversed().joinToString(""), Base64.DEFAULT))
     for (s in decodedM.split("|")) {
-        n += "\\x" + rList[Integer.parseInt(s) + 1]
+        val index = s.toIntOrNull()
+        if (index != null) {
+            n += "\\x" + rList[index + 1]
+        }
     }
     return n
 }
