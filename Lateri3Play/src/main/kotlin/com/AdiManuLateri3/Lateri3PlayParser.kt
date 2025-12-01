@@ -175,7 +175,7 @@ data class MediaDetail(
     @get:JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf()
 )
 
-// --- Provider & Extractor Specific Data Classes ---
+// --- Extractor Specific Data Classes ---
 
 data class ResponseHash(val embed_url: String)
 
@@ -203,3 +203,11 @@ data class RidoUrl(val url: String?)
 data class Watch32(val link: String)
 
 data class WyZIESUB(val display: String, val url: String)
+
+// New Data Class for VidFast
+data class VidFastServer(
+    val name: String,
+    val description: String,
+    val image: String,
+    val data: String
+)
