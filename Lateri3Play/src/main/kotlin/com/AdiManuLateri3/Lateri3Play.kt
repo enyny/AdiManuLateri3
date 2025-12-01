@@ -1,4 +1,4 @@
-package com.AdiManuLateri
+package com.AdiManuLateri3
 
 import android.content.SharedPreferences
 import android.os.Build
