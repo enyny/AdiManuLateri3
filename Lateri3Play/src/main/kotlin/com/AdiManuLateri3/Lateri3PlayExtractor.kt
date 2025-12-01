@@ -254,7 +254,7 @@ object Lateri3PlayExtractor : Lateri3Play() {
         }
     }
 
-    // --- 6. Vidsrccc (FIXED) ---
+    // --- 6. Vidsrccc ---
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun invokeVidsrccc(
         id: Int? = null,
@@ -273,7 +273,6 @@ object Lateri3PlayExtractor : Lateri3Play() {
                 variables[match.groupValues[1]] = match.groupValues[2].ifEmpty { match.groupValues[3] }
             }
             
-            // Fix: Deklarasikan variabel dengan aman untuk menghindari error Unresolved Reference
             val vvalue = variables["v"] ?: ""
             val userId = variables["userId"] ?: ""
             val imdbId = variables["imdbId"] ?: ""
@@ -281,8 +280,6 @@ object Lateri3PlayExtractor : Lateri3Play() {
             val movieType = variables["movieType"] ?: ""
 
             val vrf = generateVrfAES(movieId, userId)
-            
-            // Gunakan variabel yang sudah dideklarasikan di atas
             val apiurl = if (season == null) {
                 "$vidsrctoAPI/api/$id/servers?id=$id&type=$movieType&v=$vvalue=&vrf=$vrf&imdbId=$imdbId"
             } else {
@@ -382,11 +379,12 @@ object Lateri3PlayExtractor : Lateri3Play() {
         } catch (e: Exception) { Log.e("RidoMovies", "$e") }
     }
 
-    // --- 9. Watch32 ---
+    // --- 9. Watch32 (FIXED with year parameter) ---
     suspend fun invokeWatch32APIHQ(
         title: String?,
         season: Int? = null,
         episode: Int? = null,
+        year: Int? = null, // Tambahkan parameter year
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
