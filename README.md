@@ -43,5 +43,5 @@ Repository ini hanya bertindak sebagai *search engine* (perantara) dan tidak men
 
 ---
 <div align="center">
-<sub>Dibuat dengan ❤️ dan ☕ oleh MichatAja</sub>
+<sub>Dibuat dengan ❤️ dan ☕ oleh AdiManuLateri3</sub>
 </div>
