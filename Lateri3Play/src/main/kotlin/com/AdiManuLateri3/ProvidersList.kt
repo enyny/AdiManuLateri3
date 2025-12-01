@@ -87,7 +87,7 @@ fun buildProviders(): List<Provider> {
             invokeMovieBox(res.title, res.season, res.episode, subtitleCallback, callback)
         },
         Provider("vidfast", "VidFast") { res, subtitleCallback, callback, _, _ ->
-            // FIX: Menambahkan subtitleCallback yang sebelumnya hilang
+            // FIX: Menambahkan subtitleCallback
             invokeVidFast(res.id, res.season, res.episode, callback, subtitleCallback)
         },
         Provider("dramadrip", "DramaDrip") { res, subtitleCallback, callback, _, _ ->
