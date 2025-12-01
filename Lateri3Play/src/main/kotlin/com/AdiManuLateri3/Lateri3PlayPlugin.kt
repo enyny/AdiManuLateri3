@@ -9,9 +9,12 @@ class Lateri3PlayPlugin: Plugin() {
     override fun load(context: Context) {
         // Mendaftarkan Provider Utama
         registerMainAPI(Lateri3Play())
-        
-        // Kita tidak perlu mendaftarkan ratusan extractor custom yang tidak ada kodenya.
-        // Extractor umum (Dood, MixDrop, dll) sudah ditangani oleh Cloudstream atau 
-        // dipanggil langsung di Lateri3PlayExtractor.kt.
+
+        // Mendaftarkan Extractor Tambahan (dari file Extractors.kt)
+        // Ini memungkinkan loadExtractor mengenali URL dari domain ini secara otomatis
+        registerExtractorAPI(HubCloud())
+        registerExtractorAPI(PixelDrain())
+        registerExtractorAPI(GDFlix())
+        registerExtractorAPI(Gofile())
     }
 }
