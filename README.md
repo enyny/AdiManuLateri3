@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 MichatAja Cloudstream Extensions
+# 🎬 AdiManuLateri3 Cloudstream Extensions
 ### Nonton Film & Anime Sub Indo Gratis, Lancar, Tanpa Iklan!
 
 ![GitHub stars](https://img.shields.io/github/stars/michat88/MichatAja?style=social)
