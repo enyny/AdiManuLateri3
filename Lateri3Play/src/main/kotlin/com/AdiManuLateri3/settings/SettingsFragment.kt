@@ -1,4 +1,4 @@
-package com.phisher98.settings
+package com.AdiManuLateri3.settings
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -14,12 +14,12 @@ import androidx.annotation.RequiresApi
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.phisher98.BuildConfig
-import com.phisher98.StreamPlayPlugin
+import com.AdiManuLateri3.BuildConfig
+import com.AdiManuLateri3.Lateri3Play
 import com.lagradost.cloudstream3.CommonActivity.showToast
 
 class SettingsFragment(
-    plugin: StreamPlayPlugin,
+    plugin: Lateri3Play,
     private val sharedPref: SharedPreferences,
 ) : BottomSheetDialogFragment() {
     private val res = plugin.resources ?: throw Exception("Unable to read resources")
@@ -46,7 +46,6 @@ class SettingsFragment(
             isDraggable = false // optional: prevent dragging at all
         }
     }
-
 
     @SuppressLint("SetJavaScriptEnabled", "SetTextI18n")
     @RequiresApi(Build.VERSION_CODES.M)
