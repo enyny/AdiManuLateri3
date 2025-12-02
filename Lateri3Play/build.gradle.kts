@@ -11,13 +11,15 @@ android {
     }
     defaultConfig {
         val properties = Properties()
-        properties.load(project.rootProject.file("local.properties").inputStream())
+        if (project.rootProject.file("local.properties").exists()) {
+            properties.load(project.rootProject.file("local.properties").inputStream())
+        }
         android.buildFeatures.buildConfig=true
+        // Kunci API dipertahankan (walaupun sebagian tidak digunakan, dibiarkan agar tidak error saat compile jika ada referensi sisa)
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
         buildConfigField("String", "CINEMATV_API", "\"${properties.getProperty("CINEMATV_API")}\"")
         buildConfigField("String", "SFMOVIES_API", "\"${properties.getProperty("SFMOVIES_API")}\"")
-     
-   buildConfigField("String", "ZSHOW_API", "\"${properties.getProperty("ZSHOW_API")}\"")
+        buildConfigField("String", "ZSHOW_API", "\"${properties.getProperty("ZSHOW_API")}\"")
         buildConfigField("String", "DUMP_API", "\"${properties.getProperty("DUMP_API")}\"")
         buildConfigField("String", "DUMP_KEY", "\"${properties.getProperty("DUMP_KEY")}\"")
         buildConfigField("String", "CRUNCHYROLL_BASIC_TOKEN", "\"${properties.getProperty("CRUNCHYROLL_BASIC_TOKEN")}\"")
@@ -27,8 +29,7 @@ android {
         buildConfigField("String", "Whvx_API", "\"${properties.getProperty("Whvx_API")}\"")
         buildConfigField("String", "CatflixAPI", "\"${properties.getProperty("CatflixAPI")}\"")
         buildConfigField("String", "ConsumetAPI", "\"${properties.getProperty("ConsumetAPI")}\"")
-     
-   buildConfigField("String", "FlixHQAPI", "\"${properties.getProperty("FlixHQAPI")}\"")
+        buildConfigField("String", "FlixHQAPI", "\"${properties.getProperty("FlixHQAPI")}\"")
         buildConfigField("String", "WhvxAPI", "\"${properties.getProperty("WhvxAPI")}\"")
         buildConfigField("String", "WhvxT", "\"${properties.getProperty("WhvxT")}\"")
         buildConfigField("String", "SharmaflixApikey", "\"${properties.getProperty("SharmaflixApikey")}\"")
@@ -38,8 +39,7 @@ android {
         buildConfigField("String", "HianimeAPI", "\"${properties.getProperty("HianimeAPI")}\"")
         buildConfigField("String", "Vidsrccc", "\"${properties.getProperty("Vidsrccc")}\"")
         buildConfigField("String", "WASMAPI", "\"${properties.getProperty("WASMAPI")}\"")
-     
-   buildConfigField("String", "KissKh", "\"${properties.getProperty("KissKh")}\"")
+        buildConfigField("String", "KissKh", "\"${properties.getProperty("KissKh")}\"")
         buildConfigField("String", "KisskhSub", "\"${properties.getProperty("KisskhSub")}\"")
         buildConfigField("String", "SUPERSTREAM_THIRD_API", "\"${properties.getProperty("SUPERSTREAM_THIRD_API")}\"")
         buildConfigField("String", "SUPERSTREAM_FOURTH_API", "\"${properties.getProperty("SUPERSTREAM_FOURTH_API")}\"")
@@ -49,8 +49,7 @@ android {
         buildConfigField("String", "KAISVA", "\"${properties.getProperty("KAISVA")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_ALT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_ALT")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_DEFAULT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_DEFAULT")}\"")
-     
-   buildConfigField("String", "KAIMEG", "\"${properties.getProperty("KAIMEG")}\"")
+        buildConfigField("String", "KAIMEG", "\"${properties.getProperty("KAIMEG")}\"")
         buildConfigField("String", "KAIDEC", "\"${properties.getProperty("KAIDEC")}\"")
         buildConfigField("String", "KAIENC", "\"${properties.getProperty("KAIENC")}\"")
         buildConfigField("String", "Nuviostreams", "\"${properties.getProperty("Nuviostreams")}\"")
@@ -62,10 +61,9 @@ android {
 
 cloudstream {
     language = "en"
-    // All of these properties are optional, you can safely remove them
-
-     description = "Lateri3Play - A lightweight provider for AdiManu"
-     authors = listOf("AdiManuLateri3")
+    
+    description = "Lateri3Play - A lightweight provider for AdiManu"
+    authors = listOf("AdiManuLateri3")
 
     /**
      * Status int as the following:
@@ -74,12 +72,12 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      * */
-    status = 1 // will be 3 if unspecified
+    status = 1 
+    
     tvTypes = listOf(
         "AsianDrama",
         "TvSeries",
-      
-  "Anime",
+        "Anime",
         "Movie",
         "Cartoon",
         "AnimeMovie"
@@ -89,12 +87,11 @@ cloudstream {
 
     requiresResources = true
     isCrossPlatform = false
-
-    packageName = "com.AdiManuLateri3"
+    
+    // Perbaikan: Properti packageName dihapus karena tidak didukung DSL ini.
 }
 
 dependencies {
-    // FIXME remove this when crossplatform is fully supported
     val cloudstream by configurations
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.browser:browser:1.9.0")
