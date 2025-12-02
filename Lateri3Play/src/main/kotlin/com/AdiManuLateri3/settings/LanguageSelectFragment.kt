@@ -1,4 +1,4 @@
-package com.AdiManuLateri3
+package com.Phisher98
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -12,13 +12,13 @@ import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.AdiManuLateri3.BuildConfig
-import com.AdiManuLateri3.Lateri3PlayPlugin
+import com.phisher98.BuildConfig
+import com.phisher98.StreamPlayPlugin
 import androidx.core.content.edit
 import androidx.core.widget.addTextChangedListener
 
 class LanguageSelectFragment(
-    plugin: Lateri3PlayPlugin,
+    plugin: StreamPlayPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
