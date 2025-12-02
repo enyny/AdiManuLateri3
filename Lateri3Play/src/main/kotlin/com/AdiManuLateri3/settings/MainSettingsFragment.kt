@@ -1,4 +1,4 @@
-package com.phisher98
+package com.AdiManuLateri3
 
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -8,13 +8,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
-import com.Phisher98.LanguageSelectFragment
+import com.AdiManuLateri3.LanguageSelectFragment
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.phisher98.settings.SettingsFragment
-import com.phisher98.settings.ToggleFragment
+import com.AdiManuLateri3.settings.SettingsFragment
+import com.AdiManuLateri3.settings.ToggleFragment
 
 class MainSettingsFragment(
-    private val plugin: StreamPlayPlugin,
+    private val plugin: Lateri3Play,
     private val sharedPref: android.content.SharedPreferences
 ) : BottomSheetDialogFragment() {
 
