@@ -10,11 +10,9 @@ import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
 import com.AdiManuLateri3.LanguageSelectFragment
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.AdiManuLateri3.settings.SettingsFragment
-import com.AdiManuLateri3.settings.ToggleFragment
 
 class MainSettingsFragment(
-    private val plugin: Lateri3Play,
+    private val plugin: Lateri3PlayPlugin,
     private val sharedPref: android.content.SharedPreferences
 ) : BottomSheetDialogFragment() {
 
@@ -48,51 +46,20 @@ class MainSettingsFragment(
     ): View {
         val view = getLayout("fragment_main_settings", inflater, container)
 
-        val loginCard: ImageView = view.findView("loginCard")
-        val featureCard: ImageView = view.findView("featureCard")
-        val toggleproviders: ImageView = view.findView("toggleproviders")
+        // Kita hanya akan menggunakan Language Card dan Save Icon
         val languagechange: ImageView = view.findView("languageCard")
-
         val saveIcon: ImageView = view.findView("saveIcon")
 
-        loginCard.setImageDrawable(getDrawable("settings_icon"))
+        // Setel ikon (gunakan settings_icon sebagai placeholder untuk language)
         languagechange.setImageDrawable(getDrawable("settings_icon"))
-        featureCard.setImageDrawable(getDrawable("settings_icon"))
-        toggleproviders.setImageDrawable(getDrawable("settings_icon"))
         saveIcon.setImageDrawable(getDrawable("save_icon"))
 
-        loginCard.makeTvCompatible()
-        featureCard.makeTvCompatible()
-        toggleproviders.makeTvCompatible()
         languagechange.makeTvCompatible()
-
-
         saveIcon.makeTvCompatible()
 
-        loginCard.setOnClickListener {
-            val loginSettings = SettingsFragment(plugin, sharedPref)
-            loginSettings.show(
-                activity?.supportFragmentManager ?: throw Exception("No FragmentManager"),
-                "settings_fragment"
-            )
-        }
-
-        featureCard.setOnClickListener {
-            val toggleFragment = ToggleFragment(plugin, sharedPref)
-            toggleFragment.show(
-                activity?.supportFragmentManager ?: throw Exception("No FragmentManager"),
-                "fragment_toggle_extensions"
-            )
-        }
-
-        toggleproviders.setOnClickListener {
-            val providersFragment = ProvidersFragment(plugin, sharedPref)
-            providersFragment.show(
-                activity?.supportFragmentManager ?: throw Exception("No FragmentManager"),
-                "fragment_toggle_providers"
-            )
-        }
-
+        // Hapus OnClickListener untuk LoginCard, FeatureCard, dan ToggleProviders
+        // karena fungsinya sudah tidak relevan atau dihapus.
+        
         languagechange.setOnClickListener {
             LanguageSelectFragment(plugin, sharedPref).show(
                 activity?.supportFragmentManager!!,
