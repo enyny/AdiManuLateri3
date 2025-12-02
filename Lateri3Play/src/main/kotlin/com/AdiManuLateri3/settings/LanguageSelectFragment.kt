@@ -15,21 +15,29 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import androidx.core.content.edit
 import androidx.core.widget.addTextChangedListener
 
+// PENTING: Import ini mengatasi error BuildConfig
+import com.AdiManuLateri3.BuildConfig
+
 class LanguageSelectFragment(
-    plugin: Lateri3PlayPlugin,
+    private val plugin: Lateri3PlayPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
+    // Mengambil resources dari plugin untuk mengakses layout XML di dalam plugin
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
-        this.background = res.getDrawable(outlineId, null)
+        if (outlineId != 0) {
+            this.background = res.getDrawable(outlineId, null)
+        }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
         val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
+        // Fallback check jika layout tidak ditemukan
+        if (id == 0) throw Exception("Layout $name not found in ${BuildConfig.LIBRARY_PACKAGE_NAME}")
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
     }
@@ -40,7 +48,7 @@ class LanguageSelectFragment(
         return this.findViewById(id)
     }
 
-    // Language Display List (Dipertahankan)
+    // Daftar bahasa yang tersedia
     private val languages = listOf(
         "South Africa (Afrikaans)" to "af-ZA",
         "United Arab Emirates (Arabic)" to "ar-AE",
@@ -105,28 +113,27 @@ class LanguageSelectFragment(
     private lateinit var adapter: LanguageAdapter
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-
         val root = getLayout("fragment_language_select", inflater, container)
 
         val recycler: RecyclerView = root.findView("languageRecycler")
         val search: EditText = root.findView("searchLanguage")
+        
         recycler.makeTvCompatible()
         search.makeTvCompatible()
 
         recycler.layoutManager = LinearLayoutManager(requireContext())
 
-        // Menggunakan kunci yang sama untuk SharedPreferences
+        // Mengambil kode bahasa yang tersimpan, default "en-US"
         val savedCode = sharedPref.getString("tmdb_language_code", "en-US") ?: "en-US"
 
         adapter = LanguageAdapter(
-            languages.sortedBy { it.first.lowercase() }, // << SORT HERE
+            languages,
             savedCode
         ) { code ->
             sharedPref.edit { putString("tmdb_language_code", code) }
             Toast.makeText(requireContext(), "Language set to $code", Toast.LENGTH_SHORT).show()
             dismiss()
         }
-
 
         recycler.adapter = adapter
 
@@ -136,7 +143,6 @@ class LanguageSelectFragment(
 
         return root
     }
-
 
     // ---------------------------------------------------------------------- ADAPTER ------------------ //
 
@@ -169,6 +175,7 @@ class LanguageSelectFragment(
         }
 
         override fun getItemCount() = filteredList.size
+        
         @SuppressLint("NotifyDataSetChanged")
         fun filter(query: String) {
             filteredList = if (query.isBlank()) {
@@ -179,5 +186,4 @@ class LanguageSelectFragment(
             notifyDataSetChanged()
         }
     }
-
 }
