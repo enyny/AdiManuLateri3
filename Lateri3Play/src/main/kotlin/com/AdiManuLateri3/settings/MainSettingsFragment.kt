@@ -8,8 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
-import com.AdiManuLateri3.LanguageSelectFragment
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+
+// PENTING: Import ini mengatasi error BuildConfig
+import com.AdiManuLateri3.BuildConfig
 
 class MainSettingsFragment(
     private val plugin: Lateri3PlayPlugin,
@@ -31,11 +33,14 @@ class MainSettingsFragment(
 
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
-        this.background = res.getDrawable(outlineId, null)
+        if (outlineId != 0) {
+            this.background = res.getDrawable(outlineId, null)
+        }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
         val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
+        if (id == 0) throw Exception("Layout $name not found in ${BuildConfig.LIBRARY_PACKAGE_NAME}")
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
     }
@@ -46,21 +51,21 @@ class MainSettingsFragment(
     ): View {
         val view = getLayout("fragment_main_settings", inflater, container)
 
-        val toggleproviders: ImageView = view.findView("providersIcon") // ID disesuaikan
-        val languagechange: ImageView = view.findView("languageIcon") // ID disesuaikan
+        val toggleproviders: ImageView = view.findView("providersIcon")
+        val languagechange: ImageView = view.findView("languageIcon")
         val saveIcon: ImageView = view.findView("saveIcon")
 
-        // Setel ikon (gunakan settings_icon sebagai placeholder)
+        // Setel ikon (menggunakan settings_icon sebagai placeholder jika ikon spesifik tidak ada)
         languagechange.setImageDrawable(getDrawable("settings_icon"))
         toggleproviders.setImageDrawable(getDrawable("settings_icon"))
         saveIcon.setImageDrawable(getDrawable("save_icon"))
 
+        // Tambahkan efek visual untuk navigasi TV
         languagechange.makeTvCompatible()
         toggleproviders.makeTvCompatible()
         saveIcon.makeTvCompatible()
 
-        // Hapus OnClickListener untuk LoginCard dan FeatureCard
-        
+        // Navigasi ke fragment pemilihan bahasa
         languagechange.setOnClickListener {
             LanguageSelectFragment(plugin, sharedPref).show(
                 activity?.supportFragmentManager!!,
@@ -68,15 +73,16 @@ class MainSettingsFragment(
             )
         }
 
+        // Navigasi ke fragment pengaturan provider (PrimeWire, Uqloads, RiveStream)
         toggleproviders.setOnClickListener {
             val providersFragment = ProvidersFragment(plugin, sharedPref)
             providersFragment.show(
                 activity?.supportFragmentManager ?: throw Exception("No FragmentManager"),
-                "fragment_providers" // Gunakan nama tag yang konsisten
+                "fragment_providers"
             )
         }
 
-
+        // Tombol Save & Reload
         saveIcon.setOnClickListener {
             val context = this.context ?: return@setOnClickListener
 
