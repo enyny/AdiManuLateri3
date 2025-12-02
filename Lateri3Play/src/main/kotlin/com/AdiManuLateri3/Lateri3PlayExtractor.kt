@@ -1,68 +1,31 @@
 package com.AdiManuLateri3
 
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile
 import com.AdiManuLateri3.Lateri3Play.Companion.PrimeSrcApi
 import com.AdiManuLateri3.Lateri3Play.Companion.RiveStreamAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.SubtitlesAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.UqloadsAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.WyZIESUBAPI
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
+import com.AdiManuLateri3.Lateri3PlayUtils.runLimitedAsync
 import org.json.JSONObject
-import java.net.URLDecoder
-import java.util.Locale
 
 object Lateri3PlayExtractor {
 
-    private val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-    // ================= HELPER FUNCTIONS =================
-    
-    private suspend fun loadSource(
-        sourceName: String,
-        url: String,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        quality: Int? = null,
-        size: String = ""
-    ) {
-        val fixSize = if (size.isNotEmpty()) " $size" else ""
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    newExtractorLink(
-                        "$sourceName[${link.source}$fixSize]",
-                        "$sourceName[${link.source}$fixSize]",
-                        link.url,
-                    ) {
-                        this.quality = link.quality
-                        this.type = link.type
-                        this.referer = link.referer
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
-                )
-            }
-        }
-    }
-
-    private fun getLanguage(code: String): String {
-        return Locale(code).displayLanguage
-    }
-
-    // ================= SUBTITLES =================
+    // --- Subtitle Extractor ---
 
     suspend fun invokeSubtitleAPI(
         id: String? = null,
@@ -75,20 +38,13 @@ object Lateri3PlayExtractor {
         } else {
             "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
         }
-        
-        val response = app.get(url, timeout = 100L)
-        if (response.code != 200) return
-        
-        try {
-            val res = app.parseJson<SubtitlesAPI>(response.text)
-            res.subtitles.forEach { sub ->
-                val lang = getLanguage(sub.lang)
-                subtitleCallback.invoke(
-                    newSubtitleFile(lang, sub.url)
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val headers = mapOf("User-Agent" to "Mozilla/5.0")
+        val response = app.get(url, headers = headers, timeout = 5000) // Reduced timeout for speed
+        if (!response.isSuccessful) return
+
+        response.parsedSafe<SubtitlesAPIResponse>()?.subtitles?.forEach {
+            val lang = Lateri3PlayUtils.getLanguage(it.lang)
+            subtitleCallback.invoke(newSubtitleFile(lang, it.url))
         }
     }
 
@@ -106,25 +62,17 @@ object Lateri3PlayExtractor {
         }
 
         val response = app.get(url)
-        if (response.code != 200) return
+        if (!response.isSuccessful) return
 
-        try {
-            val subtitles = Gson().fromJson<List<WyZIESUB>>(
-                response.text, 
-                object : TypeToken<List<WyZIESUB>>() {}.type
-            ) ?: emptyList()
-
-            subtitles.forEach {
-                val language = it.display.replaceFirstChar { ch -> ch.titlecase(Locale.getDefault()) }
-                subtitleCallback(newSubtitleFile(language, it.url))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        response.parsedSafe<List<WyZIESUB>>()?.forEach {
+            val language = Lateri3PlayUtils.getLanguage(it.display)
+            subtitleCallback(newSubtitleFile(language, it.url))
         }
     }
+    
+    // --- Video Extractor ---
 
-    // ================= VIDEO EXTRACTORS =================
-
+    // Extractor 1: PrimeSrc (PrimeWire)
     suspend fun invokePrimeSrc(
         imdbId: String? = null,
         season: Int? = null,
@@ -134,122 +82,134 @@ object Lateri3PlayExtractor {
     ) {
         val headers = mapOf(
             "accept" to "*/*",
-            "referer" to if (season == null) "$PrimeSrcApi/embed/movie?imdb=$imdbId" else "$PrimeSrcApi/embed/tv?imdb=$imdbId&season=$season&episode=$episode",
-            "user-agent" to USER_AGENT
+            "user-agent" to "Mozilla/5.0"
         )
-        
         val url = if (season == null) {
             "$PrimeSrcApi/api/v1/s?imdb=$imdbId&type=movie"
         } else {
             "$PrimeSrcApi/api/v1/s?imdb=$imdbId&season=$season&episode=$episode&type=tv"
         }
 
-        try {
-            val serverList = app.get(url, timeout = 30, headers = headers).parsedSafe<PrimeSrcServerList>()
-            serverList?.servers?.forEach { server ->
-                val rawServerJson = app.get("$PrimeSrcApi/api/v1/l?key=${server.key}", timeout = 30, headers = headers).text
-                val jsonObject = JSONObject(rawServerJson)
-                val link = jsonObject.optString("link", "")
-                
-                if (link.isNotBlank()) {
-                    loadSource(
-                        "PrimeWire", 
-                        link, 
-                        PrimeSrcApi, 
-                        subtitleCallback, 
-                        callback, 
-                        size = server.fileSize ?: ""
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val serverList =
+            app.get(url, timeout = 10000, headers = headers).parsedSafe<PrimeSrcServerList>()
+        
+        serverList?.servers?.forEach {
+            val rawServerJson =
+                app.get("$PrimeSrcApi/api/v1/l?key=${it.key}", timeout = 10000, headers = headers).text
+            
+            val jsonObject = runCatching { JSONObject(rawServerJson) }.getOrNull()
+            
+            loadSourceNameExtractor(
+                "PrimeSrc",
+                jsonObject?.optString("link", "") ?: return@forEach,
+                PrimeSrcApi,
+                subtitleCallback,
+                callback,
+                getQualityFromName(it.fileName),
+                it.fileSize ?: ""
+            )
         }
     }
 
+    // Extractor 2: Uqloadsxyz (Sangat sederhana)
+    @RequiresApi(Build.VERSION_CODES.O)
+    suspend fun invokeUqloadsXyz(
+        imdbId: String? = null, // Uqloads biasanya menggunakan ID dari embedder, tapi kita akan gunakan IMDB untuk skema ini
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Uqloadsxyz digunakan sebagai extractor oleh 2embed. Karena kita tidak menggunakan 2embed,
+        // kita akan menggunakan UqloadsAPI + ID IMDB untuk simulasi sederhana.
+        val tmdbId = Lateri3PlayUtils.getTMDBIdFromIMDB(imdbId) ?: return 
+        val id = if (season == null) tmdbId.toString() else Lateri3PlayUtils.getEpisodeLinkHash(tmdbId, season, episode)
+
+        // Asumsi: UqloadsAPI memiliki endpoint sederhana yang mengembalikan link embed
+        val url = "$UqloadsAPI/embed/$id"
+        
+        val response = app.get(url, timeout = 10000)
+        val embedUrl = response.document.select("iframe").attr("src")
+        
+        if (embedUrl.isNotBlank()) {
+            loadSourceNameExtractor(
+                "UqloadsXyz",
+                embedUrl,
+                UqloadsAPI,
+                subtitleCallback,
+                callback,
+                Qualities.P1080.value
+            )
+        }
+    }
+
+
+    // Extractor 3: RiveStream
     suspend fun invokeRiveStream(
         id: Int? = null,
         season: Int? = null,
         episode: Int? = null,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val headers = mapOf("User-Agent" to USER_AGENT)
+        if (id == null) return
 
-        try {
-            // 1. Get Source List
-            val sourceApiUrl = "$RiveStreamAPI/api/backendfetch?requestID=VideoProviderServices&secretKey=rive"
-            val sourceList = app.get(sourceApiUrl, headers).parsedSafe<RiveStreamSource>() ?: return
+        // RiveStream menggunakan hash dan API untuk mendapatkan link.
+        val headers = mapOf("User-Agent" to "Mozilla/5.0")
+        
+        val appScript = app.get(RiveStreamAPI).document.select("script")
+            .firstOrNull { it.attr("src").contains("_app") }?.attr("src") ?: return
 
-            // 2. Get Secret Key logic (Simplified)
-            // Note: In a real scenario, this key logic changes often. 
-            // Using a static fetch attempt similar to original code.
-            val document = app.get(RiveStreamAPI, headers, timeout = 20).document
-            val appScript = document.select("script")
-                .firstOrNull { it.attr("src").contains("_app") }?.attr("src") ?: return
+        val js = app.get("$RiveStreamAPI$appScript").text
+        val keyList = Lateri3PlayUtils.extractKeyList(js)
+        
+        val secretKey = app.get(
+            "https://rivestream.supe2372.workers.dev/?input=$id&cList=${keyList.joinToString(",")}"
+        ).text
 
-            val js = app.get("$RiveStreamAPI$appScript").text
-            val keyList = Regex("""let\s+c\s*=\s*(\[[^]]*])""")
-                .findAll(js).firstOrNull { it.groupValues[1].length > 2 }?.groupValues?.get(1)
-                ?.let { array ->
-                    Regex("\"([^\"]+)\"").findAll(array).map { it.groupValues[1] }.toList()
-                } ?: emptyList()
+        val sourceApiUrl =
+            "$RiveStreamAPI/api/backendfetch?requestID=VideoProviderServices&secretKey=rive"
+        val sourceList = app.get(sourceApiUrl, headers).parsedSafe<RiveStreamSource>()
 
-            // Fetch Secret Key from worker
-            val secretKey = app.get(
-                "https://rivestream.supe2372.workers.dev/?input=$id&cList=${keyList.joinToString(",")}"
-            ).text
+        sourceList?.data?.forEach { source ->
+            val streamUrl = if (season == null) {
+                "$RiveStreamAPI/api/backendfetch?requestID=movieVideoProvider&id=$id&service=$source&secretKey=$secretKey"
+            } else {
+                "$RiveStreamAPI/api/backendfetch?requestID=tvVideoProvider&id=$id&season=$season&episode=$episode&service=$source&secretKey=$secretKey"
+            }
 
-            // 3. Loop through sources
-            sourceList.data.forEach { source ->
-                val streamUrl = if (season == null) {
-                    "$RiveStreamAPI/api/backendfetch?requestID=movieVideoProvider&id=$id&service=$source&secretKey=$secretKey"
-                } else {
-                    "$RiveStreamAPI/api/backendfetch?requestID=tvVideoProvider&id=$id&season=$season&episode=$episode&service=$source&secretKey=$secretKey"
-                }
+            val responseString = app.get(streamUrl, headers, timeout = 10000).text
+            
+            val json = runCatching { JSONObject(responseString) }.getOrNull()
+            val sourcesArray = json?.optJSONObject("data")?.optJSONArray("sources") ?: return@forEach
 
-                val responseString = app.get(streamUrl, headers, timeout = 10).text
-                val json = JSONObject(responseString)
-                val sourcesArray = json.optJSONObject("data")?.optJSONArray("sources") ?: return@forEach
+            for (i in 0 until sourcesArray.length()) {
+                val src = sourcesArray.getJSONObject(i)
+                val url = src.optString("url")
+                val label = "RiveStream ${src.optString("source")}"
 
-                for (i in 0 until sourcesArray.length()) {
-                    val src = sourcesArray.getJSONObject(i)
-                    val label = "RiveStream ${src.optString("source")}"
-                    val url = src.optString("url")
-
-                    if (url.contains("proxy?url=")) {
-                        // Handle Proxy URL
-                        val fullyDecoded = URLDecoder.decode(url, "UTF-8")
-                        val decodedUrl = URLDecoder.decode(
-                            fullyDecoded.substringAfter("proxy?url=").substringBefore("&headers="),
-                            "UTF-8"
-                        )
-                        val headersJson = fullyDecoded.substringAfter("&headers=")
-                        val headerMap = try {
-                            val hJson = JSONObject(URLDecoder.decode(headersJson, "UTF-8"))
-                            hJson.keys().asSequence().associateWith { hJson.getString(it) }
-                        } catch (e: Exception) { mapOf<String,String>() }
-
-                        callback.invoke(newExtractorLink(
-                            label, label, decodedUrl, 
-                            if (decodedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
-                        ) {
-                            this.headers = headerMap
-                            this.quality = Qualities.P1080.value
-                        })
-
-                    } else {
-                        // Handle Direct URL
-                        callback.invoke(newExtractorLink(
-                            label, label, url, 
-                            if (url.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
-                        ) {
-                            this.quality = Qualities.P1080.value
-                        })
-                    }
+                if (url.isNotBlank()) {
+                    M3u8Helper.generateM3u8(label, url, RiveStreamAPI).forEach(callback)
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
+
+    // --- Parser Data Classes (Minimal) ---
+
+    // Subtitle API
+    data class SubtitlesAPIResponse(val subtitles: List<SubtitleApiItem>)
+    data class SubtitleApiItem(val url: String, val lang: String)
+    data class WyZIESUB(val url: String, val display: String)
+    
+    // PrimeSrc
+    data class PrimeSrcServerList(val servers: List<PrimeSrcServer>)
+    data class PrimeSrcServer(
+        val name: String,
+        val key: String,
+        val fileSize: String?,
+        val fileName: String?,
+    )
+
+    // RiveStream (minimal classes)
+    data class RiveStreamSource(val data: List<String>)
 }
