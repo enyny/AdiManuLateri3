@@ -1,4 +1,4 @@
-package com.phisher98.settings
+package com.AdiManuLateri3.settings
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -10,14 +10,14 @@ import android.os.Bundle
 import android.view.*
 import android.widget.*
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.phisher98.BuildConfig
-import com.phisher98.StreamPlayPlugin
+import com.AdiManuLateri3.BuildConfig
+import com.AdiManuLateri3.Lateri3Play
 import androidx.core.content.edit
 import com.lagradost.cloudstream3.CommonActivity.showToast
-import com.phisher98.*
+import com.AdiManuLateri3.*
 
 class ToggleFragment(
-    plugin: StreamPlayPlugin,
+    plugin: Lateri3Play,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
@@ -55,12 +55,13 @@ class ToggleFragment(
         val root = getLayout("fragment_toggle_extensions", inflater, container)
         val extensionList = root.findView<LinearLayout>("toggle_list_container")
 
+        // UPDATE SKEMA PROVIDER DISINI
         val apis = listOf(
-            StreamPlay(sharedPref),
-            StreamPlayLite(),
-            StreamPlayTorrent(),
-            StreamPlayAnime(),
-            StreamplayTorrentAnime()
+            Lateri3Play(sharedPref),
+            Lateri3PlayLite(),
+            Lateri3PlayTorrent(),
+            Lateri3PlayAnime(),
+            Lateri3PlayTorrentAnime()
         )
 
         val savedKey = "enabled_plugins_saved"
