@@ -12,13 +12,11 @@ import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.AdiManuLateri3.BuildConfig
-import com.AdiManuLateri3.Lateri3Play
 import androidx.core.content.edit
 import androidx.core.widget.addTextChangedListener
 
 class LanguageSelectFragment(
-    plugin: Lateri3Play,
+    plugin: Lateri3PlayPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
@@ -42,7 +40,7 @@ class LanguageSelectFragment(
         return this.findViewById(id)
     }
 
-    // Language Display List
+    // Language Display List (Dipertahankan)
     private val languages = listOf(
         "South Africa (Afrikaans)" to "af-ZA",
         "United Arab Emirates (Arabic)" to "ar-AE",
@@ -117,6 +115,7 @@ class LanguageSelectFragment(
 
         recycler.layoutManager = LinearLayoutManager(requireContext())
 
+        // Menggunakan kunci yang sama untuk SharedPreferences
         val savedCode = sharedPref.getString("tmdb_language_code", "en-US") ?: "en-US"
 
         adapter = LanguageAdapter(
