@@ -18,8 +18,9 @@ import androidx.core.content.edit
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import androidx.core.view.isNotEmpty
-import com.lagradost.cloudstream3.CommonActivity.showToast
 
+// PENTING: Import ini mengatasi error BuildConfig
+import com.AdiManuLateri3.BuildConfig
 
 class ProvidersFragment(
     private val plugin: Lateri3PlayPlugin,
@@ -50,17 +51,20 @@ class ProvidersFragment(
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
-        this.background = res.getDrawable(outlineId, null)
+        if (outlineId != 0) {
+            this.background = res.getDrawable(outlineId, null)
+        }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
         val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
+        if (id == 0) throw Exception("Layout $name not found in ${BuildConfig.LIBRARY_PACKAGE_NAME}")
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        // Menggunakan fragment_providers karena layoutnya memiliki search, select all/none, dan container
+        // Menggunakan layout fragment_providers.xml yang sudah ada
         return getLayout("fragment_providers", inflater, container)
     }
 
@@ -93,7 +97,7 @@ class ProvidersFragment(
         container = view.findView("list_container")
         container.makeTvCompatible()
         
-        // Mengambil daftar provider yang dimodifikasi
+        // Mengambil daftar provider yang dimodifikasi (Hanya PrimeWire, Uqloads, RiveStream)
         providers = buildProviders().sortedBy { it.name.lowercase() }
 
         // --- Load disabled providers ---
@@ -140,8 +144,6 @@ class ProvidersFragment(
         btnDeselectAll.setOnClickListener { adapter.setAll(false) }
         btnSave.setOnClickListener { dismissFragment() }
         
-        // Hapus logika Profile Management (btnSaveProfile, btnLoadProfile, btnDeleteProfile)
-        
         val searchView = view.findView<SearchView>("search_provider")
 
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
@@ -168,9 +170,9 @@ class ProvidersFragment(
         val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
-            // Pastikan kita tidak mencoba mengakses indeks di luar batas providers jika daftar berubah.
-            // Namun, karena providers statis setelah buildProviders, ini seharusnya aman.
-            chk.isChecked = !adapter.isDisabled(providers[i].id)
+            if (i < providers.size) {
+                chk.isChecked = !adapter.isDisabled(providers[i].id)
+            }
         }
     }
 
