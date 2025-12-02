@@ -1,4 +1,4 @@
-package com.phisher98
+package com.AdiManuLateri3
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -24,7 +24,7 @@ import com.lagradost.cloudstream3.CommonActivity.showToast
 private val PREFS_PROFILES = "provider_profiles"
 
 class ProvidersFragment(
-    private val plugin: StreamPlayPlugin,
+    private val plugin: Lateri3Play,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
