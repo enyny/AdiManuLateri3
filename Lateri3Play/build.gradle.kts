@@ -5,6 +5,9 @@ import org.jetbrains.kotlin.konan.properties.Properties
 version = 486
 
 android {
+    // FIX: Baris ini wajib ada agar BuildConfig digenerate di paket yang benar
+    namespace = "com.AdiManuLateri3"
+
     buildFeatures {
         buildConfig = true
         viewBinding = true
@@ -15,7 +18,8 @@ android {
             properties.load(project.rootProject.file("local.properties").inputStream())
         }
         android.buildFeatures.buildConfig=true
-        // Kunci API dipertahankan (walaupun sebagian tidak digunakan, dibiarkan agar tidak error saat compile jika ada referensi sisa)
+        
+        // Config Fields
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
         buildConfigField("String", "CINEMATV_API", "\"${properties.getProperty("CINEMATV_API")}\"")
         buildConfigField("String", "SFMOVIES_API", "\"${properties.getProperty("SFMOVIES_API")}\"")
@@ -65,13 +69,6 @@ cloudstream {
     description = "Lateri3Play - A lightweight provider for AdiManu"
     authors = listOf("AdiManuLateri3")
 
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
     status = 1 
     
     tvTypes = listOf(
@@ -87,8 +84,6 @@ cloudstream {
 
     requiresResources = true
     isCrossPlatform = false
-    
-    // Perbaikan: Properti packageName dihapus karena tidak didukung DSL ini.
 }
 
 dependencies {
