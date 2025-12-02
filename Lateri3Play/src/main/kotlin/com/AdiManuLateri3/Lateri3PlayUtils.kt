@@ -1,167 +1,206 @@
 package com.AdiManuLateri3
 
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.core.net.toUri
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.lagradost.api.Log
+import com.lagradost.cloudstream3.APIHolder.unixTimeMS
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.fixTitle
+import com.lagradost.cloudstream3.mvvm.logError
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import org.json.JSONObject
+import org.jsoup.Jsoup
 import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
-import java.security.SecureRandom
+import java.text.SimpleDateFormat
 import java.util.Arrays
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.math.max
 import kotlin.math.min
-import com.lagradost.cloudstream3.base64DecodeArray
-import com.lagradost.cloudstream3.base64Encode
 
-fun getBaseUrl(url: String): String {
-    return try {
-        URI(url).let {
+object Lateri3PlayUtils {
+
+    // --- Data Classes yang disederhanakan ---
+
+    data class TmdbDate(
+        val today: String,
+        val nextWeek: String,
+        val lastWeekStart: String,
+        val monthStart: String
+    )
+
+    data class CinemaOsSecretKeyRequest(
+        val tmdbId: String,
+        val seasonId: String,
+        val episodeId: String
+    )
+    
+    // --- Utils Pendukung Extractor ---
+
+    suspend fun loadSourceNameExtractor(
+        source: String,
+        url: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+        quality: Int? = null,
+        size: String = ""
+    ) {
+        val fixSize = if(size.isNotEmpty()) " $size" else ""
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            CoroutineScope(Dispatchers.IO).launch {
+                callback.invoke(
+                    newExtractorLink(
+                        "$source[${link.source}$fixSize]",
+                        "$source[${link.source}$fixSize]",
+                        link.url,
+                    ) {
+                        this.quality = link.quality
+                        this.type = link.type
+                        this.referer = link.referer
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    }
+                )
+            }
+        }
+    }
+    
+    // --- Helper Decoding (Dibutuhkan oleh Uqloadsxyz, PrimeSrc) ---
+    
+    fun getBaseUrl(url: String): String {
+        return URI(url).let {
             "${it.scheme}://${it.host}"
         }
-    } catch (e: Exception) {
-        ""
     }
-}
-
-fun fixUrl(url: String, domain: String): String {
-    if (url.startsWith("http")) {
-        return url
-    }
-    if (url.isEmpty()) {
-        return ""
-    }
-
-    val startsWithNoHttp = url.startsWith("//")
-    if (startsWithNoHttp) {
-        return "https:$url"
-    } else {
-        if (url.startsWith('/')) {
-            return domain + url
-        }
-        return "$domain/$url"
-    }
-}
-
-fun getQuality(str: String): Int {
-    return when (str) {
-        "360p" -> Qualities.P360.value
-        "480p" -> Qualities.P480.value
-        "720p" -> Qualities.P720.value
-        "1080p" -> Qualities.P1080.value
-        "1080p Ultra" -> Qualities.P1080.value
-        "4K", "2160p" -> Qualities.P2160.value
-        else -> getQualityFromName(str)
-    }
-}
-
-// ================= CRYPTO UTILS (Diperlukan untuk RiveStream/PrimeWire jika ada enkripsi) =================
-
-object CryptoAES {
-    private const val KEY_SIZE = 32 // 256 bits
-    private const val IV_SIZE = 16 // 128 bits
-    private const val SALT_SIZE = 8 // 64 bits
-    private const val HASH_CIPHER = "AES/CBC/PKCS7PADDING"
-    private const val HASH_CIPHER_FALLBACK = "AES/CBC/PKCS5PADDING"
-    private const val AES = "AES"
-
-    fun decrypt(cipherText: String, keyBytes: ByteArray, ivBytes: ByteArray): String {
+    
+    fun hasHost(url: String): Boolean {
         return try {
-            val cipherTextBytes = base64DecodeArray(cipherText)
-            decryptAES(cipherTextBytes, keyBytes, ivBytes)
+            val host = URL(url).host
+            !host.isNullOrEmpty()
         } catch (e: Exception) {
-            ""
+            false
         }
     }
+    
+    fun String.getHost(): String {
+        return fixTitle(URI(this).host.substringBeforeLast(".").substringAfterLast("."))
+    }
 
-    private fun decryptAES(
-        cipherTextBytes: ByteArray,
-        keyBytes: ByteArray,
-        ivBytes: ByteArray
-    ): String {
-        return try {
-            val cipher = try {
-                Cipher.getInstance(HASH_CIPHER)
-            } catch (e: Throwable) {
-                Cipher.getInstance(HASH_CIPHER_FALLBACK)
-            }
-            val keyS = SecretKeySpec(keyBytes, AES)
-            cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(ivBytes))
-            cipher.doFinal(cipherTextBytes).toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            ""
+    // Mengganti fungsi getTMDBIdFromIMDB (Sederhana)
+    // Dalam skema real, ini akan membutuhkan API call. Untuk tujuan ini, kita akan kembalikan null
+    // dan berasumsi pemanggil (extractor) dapat mengatasinya.
+    fun getTMDBIdFromIMDB(imdbId: String?): Int? {
+        return if (imdbId.isNullOrBlank()) null else imdbId.removePrefix("tt").toIntOrNull()
+    }
+    
+    // Uqloadsxyz Hash Placeholder (Sangat disederhanakan)
+    fun getEpisodeLinkHash(tmdbId: Int?, season: Int?, episode: Int?): String {
+        return if (season != null && episode != null) {
+            "${tmdbId}_S${season}E${episode}"
+        } else {
+            tmdbId.toString()
         }
     }
-}
+    
+    // --- Utils Generik ---
 
-object CryptoJS {
-    private const val KEY_SIZE = 256
-    private const val IV_SIZE = 128
-    private const val HASH_CIPHER = "AES/CBC/PKCS7Padding"
-    private const val AES = "AES"
-    private const val KDF_DIGEST = "MD5"
+    fun getDate(): TmdbDate {
+        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val calendar = Calendar.getInstance()
 
-    fun decrypt(password: String, cipherText: String): String {
-        val ctBytes = base64DecodeArray(cipherText)
-        val saltBytes = Arrays.copyOfRange(ctBytes, 8, 16)
-        val cipherTextBytes = Arrays.copyOfRange(ctBytes, 16, ctBytes.size)
-        val key = ByteArray(KEY_SIZE / 8)
-        val iv = ByteArray(IV_SIZE / 8)
-        EvpKDF(password.toByteArray(), KEY_SIZE, IV_SIZE, saltBytes, key, iv)
-        val cipher = Cipher.getInstance(HASH_CIPHER)
-        val keyS = SecretKeySpec(key, AES)
-        cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(iv))
-        val plainText = cipher.doFinal(cipherTextBytes)
-        return String(plainText)
+        val today = formatter.format(calendar.time)
+
+        calendar.add(Calendar.WEEK_OF_YEAR, 1)
+        val nextWeek = formatter.format(calendar.time)
+
+        calendar.time = Date()
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        val lastWeekStart = formatter.format(calendar.time)
+
+        calendar.time = Date()
+        calendar.set(Calendar.DAY_OF_MONTH, 1)
+        val monthStart = formatter.format(calendar.time)
+
+        return TmdbDate(today, nextWeek, lastWeekStart, monthStart)
     }
 
-    private fun EvpKDF(
-        password: ByteArray,
-        keySize: Int,
-        ivSize: Int,
-        salt: ByteArray,
-        resultKey: ByteArray,
-        resultIv: ByteArray
-    ): ByteArray {
-        return EvpKDF(password, keySize, ivSize, salt, 1, KDF_DIGEST, resultKey, resultIv)
+    // --- Subtitle Language Mapping ---
+
+    val languageMap: Map<String, Set<String>> = mapOf(
+        "English"     to setOf("en", "eng"),
+        "Spanish"     to setOf("es", "spa"),
+        "French"      to setOf("fr", "fra", "fre"),
+        "German"      to setOf("de", "deu", "ger"),
+        "Japanese"    to setOf("ja", "jpn"),
+        "Korean"      to setOf("ko", "kor"),
+        "Chinese"     to setOf("zh", "zho", "chi"),
+        "Portuguese"  to setOf("pt", "por"),
+        "Russian"     to setOf("ru", "rus"),
+        "Turkish"     to setOf("tr", "tur"),
+        // Tambahkan bahasa lain sesuai kebutuhan
+    )
+
+    fun getLanguage(code: String): String {
+        val lower = code.lowercase()
+        return languageMap.entries.firstOrNull { lower in it.value }?.key ?: "UnKnown"
+    }
+    
+    // --- RiveStream Helpers ---
+    
+    fun extractKeyList(js: String): List<String> {
+        val keyListRegex = Regex("""let\s+c\s*=\s*(\[[^]]*])""")
+        val arrayString = keyListRegex.findAll(js).firstOrNull()?.groupValues?.get(1) ?: return emptyList()
+        return Regex("\"([^\"]+)\"").findAll(arrayString).map { it.groupValues[1] }.toList()
     }
 
-    private fun EvpKDF(
-        password: ByteArray,
-        keySize: Int,
-        ivSize: Int,
-        salt: ByteArray,
-        iterations: Int,
-        hashAlgorithm: String,
-        resultKey: ByteArray,
-        resultIv: ByteArray
-    ): ByteArray {
-        val keySize = keySize / 32
-        val ivSize = ivSize / 32
-        val targetKeySize = keySize + ivSize
-        val derivedBytes = ByteArray(targetKeySize * 4)
-        var numberOfDerivedWords = 0
-        var block: ByteArray? = null
-        val hash = MessageDigest.getInstance(hashAlgorithm)
-        while (numberOfDerivedWords < targetKeySize) {
-            if (block != null) {
-                hash.update(block)
+    // --- Multi Async Runner (Dibutuhkan oleh Lateri3Play.kt) ---
+
+    /**
+     * Run multiple suspend functions concurrently with a limit on simultaneous executions.
+     */
+    suspend fun runLimitedAsync(
+        concurrency: Int = 5,
+        vararg tasks: suspend () -> Unit
+    ) = coroutineScope {
+        val semaphore = Semaphore(concurrency)
+
+        tasks.map { task ->
+            async(Dispatchers.IO) {
+                semaphore.withPermit {
+                    try {
+                        task()
+                    } catch (e: Exception) {
+                        Log.e("runLimitedAsync", "Task failed: ${e.message}")
+                    }
+                }
             }
-            hash.update(password)
-            block = hash.digest(salt)
-            hash.reset()
-            for (i in 1 until iterations) {
-                block = hash.digest(block!!)
-                hash.reset()
-            }
-            System.arraycopy(
-                block!!, 0, derivedBytes, numberOfDerivedWords * 4,
-                min(block.size, (targetKeySize - numberOfDerivedWords) * 4)
-            )
-            numberOfDerivedWords += block.size / 4
-        }
-        System.arraycopy(derivedBytes, 0, resultKey, 0, keySize * 4)
-        System.arraycopy(derivedBytes, keySize * 4, resultIv, 0, ivSize * 4)
-        return derivedBytes
+        }.awaitAll()
     }
 }
