@@ -46,19 +46,20 @@ class MainSettingsFragment(
     ): View {
         val view = getLayout("fragment_main_settings", inflater, container)
 
-        // Kita hanya akan menggunakan Language Card dan Save Icon
-        val languagechange: ImageView = view.findView("languageCard")
+        val toggleproviders: ImageView = view.findView("providersIcon") // ID disesuaikan
+        val languagechange: ImageView = view.findView("languageIcon") // ID disesuaikan
         val saveIcon: ImageView = view.findView("saveIcon")
 
-        // Setel ikon (gunakan settings_icon sebagai placeholder untuk language)
+        // Setel ikon (gunakan settings_icon sebagai placeholder)
         languagechange.setImageDrawable(getDrawable("settings_icon"))
+        toggleproviders.setImageDrawable(getDrawable("settings_icon"))
         saveIcon.setImageDrawable(getDrawable("save_icon"))
 
         languagechange.makeTvCompatible()
+        toggleproviders.makeTvCompatible()
         saveIcon.makeTvCompatible()
 
-        // Hapus OnClickListener untuk LoginCard, FeatureCard, dan ToggleProviders
-        // karena fungsinya sudah tidak relevan atau dihapus.
+        // Hapus OnClickListener untuk LoginCard dan FeatureCard
         
         languagechange.setOnClickListener {
             LanguageSelectFragment(plugin, sharedPref).show(
@@ -66,6 +67,15 @@ class MainSettingsFragment(
                 "fragment_language_list"
             )
         }
+
+        toggleproviders.setOnClickListener {
+            val providersFragment = ProvidersFragment(plugin, sharedPref)
+            providersFragment.show(
+                activity?.supportFragmentManager ?: throw Exception("No FragmentManager"),
+                "fragment_providers" // Gunakan nama tag yang konsisten
+            )
+        }
+
 
         saveIcon.setOnClickListener {
             val context = this.context ?: return@setOnClickListener
