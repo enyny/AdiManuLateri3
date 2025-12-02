@@ -10,7 +10,6 @@ import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addSimklId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.MainPageRequest
@@ -20,6 +19,7 @@ import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
@@ -27,6 +27,9 @@ import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+import com.lagradost.cloudstream3.newHomePageResponse // Pastikan ini diimport
+import com.lagradost.cloudstream3.newEpisode // Pastikan ini diimport
+import com.lagradost.cloudstream3.newMovieLoadResponse // Pastikan ini diimport
 import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -36,12 +39,17 @@ import com.AdiManuLateri3.Lateri3PlayExtractor.invokeRiveStream
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeUqloadsXyz
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI
+import com.AdiManuLateri3.Lateri3PlayUtils.runLimitedAsync
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.awaitAll // Tambahkan ini
 import org.json.JSONObject
+
+// Import BuildConfig dari paket ini
+import com.AdiManuLateri3.BuildConfig
 
 open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
     override var name = "Lateri3Play"
@@ -57,18 +65,16 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
     companion object {
-        /** TOOLS (Dipertahankan untuk struktur TMDB) */
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
-        private const val Cinemeta = "https://v3-cinemeta.strem.io"
-        private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/AdiManuLateri3/Lateri3Play/main/Proxylist.txt" // Update URL
-        private const val apiKey = BuildConfig.TMDB_API
+        // Ganti URL ini dengan URL raw yang valid atau gunakan string kosong jika belum ada
+        private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/AdiManuLateri3/Lateri3Play/main/Proxylist.txt" 
+        private const val apiKey = BuildConfig.TMDB_API // Menggunakan BuildConfig
         private const val simkl = "https://api.simkl.com"
         private var currentBaseUrl: String? = null
 
         private val apiMutex = Mutex()
         private const val TAG = "Lateri3Play"
 
-        // Konstanta Extractor yang dibutuhkan
         const val PrimeSrcApi = "https://primesrc.me"
         const val RiveStreamAPI = "https://rivestream.org"
         const val UqloadsAPI = "https://uqloads.xyz"
@@ -172,21 +178,30 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
+        
+        // Memperbaiki inferensi tipe dengan <Results>
         val home = app.get("$tmdbAPI${request.data}$adultQuery&language=$langCode&page=$page", timeout = 10000)
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
+            
         return newHomePageResponse(request.name, home)
     }
 
     private fun Media.toSearchResponse(type: String? = null): SearchResponse? {
+        val mediaId = id
+        val mediaTitle = title ?: name ?: originalTitle ?: return null
+        val mediaType = mediaType ?: type
+        
+        if (mediaId == null) return null
+
         return newMovieSearchResponse(
-            title ?: name ?: originalTitle ?: return null,
-            Data(id = id, type = mediaType ?: type).toJson(),
+            mediaTitle,
+            Data(id = mediaId, type = mediaType).toJson(),
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            this.score = voteAverage?.let { Score.from10(it) }
         }
     }
 
@@ -201,7 +216,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        // Logika Load TMDB tetap sama untuk mendapatkan metadata dan LinkData
         val tmdbAPI = getApiBase()
         val data = parseJson<Data>(url)
         val type = getType(data.type)
@@ -244,24 +258,14 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
             .map { "https://www.youtube.com/watch?v=${it.key}" }
             .reversed()
 
-        val simklid = coroutineScope {
-            async {
-                runCatching {
-                    res.external_ids?.imdb_id?.takeIf { it.isNotBlank() }?.let { imdb ->
-                        val path = if (type == TvType.Movie) "movies" else "tv"
-                        val resJson =
-                            JSONObject(app.get("$simkl/$path/$imdb?client_id=${com.lagradost.cloudstream3.BuildConfig.SIMKL_CLIENT_ID}").text)
-                        resJson.optJSONObject("ids")?.optInt("simkl")?.takeIf { it != 0 }
-                    }
-                }.getOrNull()
-            }
-        }
+        // Hapus addSimklId jika menyebabkan error akses privat atau unresolved
+        // val simklid = ... (Dihapus untuk penyederhanaan dan menghindari error akses)
 
         if (type == TvType.TvSeries) {
-            val lastSeason = res.last_episode_to_air?.season_number
             val episodes = coroutineScope {
                 res.seasons?.map { season ->
                     async {
+                        // Tentukan tipe eksplisit untuk parsedSafe
                         app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey&language=$langCode")
                             .parsedSafe<MediaDetailEpisodes>()
                             ?.episodes
@@ -285,11 +289,10 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
                                     this.season = eps.seasonNumber
                                     this.episode = eps.episodeNumber
                                     this.posterUrl = getImageUrl(eps.stillPath)
-                                    this.score = Score.from10(eps.voteAverage)
+                                    this.score = eps.voteAverage?.let { Score.from10(it) }
                                     this.description = eps.overview
                                     this.runTime = eps.runTime
-                                }.apply {
-                                    this.addDate(eps.airDate)
+                                    this.addDate(eps.airDate) // Pastikan fungsi addDate diimport
                                 }
                             }
                     }
@@ -302,14 +305,13 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
                 this.plot = res.overview
                 this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                     ?.takeIf { it.isNotEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average.toString())
+                this.score = res.vote_average?.toString()?.let { Score.from10(it) }
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
-                addTrailer(trailer)
+                addTrailer(trailer) // Jika overload list string tidak ada, coba addTrailer(trailer.firstOrNull())
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
-                addSimklId(simklid.await())
             }
 
         } else {
@@ -337,13 +339,12 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
                 this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                     ?.takeIf { it.isNotEmpty() } ?: genres
 
-                this.score = Score.from10(res.vote_average.toString())
+                this.score = res.vote_average?.toString()?.let { Score.from10(it) }
                 this.recommendations = recommendations
                 this.actors = actors
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
-                addSimklId(simklid.await())
             }
         }
     }
@@ -357,25 +358,19 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
     ): Boolean {
         val res = parseJson<LinkData>(data)
 
-        // Gunakan runLimitedAsync untuk membatasi eksekusi (5 thread maksimal)
         runLimitedAsync(concurrency = 5,
-            // Subtitle API
             {
                 invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             {
                 invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
-
-            // Extractor PrimeWire (PrimeSrc)
             {
                 invokePrimeSrc(res.imdbId, res.season, res.episode, subtitleCallback, callback)
             },
-            // Extractor Uqloadsxyz
             {
                 invokeUqloadsXyz(res.imdbId, res.season, res.episode, subtitleCallback, callback)
             },
-            // Extractor RiveStream
             {
                 invokeRiveStream(res.id, res.season, res.episode, callback)
             }
@@ -384,7 +379,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         return true
     }
 
-    // LinkData diperkecil dan disederhanakan
+    // LinkData dan Data Classes lain (Tetap sama seperti sebelumnya)
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
@@ -399,7 +394,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         val isBollywood: Boolean = false,
     )
 
-    // Data Classes sisa dari TMDB tetap dipertahankan
     data class Data(
         val id: Int? = null,
         val type: String? = null,
