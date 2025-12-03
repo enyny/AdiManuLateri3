@@ -19,8 +19,9 @@ import androidx.core.content.edit
 import androidx.core.view.isNotEmpty
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+// IMPORT PENTING:
+import com.AdiManuLateri3.BuildConfig
 
-// Kunci SharedPreferences
 private const val PREFS_PROFILES = "provider_profiles"
 private const val PREFS_DISABLED = "disabled_providers"
 
@@ -29,7 +30,6 @@ class ProvidersFragment(
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
-    // Helper untuk Resource ID dinamis
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
     
     private lateinit var btnSave: ImageButton
@@ -39,7 +39,6 @@ class ProvidersFragment(
     private lateinit var container: LinearLayout
     private var providers: List<Provider> = emptyList()
 
-    // Helper: Cari View berdasarkan ID String (Penting untuk Plugin)
     private fun <T : View> View.findView(name: String): T {
         val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         if (id == 0) throw Exception("View ID $name not found.")
@@ -52,7 +51,6 @@ class ProvidersFragment(
         return if (id != 0) res.getDrawable(id, null) else null
     }
 
-    // Helper: Efek Fokus untuk TV
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
@@ -73,7 +71,6 @@ class ProvidersFragment(
 
     override fun onStart() {
         super.onStart()
-        // Pastikan BottomSheet terbuka penuh
         dialog?.let { dlg ->
             val bottomSheet = dlg.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
             bottomSheet?.let { sheet ->
@@ -88,25 +85,19 @@ class ProvidersFragment(
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Binding Views
         btnSave = view.findView("btn_save")
         btnSelectAll = view.findView("btn_select_all")
         btnDeselectAll = view.findView("btn_deselect_all")
         container = view.findView("list_container")
         val searchView = view.findView<SearchView>("search_provider")
 
-        // Setup Tombol & Ikon
         btnSave.setImageDrawable(getDrawable("save_icon"))
         btnSave.makeTvCompatible()
-        // btnSelectAll.makeTvCompatible() // Opsional, kadang bikin layout aneh
         
-        // Load Provider List (Dari ProvidersList.kt)
         providers = buildProviders().sortedBy { it.name.lowercase() }
 
-        // Load Status Disabled dari SharedPreferences
         val savedDisabled = sharedPref.getStringSet(PREFS_DISABLED, emptySet()) ?: emptySet()
 
-        // Inisialisasi Adapter Logika
         adapter = ProviderAdapter(providers, savedDisabled) { disabled ->
             sharedPref.edit { putStringSet(PREFS_DISABLED, disabled) }
             updateUI()
@@ -114,47 +105,34 @@ class ProvidersFragment(
 
         val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
 
-        // Render List Provider
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
             val chk = item.findViewById<CheckBox>(chkId)
             
-            // Style
             item.makeTvCompatible()
             chk.text = provider.name
-            
-            // Logic Checkbox (Checked = Enabled/Aktif)
-            // Jadi kalau !isDisabled, berarti Checked
             chk.isChecked = !adapter.isDisabled(provider.id)
 
-            // Klik pada Item container mentrigger Checkbox
             item.setOnClickListener { chk.toggle() }
 
             chk.setOnCheckedChangeListener { _, isChecked ->
-                // Jika Checked (True) -> Hapus dari daftar disabled
-                // Jika Unchecked (False) -> Tambah ke daftar disabled
                 adapter.setDisabled(provider.id, !isChecked)
             }
 
             container.addView(item)
         }
 
-        // Fokus awal untuk TV
         container.post {
             if (container.isNotEmpty()) {
                 container.getChildAt(0).requestFocus()
             }
         }
 
-        // Tombol Aksi
         btnSelectAll.setOnClickListener { adapter.setAll(true); updateUI() }
         btnDeselectAll.setOnClickListener { adapter.setAll(false); updateUI() }
-        btnSave.setOnClickListener { dismiss() } // Auto save saat toggle, tombol ini hanya tutup dialog
+        btnSave.setOnClickListener { dismiss() }
 
-        // --- Fitur Profil ---
         setupProfileFeatures(view)
-
-        // --- Fitur Pencarian ---
         setupSearch(searchView, chkId)
     }
 
@@ -180,29 +158,27 @@ class ProvidersFragment(
         val btnLoadProfile = view.findView<Button>("btn_load_profile")
         val btnDeleteProfile = view.findView<Button>("btn_delete_profile")
 
-        // Save Profile
         btnSaveProfile.setOnClickListener {
             val input = android.widget.EditText(requireContext())
             android.app.AlertDialog.Builder(requireContext())
                 .setTitle("Simpan Profil")
-                .setMessage("Beri nama profil ini (misal: Anime Only):")
+                .setMessage("Beri nama profil ini:")
                 .setView(input)
                 .setPositiveButton("Simpan") { _, _ ->
                     val name = input.text.toString().trim()
                     if (name.isNotEmpty()) {
                         saveProfile(name)
-                        Toast.makeText(context, "Profil $name tersimpan", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Profil tersimpan", Toast.LENGTH_SHORT).show()
                     }
                 }
                 .setNegativeButton("Batal", null)
                 .show()
         }
 
-        // Load Profile
         btnLoadProfile.setOnClickListener {
             val profiles = getAllProfiles().keys.toTypedArray()
             if (profiles.isEmpty()) {
-                Toast.makeText(context, "Belum ada profil tersimpan", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Belum ada profil", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             android.app.AlertDialog.Builder(requireContext())
@@ -213,7 +189,6 @@ class ProvidersFragment(
                 .show()
         }
 
-        // Delete Profile
         btnDeleteProfile.setOnClickListener {
             val profiles = getAllProfiles().keys.toTypedArray()
             if (profiles.isEmpty()) return@setOnClickListener
@@ -228,17 +203,14 @@ class ProvidersFragment(
         }
     }
 
-    // Update tampilan Checkbox saat Select All / Load Profile
     private fun updateUI() {
         val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
-            // Checked jika TIDAK ada di list disabled
             chk.isChecked = !adapter.isDisabled(providers[i].id)
         }
     }
 
-    // Logic Adapter Sederhana
     inner class ProviderAdapter(
         private val items: List<Provider>,
         initiallyDisabled: Set<String>,
@@ -255,13 +227,11 @@ class ProvidersFragment(
 
         fun setAll(enable: Boolean) {
             disabled.clear()
-            // Jika enable=false (Deselect All), maka semua ID masuk ke disabled
             if (!enable) disabled.addAll(items.map { it.id })
             onChange(disabled)
         }
     }
 
-    // --- Profile Storage Logic (String-based Serialization) ---
     private fun saveProfile(name: String) {
         val disabled = sharedPref.getStringSet(PREFS_DISABLED, emptySet()) ?: emptySet()
         val allProfiles = getAllProfiles().toMutableMap()
@@ -272,7 +242,6 @@ class ProvidersFragment(
     private fun getAllProfiles(): Map<String, Set<String>> {
         val encoded = sharedPref.getString(PREFS_PROFILES, "") ?: return emptyMap()
         if (encoded.isEmpty()) return emptyMap()
-        // Format: Nama:id1,id2|Nama2:id3
         return encoded.split("|").mapNotNull { entry ->
             val parts = entry.split(":")
             if (parts.size < 2) return@mapNotNull null
@@ -287,7 +256,6 @@ class ProvidersFragment(
         val disabled = profiles[name] ?: return
         sharedPref.edit { putStringSet(PREFS_DISABLED, disabled) }
         
-        // Re-init adapter dengan state baru
         adapter = ProviderAdapter(providers, disabled) { updated ->
             sharedPref.edit { putStringSet(PREFS_DISABLED, updated) }
             updateUI()
