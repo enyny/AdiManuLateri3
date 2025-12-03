@@ -175,4 +175,105 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
         if (type == TvType.TvSeries) {
             val episodes = res.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$API_KEY&language=$
+                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$API_KEY&language=$langCode")
+                    .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
+                        newEpisode(
+                            LinkData(
+                                id = data.id,
+                                imdbId = res.external_ids?.imdb_id,
+                                type = data.type,
+                                season = eps.seasonNumber,
+                                episode = eps.episodeNumber,
+                                title = title,
+                                year = year,
+                                orgTitle = orgTitle,
+                                epsTitle = eps.name,
+                                date = season.airDate,
+                            ).toJson()
+                        ) {
+                            this.name = eps.name
+                            this.season = eps.seasonNumber
+                            this.episode = eps.episodeNumber
+                            this.posterUrl = getImageUrl(eps.stillPath)
+                            this.score = Score.from10(eps.voteAverage)
+                            this.description = eps.overview
+                            this.addDate(eps.airDate)
+                        }
+                    }
+            }?.flatten() ?: listOf()
+
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgPoster
+                this.year = year
+                this.plot = res.overview
+                this.tags = tags
+                this.score = Score.from10(res.vote_average.toString())
+                this.showStatus = if(res.status == "Returning Series") ShowStatus.Ongoing else ShowStatus.Completed
+                this.recommendations = recommendations
+                this.actors = actors
+                addTrailer(trailer)
+                addTMDbId(data.id.toString())
+                addImdbId(res.external_ids?.imdb_id)
+            }
+        } else {
+            return newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                LinkData(
+                    id = data.id,
+                    imdbId = res.external_ids?.imdb_id,
+                    type = data.type,
+                    title = title,
+                    year = year,
+                    orgTitle = orgTitle
+                ).toJson(),
+            ) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgPoster
+                this.year = year
+                this.plot = res.overview
+                this.duration = res.runtime
+                this.tags = tags
+                this.score = Score.from10(res.vote_average.toString())
+                this.recommendations = recommendations
+                this.actors = actors
+                addTrailer(trailer)
+                addTMDbId(data.id.toString())
+                addImdbId(res.external_ids?.imdb_id)
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val res = parseJson<LinkData>(data)
+        
+        val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
+        val providersList = buildProviders().filter { it.id !in disabledProviderIds }
+
+        // Eksekusi semua provider secara paralel
+        val tasks = mutableListOf<suspend () -> Unit>()
+        
+        // 1. Subtitle API
+        tasks.add { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
+        tasks.add { invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
+        
+        // 2. Movie Providers
+        providersList.forEach { provider ->
+            tasks.add { 
+                provider.invoke(res, subtitleCallback, callback)
+            }
+        }
+
+        runAllAsync(*tasks.toTypedArray())
+
+        return true
+    }
+}
