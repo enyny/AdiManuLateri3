@@ -1,4 +1,4 @@
-package com.AdiManuLateri3.settings // ✅ Changed Package
+package com.AdiManuLateri3.settings
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -19,10 +19,9 @@ import androidx.core.content.edit
 import androidx.core.view.isNotEmpty
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.AdiManuLateri3.BuildConfig // ✅ Imported
-import com.AdiManuLateri3.Lateri3PlayPlugin // ✅ Imported
-import com.AdiManuLateri3.Provider // ✅ Imported
-import com.AdiManuLateri3.buildProviders // ✅ Imported
+import com.AdiManuLateri3.Lateri3PlayPlugin
+import com.AdiManuLateri3.Provider
+import com.AdiManuLateri3.buildProviders
 
 private const val PREFS_PROFILES = "provider_profiles"
 private const val PREFS_DISABLED = "disabled_providers"
@@ -33,6 +32,9 @@ class ProvidersFragment(
 ) : BottomSheetDialogFragment() {
 
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
+    // Hardcoded package name to avoid BuildConfig issues
+    private val packageName = "com.AdiManuLateri3"
+    
     private lateinit var btnSave: ImageButton
     private lateinit var btnSelectAll: Button
     private lateinit var btnDeselectAll: Button
@@ -41,25 +43,25 @@ class ProvidersFragment(
     private var providers: List<Provider> = emptyList()
 
     private fun <T : View> View.findView(name: String): T {
-        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = res.getIdentifier(name, "id", packageName)
         if (id == 0) throw Exception("View ID $name not found.")
         return this.findViewById(id)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun getDrawable(name: String): Drawable {
-        val id = res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = res.getIdentifier(name, "drawable", packageName)
         return res.getDrawable(id, null) ?: throw Exception("Drawable $name not found")
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val outlineId = res.getIdentifier("outline", "drawable", packageName)
         this.background = res.getDrawable(outlineId, null)
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = res.getIdentifier(name, "layout", packageName)
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
     }
@@ -106,7 +108,7 @@ class ProvidersFragment(
             updateUI()
         }
 
-        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val chkId = res.getIdentifier("chk_provider", "id", packageName)
 
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
@@ -202,7 +204,7 @@ class ProvidersFragment(
     }
 
     private fun updateUI() {
-        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val chkId = res.getIdentifier("chk_provider", "id", packageName)
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
             chk.isChecked = !adapter.isDisabled(providers[i].id)
