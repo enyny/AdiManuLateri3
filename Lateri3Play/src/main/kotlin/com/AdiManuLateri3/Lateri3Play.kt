@@ -3,7 +3,6 @@ package com.AdiManuLateri3
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
@@ -31,6 +30,7 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+// Import fungsi subtitle dari Extractor
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI
 import java.text.SimpleDateFormat
@@ -56,7 +56,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
     companion object {
         private const val TMDB_API_URL = "https://api.themoviedb.org/3"
-        private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7" // Use your own key if possible
+        private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         fun getApiBase(): String = TMDB_API_URL
 
@@ -142,7 +142,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val resUrl = if (type == TvType.Movie) {
             "$tmdbAPI/movie/${data.id}?api_key=$API_KEY&language=$langCode&append_to_response=$append"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$API_KEY&language=$langCode&append_to_response=$append"
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&language=$langCode&append_to_response=$append"
         }
 
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
@@ -162,3 +162,17 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
         val actors = res.credits?.cast?.mapNotNull { cast ->
             val name = cast.name ?: cast.originalName ?: return@mapNotNull null
+            com.lagradost.cloudstream3.ActorData(
+                com.lagradost.cloudstream3.Actor(name, getImageUrl(cast.profilePath)), roleString = cast.character
+            )
+        } ?: emptyList()
+
+        val recommendations = res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
+        val trailer = res.videos?.results.orEmpty()
+            .filter { it.type == "Trailer" }
+            .map { "https://www.youtube.com/watch?v=${it.key}" }
+            .reversed()
+
+        if (type == TvType.TvSeries) {
+            val episodes = res.seasons?.mapNotNull { season ->
+                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$API_KEY&language=$
