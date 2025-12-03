@@ -56,21 +56,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         fun getApiBase(): String = TMDB_API_URL
-
-        fun getDate(): TmdbDate {
-            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val calendar = Calendar.getInstance()
-            val today = formatter.format(calendar.time)
-            
-            calendar.add(Calendar.WEEK_OF_YEAR, 1)
-            val nextWeek = formatter.format(calendar.time)
-            
-            calendar.time = Date()
-            calendar.add(Calendar.WEEK_OF_YEAR, -1)
-            val lastWeekStart = formatter.format(calendar.time)
-            
-            return TmdbDate(today, nextWeek, lastWeekStart)
-        }
     }
 
     override val mainPage = mainPageOf(
@@ -134,7 +119,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val tmdbAPI = getApiBase()
         val data = parseJson<Data>(url)
         val type = if (data.type == "movie") TvType.Movie else TvType.TvSeries
-        val append = "alternative_titles,credits,external_ids,videos,recommendations"
+        val append = "alternative_titles,credits,external_ids,videos,recommendations,keywords"
 
         val resUrl = if (type == TvType.Movie) {
             "$tmdbAPI/movie/${data.id}?api_key=$API_KEY&language=$langCode&append_to_response=$append"
@@ -153,6 +138,13 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
         val genres = res.genres?.mapNotNull { it.name }
+        
+        // Logika Deteksi Genre (PENTING untuk Kisskh & AdiDewasa)
+        val isCartoon = genres?.contains("Animation") ?: false
+        val isAnime = isCartoon && (res.original_name == "ja" || res.original_title == "ja" || res.original_name == "Japanese" || res.original_title == "Japanese" || (res.credits?.cast?.any { it.originalName?.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF]+")) == true } == true))
+        val isAsian = !isAnime && (res.original_name == "ko" || res.original_name == "zh" || res.original_title == "ko" || res.original_title == "zh")
+        val isBollywood = res.credits?.cast?.any { it.name == "Shah Rukh Khan" || it.name == "Salman Khan" } ?: false || (genres?.contains("Bollywood") == true)
+        
         val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
             .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
         val tags = keywords?.map { it.replaceFirstChar { char -> char.titlecase() } }?.takeIf { it.isNotEmpty() } ?: genres
@@ -186,6 +178,9 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
                                 orgTitle = orgTitle,
                                 epsTitle = eps.name,
                                 date = season.airDate,
+                                isAnime = isAnime,
+                                isAsian = isAsian,
+                                isBollywood = isBollywood
                             ).toJson()
                         ) {
                             this.name = eps.name
@@ -199,7 +194,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
                     }
             }?.flatten() ?: listOf()
 
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            return newTvSeriesLoadResponse(title, url, if (isAnime) TvType.Anime else TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
@@ -224,7 +219,10 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
                     type = data.type,
                     title = title,
                     year = year,
-                    orgTitle = orgTitle
+                    orgTitle = orgTitle,
+                    isAnime = isAnime,
+                    isAsian = isAsian,
+                    isBollywood = isBollywood
                 ).toJson(),
             ) {
                 this.posterUrl = poster
@@ -252,6 +250,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
+        // Membaca settings untuk provider yang dinonaktifkan
         val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
@@ -262,7 +261,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         
-        // 2. Movie Providers
+        // 2. Movie/Series Providers (Looping dari ProvidersList.kt)
         providersList.forEach { provider ->
             tasks.add { 
                 provider.invoke(res, subtitleCallback, callback)
