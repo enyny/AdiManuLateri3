@@ -13,18 +13,17 @@ import com.lagradost.cloudstream3.extractors.StreamTape
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.extractors.Voe
+import com.AdiManuLateri3.settings.MainSettingsFragment // ✅ Import Ditambahkan
 
 @CloudstreamPlugin
 class Lateri3PlayPlugin : Plugin() {
     override fun load(context: Context) {
-        // SharedPreferences dengan nama baru
         val sharedPref = context.getSharedPreferences("Lateri3Play", Context.MODE_PRIVATE)
 
-        // Hanya mendaftarkan satu MainAPI utama
+        // MainAPI
         registerMainAPI(Lateri3Play(sharedPref))
 
-        // Mendaftarkan Extractor (File Host) penting yang digunakan oleh provider pilihan
-        // Extractor ini nanti akan didefinisikan ulang di file Extractors.kt
+        // File Hosts
         registerExtractorAPI(HubCloud())
         registerExtractorAPI(GDFlix())
         registerExtractorAPI(PixelDrain())
@@ -33,11 +32,11 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(Driveseed())
         registerExtractorAPI(Driveleech())
         registerExtractorAPI(Streamruby())
-        registerExtractorAPI(Multimovies()) // Diperlukan untuk provider MultiMovies
+        registerExtractorAPI(Multimovies())
         registerExtractorAPI(Filelions())
         registerExtractorAPI(Ridoo())
         
-        // Extractor standar CloudStream
+        // Standard Extractors
         registerExtractorAPI(StreamWishExtractor())
         registerExtractorAPI(DoodYtExtractor())
         registerExtractorAPI(MixDrop())
@@ -47,7 +46,6 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(FileMoon())
         registerExtractorAPI(VidHidePro6())
 
-        // Menu Pengaturan
         openSettings = { ctx ->
             val act = ctx as AppCompatActivity
             if (!act.isFinishing && !act.isDestroyed) {
