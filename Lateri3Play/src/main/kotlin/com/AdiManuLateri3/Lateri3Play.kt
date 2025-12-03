@@ -3,7 +3,6 @@ package com.AdiManuLateri3
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
@@ -125,7 +124,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
     override suspend fun search(query: String, page: Int): SearchResponseList? {
         val tmdbAPI = getApiBase()
-        // PERBAIKAN: Menggunakan API_KEY (bukan apiKey)
         return app.get("$tmdbAPI/search/multi?api_key=$API_KEY&language=$langCode&query=$query&page=$page&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -138,7 +136,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val type = if (data.type == "movie") TvType.Movie else TvType.TvSeries
         val append = "alternative_titles,credits,external_ids,videos,recommendations"
 
-        // PERBAIKAN: Menggunakan API_KEY (bukan apiKey)
         val resUrl = if (type == TvType.Movie) {
             "$tmdbAPI/movie/${data.id}?api_key=$API_KEY&language=$langCode&append_to_response=$append"
         } else {
@@ -175,7 +172,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
         if (type == TvType.TvSeries) {
             val episodes = res.seasons?.mapNotNull { season ->
-                // PERBAIKAN: Menggunakan API_KEY
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$API_KEY&language=$langCode")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
@@ -262,7 +258,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         // Eksekusi semua provider secara paralel
         val tasks = mutableListOf<suspend () -> Unit>()
         
-        // 1. Subtitle API (Menggunakan fully qualified name untuk menghindari error import)
+        // 1. Subtitle API
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         
