@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import com.lagradost.api.Log
 
-// Import Standard Extractors (Bawaan CloudStream)
+// Import Standard Extractors
 import com.lagradost.cloudstream3.extractors.DoodYtExtractor
 import com.lagradost.cloudstream3.extractors.FileMoon
 import com.lagradost.cloudstream3.extractors.MixDrop
@@ -21,11 +21,10 @@ class Lateri3PlayPlugin : Plugin() {
     override fun load(context: Context) {
         val sharedPref = context.getSharedPreferences("Lateri3Play", Context.MODE_PRIVATE)
 
-        // 1. Mendaftarkan API Utama (Otak dari ekstensi)
+        // 1. Mendaftarkan API Utama
         registerMainAPI(Lateri3Play(sharedPref))
 
-        // 2. Mendaftarkan Custom Extractors (Dari file Extractors.kt yang baru dibuat)
-        // Extractor ini menangani situs download seperti HubCloud, GDFlix, dll.
+        // 2. Mendaftarkan Custom Extractors
         registerExtractorAPI(HubCloud())
         registerExtractorAPI(GDFlix())
         registerExtractorAPI(PixelDrain())
@@ -34,12 +33,12 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(Streamruby())
         registerExtractorAPI(Ridoo())
         
-        // Register Alias/Kompatibilitas
+        // Register Alias
         registerExtractorAPI(Driveleech())
         registerExtractorAPI(Driveseed())
         registerExtractorAPI(Filelions())
 
-        // 3. Mendaftarkan Standard Extractors (Untuk link video langsung)
+        // 3. Mendaftarkan Standard Extractors
         registerExtractorAPI(StreamWishExtractor())
         registerExtractorAPI(DoodYtExtractor())
         registerExtractorAPI(MixDrop())
@@ -49,18 +48,16 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(FileMoon())
         registerExtractorAPI(VidHidePro6())
 
-        // Konfigurasi Settings (Opsional, aktifkan jika Anda memiliki file MainSettingsFragment)
-        /*
+        // 4. Konfigurasi Settings (SUDAH DIAKTIFKAN KEMBALI)
         openSettings = { ctx ->
             try {
-                // Pastikan Anda mengimport MainSettingsFragment jika ingin menggunakan ini
-                // val act = ctx as AppCompatActivity
-                // val frag = com.AdiManuLateri3.settings.MainSettingsFragment(this, sharedPref)
-                // frag.show(act.supportFragmentManager, "Settings")
+                val act = ctx as AppCompatActivity
+                // Memanggil MainSettingsFragment yang ada di package yang sama
+                val frag = MainSettingsFragment(this, sharedPref)
+                frag.show(act.supportFragmentManager, "Settings")
             } catch (e: Exception) {
                 Log.e("Lateri3Play", "Error opening settings: ${e.message}")
             }
         }
-        */
     }
 }
