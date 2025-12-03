@@ -18,12 +18,12 @@ import com.AdiManuLateri3.Lateri3PlayExtractor.invokeHdmovie2
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeTopMovies
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeBollyflix
 
-// Definisi Data Class Provider
+// LinkData diambil dari Lateri3PlayParser.kt yang ada di package yang sama
 data class Provider(
     val id: String,
     val name: String,
     val invoke: suspend (
-        res: Lateri3Play.LinkData,
+        res: LinkData, 
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) -> Unit
@@ -137,7 +137,7 @@ fun buildProviders(): List<Provider> {
         },
         Provider("bollyflix", "BollyFlix") { res, sub, cb ->
             invokeBollyflix(
-                id = res.imdbId, // Bollyflix biasanya butuh IMDB ID atau Query
+                id = res.imdbId,
                 season = res.season,
                 episode = res.episode,
                 subtitleCallback = sub,
