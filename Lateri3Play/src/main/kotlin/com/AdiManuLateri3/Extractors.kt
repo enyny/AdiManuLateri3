@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.extractors.VidhideExtractor
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType // ✅ Added
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
@@ -17,7 +18,7 @@ import com.lagradost.cloudstream3.utils.getPacked
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
+// HAPUS BARIS INI: import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
 import okhttp3.FormBody
 import org.json.JSONObject
 import java.net.URI
@@ -199,7 +200,7 @@ open class GDFlix : ExtractorApi() {
 
     override suspend fun getUrl(
         url: String,
-        referer: String?, // Using 'referer' parameter as 'source' name
+        referer: String?, 
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
