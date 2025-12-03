@@ -139,10 +139,11 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         
         val genres = res.genres?.mapNotNull { it.name }
         
-        // Logika Deteksi Genre (PENTING untuk Kisskh & AdiDewasa)
+        // --- PERBAIKAN LOGIKA BAHASA ---
+        // Menggunakan properti baru 'originalLanguage' dan variabel camelCase
         val isCartoon = genres?.contains("Animation") ?: false
-        val isAnime = isCartoon && (res.original_name == "ja" || res.original_title == "ja" || res.original_name == "Japanese" || res.original_title == "Japanese" || (res.credits?.cast?.any { it.originalName?.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF]+")) == true } == true))
-        val isAsian = !isAnime && (res.original_name == "ko" || res.original_name == "zh" || res.original_title == "ko" || res.original_title == "zh")
+        val isAnime = isCartoon && (res.originalLanguage == "ja" || res.originalLanguage == "jp" || (res.credits?.cast?.any { it.originalName?.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF]+")) == true } == true))
+        val isAsian = !isAnime && (res.originalLanguage == "ko" || res.originalLanguage == "zh")
         val isBollywood = res.credits?.cast?.any { it.name == "Shah Rukh Khan" || it.name == "Salman Khan" } ?: false || (genres?.contains("Bollywood") == true)
         
         val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
@@ -250,7 +251,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
-        // Membaca settings untuk provider yang dinonaktifkan
         val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
@@ -261,7 +261,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         
-        // 2. Movie/Series Providers (Looping dari ProvidersList.kt)
+        // 2. Movie/Series Providers
         providersList.forEach { provider ->
             tasks.add { 
                 provider.invoke(res, subtitleCallback, callback)
