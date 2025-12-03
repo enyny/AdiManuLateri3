@@ -21,6 +21,10 @@ import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
+// IMPORT PENTING YANG HILANG:
+import com.lagradost.cloudstream3.addEpisodes 
+import com.AdiManuLateri3.BuildConfig 
+
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -54,25 +58,20 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         TvType.Cartoon,
     )
 
-    // Token management (opsional, jika nanti butuh fitur login sederhana)
     val token: String? = sharedPref?.getString("token", null)
     val langCode = sharedPref?.getString("tmdb_language_code", "id-ID") ?: "en-US"
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
     companion object {
-        /** CONFIG & API KEYS */
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
-        // Key baru sesuai permintaan
         private const val apiKey = BuildConfig.TMDB_API 
         
-        // Proxy list untuk bypass blokir TMDb di Indonesia
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
         private var currentBaseUrl: String? = null
 
-        /** 10 SELECTED PROVIDERS URLS (HARDCODED FOR STABILITY) */
         const val UHDMoviesAPI = "https://uhdmovies.fyi"
-        const val MultiMoviesAPI = "https://multimovies.sbs" // Backup: multimovies.cloud
+        const val MultiMoviesAPI = "https://multimovies.sbs" 
         const val NineTvAPI = "https://moviesapi.club"
         const val RidoMoviesAPI = "https://ridomovies.tv"
         const val ZoeChipAPI = "https://www1.zoechip.to"
@@ -82,11 +81,9 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         const val VidsrcAPI = "https://vidsrc.cc"
         const val WatchSomuchAPI = "https://watchsomuch.tv"
 
-        /** SUBTITLE APIS */
         const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
         const val WyZIESUBAPI = "https://sub.wyzie.ru"
 
-        // Helper untuk TMDb Proxy Rotation
         suspend fun getApiBase(): String {
             currentBaseUrl?.let { return it }
             if (isOfficialAvailable()) {
@@ -147,7 +144,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         }
     }
 
-    // Halaman Utama CloudStream
     override val mainPage = mainPageOf(
         "/trending/all/day?api_key=$apiKey&region=US" to "Trending",
         "/movie/popular?api_key=$apiKey&region=US" to "Popular Movies",
@@ -344,27 +340,21 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
-        // Cek provider yang dimatikan user
         val disabledProviderIds = sharedPref
             ?.getStringSet("disabled_providers", emptySet())
             ?.toSet() ?: emptySet()
 
-        // Ambil daftar 10 Provider dari ProvidersList.kt
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
-        // Eksekusi secara paralel: Subtitle + Video Extractors
         runAllAsync(
             {
-                // Wyzie Subs
                 invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             {
-                // OpenSubtitles V3
                 invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             *providersList.map { provider ->
                 suspend {
-                    // Panggil fungsi invoke milik provider masing-masing
                     provider.invoke(res, subtitleCallback, callback)
                 }
             }.toTypedArray()
@@ -373,8 +363,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         return true
     }
 
-    // DATA CLASSES UNTUK PARSING METADATA
-    
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
@@ -393,15 +381,8 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         val isCartoon: Boolean = false,
     )
 
-    data class Data(
-        val id: Int? = null,
-        val type: String? = null,
-    )
-
-    data class Results(
-        @param:JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
-    )
-
+    data class Data(val id: Int? = null, val type: String? = null)
+    data class Results(@param:JsonProperty("results") val results: ArrayList<Media>? = arrayListOf())
     data class Media(
         @param:JsonProperty("id") val id: Int? = null,
         @param:JsonProperty("name") val name: String? = null,
@@ -411,64 +392,17 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
         @param:JsonProperty("poster_path") val posterPath: String? = null,
         @param:JsonProperty("vote_average") val voteAverage: Double? = null,
     )
-
-    data class Genres(
-        @get:JsonProperty("id") val id: Int? = null,
-        @get:JsonProperty("name") val name: String? = null,
-    )
-
-    data class Seasons(
-        @get:JsonProperty("season_number") val seasonNumber: Int? = null,
-        @get:JsonProperty("air_date") val airDate: String? = null,
-    )
-
-    data class Cast(
-        @get:JsonProperty("name") val name: String? = null,
-        @get:JsonProperty("original_name") val originalName: String? = null,
-        @get:JsonProperty("character") val character: String? = null,
-        @get:JsonProperty("profile_path") val profilePath: String? = null,
-    )
-
-    data class Episodes(
-        @get:JsonProperty("name") val name: String? = null,
-        @get:JsonProperty("overview") val overview: String? = null,
-        @get:JsonProperty("air_date") val airDate: String? = null,
-        @get:JsonProperty("still_path") val stillPath: String? = null,
-        @get:JsonProperty("vote_average") val voteAverage: Double? = null,
-        @get:JsonProperty("episode_number") val episodeNumber: Int? = null,
-        @get:JsonProperty("season_number") val seasonNumber: Int? = null,
-    )
-
-    data class MediaDetailEpisodes(
-        @get:JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
-    )
-
-    data class Trailers(
-        @get:JsonProperty("key") val key: String? = null,
-        @get:JsonProperty("type") val type: String? = null,
-    )
-
-    data class ResultsTrailer(
-        @get:JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
-    )
-
-    data class ExternalIds(
-        @get:JsonProperty("imdb_id") val imdb_id: String? = null,
-        @get:JsonProperty("tvdb_id") val tvdb_id: Int? = null,
-    )
-
-    data class Credits(
-        @get:JsonProperty("cast") val cast: ArrayList<Cast>? = arrayListOf(),
-    )
-
-    data class ResultsRecommendations(
-        @get:JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
-    )
-
-    data class ProductionCountries(
-        @get:JsonProperty("name") val name: String? = null,
-    )
-
+    data class Genres(@get:JsonProperty("id") val id: Int? = null, @get:JsonProperty("name") val name: String? = null)
+    data class Seasons(@get:JsonProperty("season_number") val seasonNumber: Int? = null, @get:JsonProperty("air_date") val airDate: String? = null)
+    data class Cast(@get:JsonProperty("name") val name: String? = null, @get:JsonProperty("original_name") val originalName: String? = null, @get:JsonProperty("character") val character: String? = null, @get:JsonProperty("profile_path") val profilePath: String? = null)
+    data class Episodes(@get:JsonProperty("name") val name: String? = null, @get:JsonProperty("overview") val overview: String? = null, @get:JsonProperty("air_date") val airDate: String? = null, @get:JsonProperty("still_path") val stillPath: String? = null, @get:JsonProperty("vote_average") val voteAverage: Double? = null, @get:JsonProperty("episode_number") val episodeNumber: Int? = null, @get:JsonProperty("season_number") val seasonNumber: Int? = null)
+    data class MediaDetailEpisodes(@get:JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf())
+    data class Trailers(@get:JsonProperty("key") val key: String? = null, @get:JsonProperty("type") val type: String? = null)
+    data class ResultsTrailer(@get:JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf())
+    data class ExternalIds(@get:JsonProperty("imdb_id") val imdb_id: String? = null, @get:JsonProperty("tvdb_id") val tvdb_id: Int? = null)
+    data class Credits(@get:JsonProperty("cast") val cast: ArrayList<Cast>? = arrayListOf())
+    data class ResultsRecommendations(@get:JsonProperty("results") val results: ArrayList<Media>? = arrayListOf())
+    data class ProductionCountries(@get:JsonProperty("name") val name: String? = null)
     data class MediaDetail(
         @get:JsonProperty("id") val id: Int? = null,
         @get:JsonProperty("title") val title: String? = null,
