@@ -14,25 +14,27 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
+// HAPUS BARIS INI: import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URI
-import java.net.URLDecoder
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object Lateri3PlayExtractor {
-
+    // ... Sisa kode SAMA seperti sebelumnya ...
+    // Pastikan tidak ada perubahan logika, hanya menghapus import yang salah
+    
+    // ... (Isi kode sama dengan yang saya berikan sebelumnya di Lateri3PlayExtractor.kt)
+    // Pastikan DOMAINS_URL dan fungsi invokeUhdmovies dll tetap ada.
     private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
     private var cachedDomains: DomainsParser? = null
     
-    // URL Constants
+    // Subtitle APIs
     private const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
     private const val WyZIESUBAPI = "https://sub.wyzie.ru"
 
@@ -46,7 +48,16 @@ object Lateri3PlayExtractor {
         }
         return cachedDomains
     }
-
+    
+    // ... lanjutkan dengan fungsi invokeUhdmovies dan seterusnya ...
+    // ... Pastikan fungsi loadSourceNameExtractor dipanggil langsung tanpa prefix ...
+    
+    // Contoh pemanggilan yang benar (sudah ada di kode sebelumnya):
+    // loadSourceNameExtractor("UHDMovies", finalLink, "", subtitleCallback, callback)
+    
+    // (Copy seluruh isi Lateri3PlayExtractor.kt dari jawaban sebelumnya, 
+    // tapi pastikan baris import Lateri3PlayUtils DIHAPUS)
+    
     // ================== PROVIDER 1: UHD MOVIES ==================
     suspend fun invokeUhdmovies(
         title: String? = null,
@@ -472,7 +483,7 @@ object Lateri3PlayExtractor {
                   else "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
         
         try {
-            val res = app.get(url).parsedSafe<SubtitleResponse>() // Menggunakan Class Baru
+            val res = app.get(url).parsedSafe<SubtitleResponse>() 
             res?.subtitles?.forEach { 
                 subtitleCallback(newSubtitleFile(it.lang, it.url))
             }
@@ -567,7 +578,6 @@ object Lateri3PlayExtractor {
         val url: String?
     )
 
-    // RENAMED TO AVOID CONFLICT
     data class SubtitleResponse(
         val subtitles: List<Subtitle>
     )
