@@ -28,7 +28,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.min
 
-// ================= UTILITIES UMUM (LATERI3PLAY LAMA) =================
+// ================= UTILITIES UMUM =================
 
 fun getBaseUrl(url: String): String {
     return try {
@@ -137,7 +137,7 @@ suspend fun loadCustomExtractor(
     }
 }
 
-// ================= BYPASS & SCRAPERS KHUSUS (LATERI3PLAY LAMA) =================
+// ================= BYPASS & SCRAPERS KHUSUS (LATERI3PLAY) =================
 
 suspend fun bypassHrefli(url: String): String? {
     fun Document.getFormUrl(): String = this.select("form#landing").attr("action")
@@ -514,11 +514,4 @@ object VidsrcHelper {
         val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
         return base64UrlEncode(encrypted)
     }
-}
-
-// --- M3u8 Helper Wrapper (Jika diperlukan untuk Kisskh) ---
-object M3u8Helper {
-     // Kisskh menggunakan fungsi generateM3u8 dari com.lagradost.cloudstream3.utils.M3u8Helper
-     // Kita bisa memanggilnya langsung di Extractor, tidak perlu wrapper di sini 
-     // karena sudah di-import di file Extractor nantinya.
 }
