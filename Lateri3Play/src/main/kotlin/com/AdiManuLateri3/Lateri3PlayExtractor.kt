@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
-import com.lagradost.api.Log // Import Log ditambahkan
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -15,7 +15,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // Import newSubtitleFile ditambahkan
+import com.lagradost.cloudstream3.newSubtitleFile // Import Fix
 import com.AdiManuLateri3.Lateri3Play.Companion.UHDMoviesAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.MultiMoviesAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.NineTvAPI
@@ -161,7 +161,7 @@ object Lateri3PlayExtractor {
         year: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit, // Ditambahkan agar match saat dipanggil dari provider list
+        subtitleCallback: (SubtitleFile) -> Unit, 
         callback: (ExtractorLink) -> Unit
     ) {
         val slug = title?.lowercase()?.replace(" ", "-") ?: return
@@ -181,7 +181,7 @@ object Lateri3PlayExtractor {
         servers.forEach { server ->
             val serverUrl = server.attr("data-server")
             if (serverUrl.contains("filemoon") || serverUrl.contains("vidcloud")) {
-                loadExtractor(serverUrl, subtitleCallback, callback) // Sekarang parameter tidak null
+                loadExtractor(serverUrl, subtitleCallback, callback) 
             }
         }
     }
@@ -264,10 +264,12 @@ object Lateri3PlayExtractor {
     data class MoflixObj(val id: Int?, val videos: List<MoflixVideo>?)
     data class MoflixVideo(val name: String?, val src: String?)
 
+    // UPDATE: Menambahkan subtitleCallback agar sesuai signature di ProvidersList
     suspend fun invokeVidsrc(
         id: Int?,
         season: Int?,
         episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit, // Ditambahkan (Ignored)
         callback: (ExtractorLink) -> Unit
     ) {
         val url = if (season == null) "$VidsrcAPI/v2/embed/movie/$id" else "$VidsrcAPI/v2/embed/tv/$id/$season/$episode"
