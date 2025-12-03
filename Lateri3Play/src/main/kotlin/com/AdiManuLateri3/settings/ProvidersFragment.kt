@@ -1,4 +1,4 @@
-package com.AdiManuLateri3
+package com.AdiManuLateri3.settings // ✅ Changed Package
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -19,6 +19,10 @@ import androidx.core.content.edit
 import androidx.core.view.isNotEmpty
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.AdiManuLateri3.BuildConfig // ✅ Imported
+import com.AdiManuLateri3.Lateri3PlayPlugin // ✅ Imported
+import com.AdiManuLateri3.Provider // ✅ Imported
+import com.AdiManuLateri3.buildProviders // ✅ Imported
 
 private const val PREFS_PROFILES = "provider_profiles"
 private const val PREFS_DISABLED = "disabled_providers"
@@ -93,10 +97,8 @@ class ProvidersFragment(
         container = view.findView("list_container")
         container.makeTvCompatible()
         
-        // Memuat provider dari ProvidersList.kt
         providers = buildProviders().sortedBy { it.name.lowercase() }
 
-        // Load disabled providers
         val savedDisabled = sharedPref.getStringSet(PREFS_DISABLED, emptySet()) ?: emptySet()
 
         adapter = ProviderAdapter(providers, savedDisabled) { disabled ->
@@ -106,7 +108,6 @@ class ProvidersFragment(
 
         val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
 
-        // Generate Checkboxes
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
             val chk = item.findViewById<CheckBox>(chkId)
@@ -124,7 +125,6 @@ class ProvidersFragment(
             container.addView(item)
         }
         
-        // Focus handling for TV
         container.post {
             if (container.isNotEmpty()) {
                 val firstItem = container.getChildAt(0)
@@ -138,7 +138,6 @@ class ProvidersFragment(
         btnDeselectAll.setOnClickListener { adapter.setAll(false) }
         btnSave.setOnClickListener { dismissFragment() }
 
-        // === Profile Handling ===
         val btnSaveProfile = view.findView<Button>("btn_save_profile")
         val btnLoadProfile = view.findView<Button>("btn_load_profile")
         val btnDeleteProfile = view.findView<Button>("btn_delete_profile")
@@ -186,7 +185,6 @@ class ProvidersFragment(
                 .show()
         }
 
-        // Search Functionality
         val searchView = view.findView<SearchView>("search_provider")
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean = false
