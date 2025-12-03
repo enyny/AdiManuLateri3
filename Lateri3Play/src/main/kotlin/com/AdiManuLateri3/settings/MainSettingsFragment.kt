@@ -1,4 +1,4 @@
-package com.AdiManuLateri3
+package com.AdiManuLateri3.settings // ✅ Changed Package
 
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -9,6 +9,10 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.AdiManuLateri3.BuildConfig // ✅ Imported
+import com.AdiManuLateri3.Lateri3PlayPlugin // ✅ Imported
+// Import ProvidersFragment is likely implicit if in same package now, but since we are in settings, we check.
+// ProvidersFragment is also moving to com.AdiManuLateri3.settings
 
 class MainSettingsFragment(
     private val plugin: Lateri3PlayPlugin,
@@ -43,22 +47,17 @@ class MainSettingsFragment(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        // Menggunakan layout yang nanti akan kita modifikasi (fragment_main_settings)
         val view = getLayout("fragment_main_settings", inflater, container)
 
-        // Hanya mengambil view untuk Sources dan Save (Sesuai request gambar)
         val toggleproviders: ImageView = view.findView("toggleproviders")
         val saveIcon: ImageView = view.findView("saveIcon")
 
-        // Set Icon
         toggleproviders.setImageDrawable(getDrawable("settings_icon"))
         saveIcon.setImageDrawable(getDrawable("save_icon"))
 
-        // TV Support
         toggleproviders.makeTvCompatible()
         saveIcon.makeTvCompatible()
 
-        // Listener untuk membuka menu Enable/Disable Sources
         toggleproviders.setOnClickListener {
             val providersFragment = ProvidersFragment(plugin, sharedPref)
             providersFragment.show(
@@ -67,7 +66,6 @@ class MainSettingsFragment(
             )
         }
 
-        // Listener untuk Save & Restart
         saveIcon.setOnClickListener {
             val context = this.context ?: return@setOnClickListener
 
