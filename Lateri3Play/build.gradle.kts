@@ -1,24 +1,17 @@
 @file:Suppress("UnstableApiUsage")
 
 android {
-    // -----------------------------------------------------------------------
-    // INI ADALAH KUNCI PERBAIKAN CRASH RESOURCE:
-    // Namespace harus sama persis dengan packageName di MainSettingsFragment.kt
-    // -----------------------------------------------------------------------
+    // Namespace wajib untuk resource ID agar tidak crash
     namespace = "com.AdiManuLateri3"
     
     compileSdk = 34
 
     defaultConfig {
         minSdk = 21
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // targetSdk, versionCode, dan versionName dihapus karena menyebabkan error di Library Module
     }
 
     buildFeatures {
-        // Diperlukan untuk mengakses BuildConfig.LIBRARY_PACKAGE_NAME jika needed
-        // dan untuk ViewBinding di Fragment
         buildConfig = true
         viewBinding = true
     }
@@ -34,8 +27,7 @@ android {
 }
 
 cloudstream {
-    // Metadata Ekstensi
-    name = "Lateri3Play"
+    // 'name' dihapus karena read-only. Nama plugin diambil dari nama class utama.
     language = "en"
     description = "Lateri3Play Provider - 10 Sources"
     authors = listOf("AdiManu")
@@ -59,7 +51,6 @@ cloudstream {
     // Icon URL
     iconUrl = "https://i3.wp.com/yt3.googleusercontent.com/ytc/AIdro_nCBArSmvOc6o-k2hTYpLtQMPrKqGtAw_nC20rxm70akA=s900-c-k-c0x00ffffff-no-rj?ssl=1"
 
-    // Wajib true karena kita menggunakan layout XML custom
     requiresResources = true
 }
 
