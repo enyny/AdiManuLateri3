@@ -21,7 +21,7 @@ cloudstream {
     // Anda mendukung semua tipe dari Moviebox
     tvTypes = listOf("Movie","TvSeries","Anime","AsianDrama")
 
-    iconUrl="https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%"
+    iconUrl="https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/adi.png"
 
     isCrossPlatform = true
 }
