@@ -9,23 +9,46 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.Toast
+import androidx.core.content.edit
+import androidx.core.widget.addTextChangedListener
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import androidx.core.content.edit
-import androidx.core.widget.addTextChangedListener
-
-// PENTING: Import ini mengatasi error BuildConfig
-import com.AdiManuLateri3.BuildConfig
 
 class LanguageSelectFragment(
-    private val plugin: Lateri3PlayPlugin,
+    plugin: Lateri3PlayPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
-    // Mengambil resources dari plugin untuk mengakses layout XML di dalam plugin
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
+    // Daftar Bahasa (Negara -> Kode ISO TMDb)
+    private val languages = listOf(
+        "Indonesia (Indonesian)" to "id-ID", // Prioritas
+        "United States (English)" to "en-US",
+        "United Kingdom (English)" to "en-GB",
+        "Japan (Japanese)" to "ja-JP",
+        "South Korea (Korean)" to "ko-KR",
+        "China (Chinese Simplified)" to "zh-CN",
+        "Taiwan (Chinese Traditional)" to "zh-TW",
+        "France (French)" to "fr-FR",
+        "Germany (German)" to "de-DE",
+        "Italy (Italian)" to "it-IT",
+        "Spain (Spanish)" to "es-ES",
+        "Russia (Russian)" to "ru-RU",
+        "India (Hindi)" to "hi-IN",
+        "Thailand (Thai)" to "th-TH",
+        "Vietnam (Vietnamese)" to "vi-VN",
+        "Brazil (Portuguese)" to "pt-BR",
+        "Philippines (Filipino)" to "tl-PH",
+        "Malaysia (Malay)" to "ms-MY",
+        "Turkey (Turkish)" to "tr-TR",
+        "Saudi Arabia (Arabic)" to "ar-SA"
+    ).sortedBy { it.first }
+
+    private lateinit var adapter: LanguageAdapter
+
+    // Helper: TV Focus Border
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
@@ -36,8 +59,6 @@ class LanguageSelectFragment(
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
         val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
-        // Fallback check jika layout tidak ditemukan
-        if (id == 0) throw Exception("Layout $name not found in ${BuildConfig.LIBRARY_PACKAGE_NAME}")
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
     }
@@ -48,95 +69,30 @@ class LanguageSelectFragment(
         return this.findViewById(id)
     }
 
-    // Daftar bahasa yang tersedia
-    private val languages = listOf(
-        "South Africa (Afrikaans)" to "af-ZA",
-        "United Arab Emirates (Arabic)" to "ar-AE",
-        "Saudi Arabia (Arabic)" to "ar-SA",
-        "Azerbaijan (Azerbaijani)" to "az-AZ",
-        "Bulgaria (Bulgarian)" to "bg-BG",
-        "India (Bengali)" to "bn-IN",
-        "Spain (Catalan)" to "ca-ES",
-        "Czech Republic (Czech)" to "cs-CZ",
-        "United Kingdom (Welsh)" to "cy-GB",
-        "Denmark (Danish)" to "da-DK",
-        "Germany (German)" to "de-DE",
-        "Greece (Greek)" to "el-GR",
-        "United States (English)" to "en-US",
-        "United Kingdom (English)" to "en-GB",
-        "Spain (Spanish)" to "es-ES",
-        "Latin America (Spanish)" to "es-419",
-        "Estonia (Estonian)" to "et-EE",
-        "Spain (Basque)" to "eu-ES",
-        "Iran (Persian)" to "fa-IR",
-        "Finland (Finnish)" to "fi-FI",
-        "Philippines (Filipino)" to "fil-PH",
-        "France (French)" to "fr-FR",
-        "Spain (Galician)" to "gl-ES",
-        "India (Gujarati)" to "gu-IN",
-        "Israel (Hebrew)" to "he-IL",
-        "India (Hindi)" to "hi-IN",
-        "Croatia (Croatian)" to "hr-HR",
-        "Hungary (Hungarian)" to "hu-HU",
-        "Indonesia (Indonesian)" to "id-ID",
-        "Iceland (Icelandic)" to "is-IS",
-        "Italy (Italian)" to "it-IT",
-        "Japan (Japanese)" to "ja-JP",
-        "India (Kannada)" to "kn-IN",
-        "South Korea (Korean)" to "ko-KR",
-        "Lithuania (Lithuanian)" to "lt-LT",
-        "Latvia (Latvian)" to "lv-LV",
-        "India (Malayalam)" to "ml-IN",
-        "Malaysia (Malay)" to "ms-MY",
-        "Norway (Norwegian)" to "no-NO",
-        "Netherlands (Dutch)" to "nl-NL",
-        "Poland (Polish)" to "pl-PL",
-        "Brazil (Portuguese)" to "pt-BR",
-        "Portugal (Portuguese)" to "pt-PT",
-        "Romania (Romanian)" to "ro-RO",
-        "Russia (Russian)" to "ru-RU",
-        "Slovakia (Slovak)" to "sk-SK",
-        "Slovenia (Slovenian)" to "sl-SI",
-        "Serbia (Serbian)" to "sr-RS",
-        "Sweden (Swedish)" to "sv-SE",
-        "India (Tamil)" to "ta-IN",
-        "India (Telugu)" to "te-IN",
-        "Thailand (Thai)" to "th-TH",
-        "Turkey (Turkish)" to "tr-TR",
-        "Ukraine (Ukrainian)" to "uk-UA",
-        "Vietnam (Vietnamese)" to "vi-VN",
-        "China (Chinese Simplified)" to "zh-CN",
-        "Taiwan (Chinese Traditional)" to "zh-TW"
-    ).sortedBy { it.first.lowercase() }
-
-
-    private lateinit var adapter: LanguageAdapter
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val root = getLayout("fragment_language_select", inflater, container)
 
         val recycler: RecyclerView = root.findView("languageRecycler")
         val search: EditText = root.findView("searchLanguage")
         
+        // Style TV
         recycler.makeTvCompatible()
         search.makeTvCompatible()
 
         recycler.layoutManager = LinearLayoutManager(requireContext())
 
-        // Mengambil kode bahasa yang tersimpan, default "en-US"
+        // Load saved language or default to English
         val savedCode = sharedPref.getString("tmdb_language_code", "en-US") ?: "en-US"
 
-        adapter = LanguageAdapter(
-            languages,
-            savedCode
-        ) { code ->
+        adapter = LanguageAdapter(languages, savedCode) { code ->
             sharedPref.edit { putString("tmdb_language_code", code) }
-            Toast.makeText(requireContext(), "Language set to $code", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Bahasa diubah ke $code. Refresh halaman utama.", Toast.LENGTH_LONG).show()
             dismiss()
         }
 
         recycler.adapter = adapter
 
+        // Logic Search
         search.addTextChangedListener { text ->
             adapter.filter(text.toString())
         }
@@ -144,8 +100,7 @@ class LanguageSelectFragment(
         return root
     }
 
-    // ---------------------------------------------------------------------- ADAPTER ------------------ //
-
+    // --- Inner Adapter Class ---
     inner class LanguageAdapter(
         private val originalList: List<Pair<String, String>>,
         private val selectedCode: String,
@@ -155,7 +110,11 @@ class LanguageSelectFragment(
         private var filteredList = originalList.toMutableList()
 
         inner class VH(val v: View) : RecyclerView.ViewHolder(v) {
-            val radio: RadioButton = v.findView("radio_language")
+            // Menggunakan helper findView dari outer class tidak bisa langsung di inner class ViewHolder
+            // Kita pakai findViewById manual dengan ID dinamis
+            val radio: RadioButton = v.findViewById(
+                res.getIdentifier("radio_language", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+            )
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -169,13 +128,17 @@ class LanguageSelectFragment(
             holder.radio.text = name
             holder.radio.isChecked = code == selectedCode
 
+            // Klik item (bukan hanya radio button) untuk memilih
+            holder.itemView.setOnClickListener {
+                onClick(code)
+            }
             holder.radio.setOnClickListener {
                 onClick(code)
             }
         }
 
         override fun getItemCount() = filteredList.size
-        
+
         @SuppressLint("NotifyDataSetChanged")
         fun filter(query: String) {
             filteredList = if (query.isBlank()) {
