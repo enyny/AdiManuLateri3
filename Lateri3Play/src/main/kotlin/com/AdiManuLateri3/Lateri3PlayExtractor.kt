@@ -1,177 +1,462 @@
 package com.AdiManuLateri3
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.newSubtitleFile
-import com.lagradost.cloudstream3.runAllAsync
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.newSubtitleFile
+import com.AdiManuLateri3.Lateri3Play.Companion.UHDMoviesAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.MultiMoviesAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.NineTvAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.RidoMoviesAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.ZoeChipAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.NepuAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.PlayDesiAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.MoflixAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.VidsrcAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.WatchSomuchAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.SubtitlesAPI
+import com.AdiManuLateri3.Lateri3Play.Companion.WyZIESUBAPI
+import org.jsoup.Jsoup
+import java.net.URI
+import java.util.Locale
 
 object Lateri3PlayExtractor {
 
-    // Daftar Host yang diizinkan (10 Extractor Pilihan)
-    private val ALLOWED_DOMAINS = listOf(
-        "streamwish", "filemoon", "mp4upload", "dood", "mixdrop", 
-        "streamtape", "voe", "vidhide", "ok.ru", "streamsb"
-    )
-
-    // --- LOGIKA UTAMA ---
-
-    suspend fun invokeSources(
-        data: Lateri3Play.LinkData,
+    // ================= 1. UHD Movies (High Quality) =================
+    suspend fun invokeUhdmovies(
+        title: String?,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Jalankan pencarian sumber secara paralel
-        runAllAsync(
-            { invokeRidoMovies(data, subtitleCallback, callback) },
-            { invokeNineTv(data, callback) }
-        )
+        val searchTitle = title?.replace(" ", "+") ?: return
+        val url = "$UHDMoviesAPI/?s=$searchTitle"
+        
+        val doc = app.get(url).documentLarge
+        val searchResults = doc.select("a.movie-card, article.post a") // Selector umum tema WP
+
+        for (result in searchResults) {
+            val href = result.attr("href")
+            val text = result.text()
+            
+            // Filter tahun jika ada
+            if (year != null && !text.contains(year.toString()) && season == null) continue
+
+            val detailDoc = app.get(href).documentLarge
+            
+            // Logika untuk Episode/Movie
+            val links = if (season == null) {
+                // Movie: Ambil link "Download" atau "Watch"
+                detailDoc.select("a:contains(Download), a:contains(Watch)").map { it.attr("href") }
+            } else {
+                // Series: Cari Episode tertentu
+                val episodeRegex = Regex("(?i)(Episode\\s*$episode|E$episode\\b)")
+                detailDoc.select("p, h3, h4").filter { 
+                    it.text().contains("Season $season", true) 
+                }.flatMap { seasonBlock ->
+                    seasonBlock.nextElementSibling()?.select("a")?.filter { 
+                        it.text().contains(episodeRegex) 
+                    }?.map { it.attr("href") } ?: emptyList()
+                }
+            }
+
+            links.forEach { link ->
+                if (link.contains("drive") || link.contains("gdflix")) {
+                    // Gunakan GDFlix Extractor (akan ada di file Extractors.kt)
+                    GDFlix().getUrl(link, "UHDMovies", subtitleCallback, callback)
+                } else {
+                    loadExtractor(link, subtitleCallback, callback)
+                }
+            }
+        }
     }
 
-    // --- 1. SUBTITLE API (Wyzie & OpenSubtitles) ---
+    // ================= 2. MultiMovies (Stable Scraping) =================
+    suspend fun invokeMultimovies(
+        title: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val slug = title?.lowercase()?.replace(" ", "-")?.replace(":", "") ?: return
+        val url = if (season == null) {
+            "$MultiMoviesAPI/movies/$slug"
+        } else {
+            "$MultiMoviesAPI/episodes/$slug-$season-x-$episode"
+        }
 
-    suspend fun invokeWyzie(
+        val response = app.get(url)
+        if (response.code != 200) return
+        val doc = response.documentLarge
+
+        // MultiMovies menggunakan Ajax player
+        doc.select("ul#playeroptionsul li").forEach { li ->
+            val id = li.attr("data-post")
+            val nume = li.attr("data-nume")
+            val type = li.attr("data-type")
+
+            val json = app.post(
+                "$MultiMoviesAPI/wp-admin/admin-ajax.php",
+                data = mapOf(
+                    "action" to "doo_player_ajax",
+                    "post" to id,
+                    "nume" to nume,
+                    "type" to type
+                )
+            ).text
+
+            val embedUrl = tryParseJson<ResponseHash>(json)?.embed_url ?: return@forEach
+            val cleanUrl = embedUrl.trim('"').replace("\\", "")
+            
+            loadExtractor(cleanUrl, subtitleCallback, callback)
+        }
+    }
+
+    data class ResponseHash(@JsonProperty("embed_url") val embed_url: String)
+
+    // ================= 3. NineTV (Simple Iframe) =================
+    suspend fun invokeNinetv(
+        id: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val url = if (season == null) {
+            "$NineTvAPI/movie/$id"
+        } else {
+            "$NineTvAPI/tv/$id-$season-$episode"
+        }
+
+        val res = app.get(url, referer = "https://pressplay.top/")
+        val iframe = res.documentLarge.selectFirst("iframe")?.attr("src") ?: return
+        loadExtractor(iframe, subtitleCallback, callback)
+    }
+
+    // ================= 4. RidoMovies (Good for Movies) =================
+    suspend fun invokeRidomovies(
+        tmdbId: Int?,
+        imdbId: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Search
+        val query = imdbId ?: return
+        val search = app.get("$RidoMoviesAPI/core/api/search?q=$query").parsedSafe<RidoSearch>()
+        val slug = search?.data?.items?.firstOrNull { 
+            it.contentable?.tmdbId == tmdbId || it.contentable?.imdbId == imdbId 
+        }?.slug ?: return
+
+        // Get Video ID
+        val contentId = if (season == null) slug else {
+            val epUrl = "$RidoMoviesAPI/tv/$slug/season-$season/episode-$episode"
+            val epRes = app.get(epUrl).text
+            epRes.substringAfter("postid\":\"").substringBefore("\"")
+        }
+
+        // Get Streams
+        val apiUrl = "$RidoMoviesAPI/core/api/${if (season == null) "movies" else "episodes"}/$contentId/videos"
+        val videos = app.get(apiUrl).parsedSafe<RidoResponse>()?.data ?: return
+
+        videos.forEach { video ->
+            val iframe = Jsoup.parse(video.url ?: "").select("iframe").attr("data-src")
+            loadExtractor(iframe, subtitleCallback, callback)
+        }
+    }
+
+    // Data Classes for Rido
+    data class RidoSearch(val data: RidoData?)
+    data class RidoData(val items: List<RidoItem>?)
+    data class RidoItem(val slug: String?, val contentable: RidoIds?)
+    data class RidoIds(val tmdbId: Int?, val imdbId: String?)
+    data class RidoResponse(val data: List<RidoVideo>?)
+    data class RidoVideo(val url: String?)
+
+    // ================= 5. ZoeChip (Popular) =================
+    suspend fun invokeZoechip(
+        title: String?,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val slug = title?.lowercase()?.replace(" ", "-") ?: return
+        val url = if (season == null) {
+            "$ZoeChipAPI/film/$slug-$year"
+        } else {
+            "$ZoeChipAPI/episode/$slug-season-$season-episode-$episode"
+        }
+
+        val res = app.get(url)
+        val movieId = res.documentLarge.selectFirst("#show_player_ajax")?.attr("movie-id") ?: return
+
+        // Get Servers
+        val ajaxUrl = "$ZoeChipAPI/wp-admin/admin-ajax.php"
+        val serverRes = app.post(
+            ajaxUrl,
+            data = mapOf("action" to "lazy_player", "movieID" to movieId),
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).documentLarge
+
+        // Prioritize Filemoon/Vidcloud
+        val servers = serverRes.select("li[data-server]")
+        servers.forEach { server ->
+            val serverUrl = server.attr("data-server")
+            if (serverUrl.contains("filemoon") || serverUrl.contains("vidcloud")) {
+                loadExtractor(serverUrl, null, callback)
+            }
+        }
+    }
+
+    // ================= 6. Nepu (AJAX based) =================
+    suspend fun invokeNepu(
+        title: String?,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val search = app.get(
+            "$NepuAPI/ajax/posts?q=$title", 
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).parsedSafe<NepuSearch>()
+
+        val matched = search?.data?.firstOrNull { 
+            it.name?.contains(title ?: "", true) == true && (year == null || it.url?.contains(year.toString()) == true)
+        } ?: return
+
+        val mediaUrl = if (season == null) {
+            matched.url ?: return
+        } else {
+            "${matched.url}/season/$season/episode/$episode"
+        }
+
+        val doc = app.get(mediaUrl).documentLarge
+        val embedId = doc.selectFirst("a[data-embed]")?.attr("data-embed") ?: return
+
+        val embedRes = app.post(
+            "$NepuAPI/ajax/embed",
+            data = mapOf("id" to embedId),
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).text
+
+        // Extract M3U8 directly from response
+        val m3u8 = Regex("file\":\"(.*?)\"").find(embedRes)?.groupValues?.get(1)?.replace("\\", "")
+        if (m3u8 != null) {
+            M3u8Helper.generateM3u8("Nepu", m3u8, NepuAPI).forEach(callback)
+        }
+    }
+
+    data class NepuSearch(val data: List<NepuItem>?)
+    data class NepuItem(val name: String?, val url: String?)
+
+    // ================= 7. PlayDesi (Regional/General) =================
+    suspend fun invokePlaydesi(
+        title: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val slug = title?.lowercase()?.replace(" ", "-") ?: return
+        val url = if (season == null) {
+            "$PlayDesiAPI/$slug"
+        } else {
+            "$PlayDesiAPI/$slug-season-$season-episode-$episode-watch-online"
+        }
+
+        val doc = app.get(url).documentLarge
+        doc.select("div.entry-content iframe").forEach { iframe ->
+            loadExtractor(iframe.attr("src"), subtitleCallback, callback)
+        }
+    }
+
+    // ================= 8. Moflix (Aggregator) =================
+    suspend fun invokeMoflix(
+        tmdbId: Int?,
+        season: Int?,
+        episode: Int?,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Base64 ID Construction
+        val rawId = if (season == null) "tmdb|movie|$tmdbId" else "tmdb|series|$tmdbId"
+        val b64Id = android.util.Base64.encodeToString(rawId.toByteArray(), android.util.Base64.NO_WRAP)
+
+        // API Call
+        val url = if (season == null) {
+            "$MoflixAPI/api/v1/titles/$b64Id?loader=titlePage"
+        } else {
+            // Need to get internal ID first
+            val meta = app.get("$MoflixAPI/api/v1/titles/$b64Id?loader=titlePage").parsedSafe<MoflixMeta>()
+            val internalId = meta?.title?.id ?: return
+            "$MoflixAPI/api/v1/titles/$internalId/seasons/$season/episodes/$episode?loader=episodePage"
+        }
+
+        val res = app.get(url).parsedSafe<MoflixResponse>()
+        val videos = res?.episode?.videos ?: res?.title?.videos ?: return
+
+        videos.forEach { video ->
+            if (video.src != null) {
+                // Resolving potential redirect or direct link
+                callback.invoke(
+                    newExtractorLink(
+                        "Moflix [${video.name}]",
+                        "Moflix [${video.name}]",
+                        video.src,
+                        INFER_TYPE
+                    ) {
+                        quality = Qualities.P1080.value
+                    }
+                )
+            }
+        }
+    }
+
+    data class MoflixMeta(val title: MoflixObj?)
+    data class MoflixResponse(val title: MoflixObj?, val episode: MoflixObj?)
+    data class MoflixObj(val id: Int?, val videos: List<MoflixVideo>?)
+    data class MoflixVideo(val name: String?, val src: String?)
+
+    // ================= 9. Vidsrc (Basic) =================
+    suspend fun invokeVidsrc(
+        id: Int?,
+        season: Int?,
+        episode: Int?,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val url = if (season == null) {
+            "$VidsrcAPI/v2/embed/movie/$id"
+        } else {
+            "$VidsrcAPI/v2/embed/tv/$id/$season/$episode"
+        }
+
+        val doc = app.get(url).documentLarge
+        // Extract links from script or iframe
+        val sources = doc.select("a[data-hash]")
+        sources.forEach { source ->
+            val hash = source.attr("data-hash")
+            val srcUrl = "$VidsrcAPI/api/source/$hash"
+            val json = app.get(srcUrl).text
+            // Simple logic: if returns raw m3u8 or iframe
+            if (json.contains("m3u8")) {
+                val m3u8 = Regex("source\":\"(.*?)\"").find(json)?.groupValues?.get(1)
+                if (m3u8 != null) {
+                    M3u8Helper.generateM3u8("Vidsrc", m3u8, VidsrcAPI).forEach(callback)
+                }
+            }
+        }
+    }
+
+    // ================= 10. WatchSoMuch (Subs/Direct) =================
+    suspend fun invokeWatchsomuch(
         imdbId: String?,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        if (imdbId == null) return
-        val type = if (season != null) "tv" else "movie"
-        val url = if (type == "movie") {
-            "https://sub.wyzie.ru/search?id=$imdbId"
+        val id = imdbId?.removePrefix("tt") ?: return
+        
+        // Ambil Subtitle (Seringkali provider ini bagus di subtitle)
+        val data = mapOf(
+            "index" to "0",
+            "mid" to id,
+            "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45" // Public key
+        )
+        
+        val res = app.post(
+            "$WatchSomuchAPI/Watch/ajMovieTorrents.aspx",
+            data = data,
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).parsedSafe<WSMResponse>()
+
+        val torrents = res?.movie?.torrents ?: return
+        
+        // Logic untuk mencocokkan episode
+        val target = if (season == null) {
+            torrents.firstOrNull()
         } else {
-            "https://sub.wyzie.ru/search?id=$imdbId&season=$season&episode=$episode"
+            torrents.find { it.season == season && it.episode == episode }
         }
 
-        try {
-            val res = app.get(url).parsedSafe<List<WyzieSub>>() ?: return
-            res.forEach { sub ->
-                subtitleCallback(
-                    newSubtitleFile(sub.display ?: sub.language ?: "Unknown", sub.url)
-                )
-            }
-        } catch (e: Exception) {
-            // Ignore error
+        val tid = target?.id ?: return
+        val epStr = if (season != null) "S${season.toString().padStart(2,'0')}E${episode.toString().padStart(2,'0')}" else ""
+        
+        val subUrl = "$WatchSomuchAPI/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$tid&part=$epStr"
+        val subRes = app.get(subUrl).parsedSafe<WSMSubResponse>()
+        
+        subRes?.subtitles?.forEach { sub ->
+            val lang = sub.label?.substringBefore("&nbsp") ?: "Unknown"
+            val link = if (sub.url?.startsWith("http") == true) sub.url else "$WatchSomuchAPI${sub.url}"
+            subtitleCallback(newSubtitleFile(lang, link))
         }
     }
 
+    data class WSMResponse(val movie: WSMMovie?)
+    data class WSMMovie(val torrents: List<WSMTorrent>?)
+    data class WSMTorrent(val id: Int?, val season: Int?, val episode: Int?)
+    data class WSMSubResponse(val subtitles: List<WSMSub>?)
+    data class WSMSub(val url: String?, val label: String?)
+
+    // ================= HELPER: SUBTITLES =================
+    
     suspend fun invokeSubtitleAPI(
         imdbId: String?,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        if (imdbId == null) return
         val url = if (season == null) {
-            "https://opensubtitles-v3.strem.io/subtitles/movie/$imdbId.json"
+            "$SubtitlesAPI/subtitles/movie/$imdbId.json"
         } else {
-            "https://opensubtitles-v3.strem.io/subtitles/series/$imdbId:$season:$episode.json"
+            "$SubtitlesAPI/subtitles/series/$imdbId:$season:$episode.json"
         }
-
+        
         try {
-            val res = app.get(url).parsedSafe<OpenSubRes>() ?: return
-            res.subtitles.forEach { sub ->
-                subtitleCallback(
-                    newSubtitleFile(sub.lang ?: "Unknown", sub.url)
-                )
+            val res = app.get(url).parsedSafe<SubAPIResponse>()
+            res?.subtitles?.forEach { sub ->
+                val lang = Locale(sub.lang ?: "en").displayLanguage
+                subtitleCallback(newSubtitleFile(lang, sub.url ?: return@forEach))
             }
-        } catch (e: Exception) {
-            // Ignore error
-        }
+        } catch (e: Exception) { Log.e("SubAPI", e.message.toString()) }
     }
 
-    // --- 2. SOURCE FINDER (Contoh Sumber Sederhana) ---
-
-    // Sumber 1: RidoMovies (Biasanya menyediakan FileMoon, VidHide, StreamWish)
-    private suspend fun invokeRidoMovies(
-        data: Lateri3Play.LinkData,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+    suspend fun invokeWyZIESUBAPI(
+        imdbId: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        val base = "https://ridomovies.tv"
-        try {
-            // Cari konten
-            val searchUrl = "$base/core/api/search?q=${data.imdbId ?: data.title}"
-            val searchRes = app.get(searchUrl).parsedSafe<RidoSearch>()
-            
-            val item = searchRes?.data?.items?.find { 
-                it.contentable?.imdbId == data.imdbId || it.title.equals(data.title, true)
-            } ?: return
-
-            val slug = item.slug ?: return
-            
-            // Tentukan URL Video
-            val videoApiUrl = if (data.season == null) {
-                "$base/core/api/movies/$slug/videos"
-            } else {
-                // Untuk TV Series, perlu cari ID episode dulu (disederhanakan)
-                "$base/core/api/episodes/$slug-${data.season}x${data.episode}/videos"
-            }
-
-            val videos = app.get(videoApiUrl).parsedSafe<RidoVideos>()?.data ?: return
-
-            videos.forEach { video ->
-                val embedUrl = video.url ?: return@forEach
-                // Filter hanya domain yang diizinkan
-                if (ALLOWED_DOMAINS.any { embedUrl.contains(it, ignoreCase = true) }) {
-                    loadExtractor(embedUrl, base, subtitleCallback, callback)
-                }
-            }
-        } catch (e: Exception) {
-            // Log error
-        }
-    }
-
-    // Sumber 2: NineTV (MoviesAPI) - Sumber sederhana untuk embed umum
-    private suspend fun invokeNineTv(
-        data: Lateri3Play.LinkData,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val tmdbId = data.id ?: return
-        val url = if (data.season == null) {
-            "https://moviesapi.club/movie/$tmdbId"
-        } else {
-            "https://moviesapi.club/tv/$tmdbId-${data.season}-${data.episode}"
+        if (imdbId == null) return
+        val url = buildString {
+            append("$WyZIESUBAPI/search?id=$imdbId")
+            if (season != null) append("&season=$season&episode=$episode")
         }
 
         try {
-            val doc = app.get(url, referer = "https://pressplay.top/").document
-            val iframe = doc.select("iframe").attr("src")
-            
-            if (iframe.isNotBlank() && ALLOWED_DOMAINS.any { iframe.contains(it, ignoreCase = true) }) {
-                loadExtractor(iframe, null, null, callback)
+            val res = app.get(url).parsedSafe<List<WyzieSub>>()
+            res?.forEach { sub ->
+                subtitleCallback(newSubtitleFile(sub.display ?: sub.language ?: "Unknown", sub.url ?: return@forEach))
             }
-        } catch (e: Exception) {
-            // Ignore
-        }
+        } catch (e: Exception) { Log.e("Wyzie", e.message.toString()) }
     }
 
-    // --- DATA CLASSES ---
-
-    data class WyzieSub(
-        val url: String,
-        val display: String?,
-        val language: String?
-    )
-
-    data class OpenSubRes(
-        val subtitles: List<OpenSubItem> = emptyList()
-    )
-
-    data class OpenSubItem(
-        val url: String,
-        val lang: String?
-    )
-
-    // RidoMovies Models
-    data class RidoSearch(val data: RidoData?)
-    data class RidoData(val items: List<RidoItem>?)
-    data class RidoItem(val slug: String?, val title: String?, val contentable: RidoContentable?)
-    data class RidoContentable(val imdbId: String?)
-    
-    data class RidoVideos(val data: List<RidoVideoItem>?)
-    data class RidoVideoItem(val url: String?)
+    data class SubAPIResponse(val subtitles: List<SubAPIItem>?)
+    data class SubAPIItem(val lang: String?, val url: String?)
+    data class WyzieSub(val display: String?, val language: String?, val url: String?)
 }
