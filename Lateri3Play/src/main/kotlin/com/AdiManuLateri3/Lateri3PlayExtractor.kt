@@ -11,7 +11,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.SubtitleHelper
 import org.jsoup.Jsoup
 
 object Lateri3PlayExtractor {
@@ -505,7 +504,7 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== SUBTITLES (YANG HILANG SEBELUMNYA) ==================
+    // ================== SUBTITLES (PERBAIKAN: GUNAKAN getLanguage) ==================
 
     suspend fun invokeSubtitleAPI(
         id: String? = null,
@@ -522,8 +521,8 @@ object Lateri3PlayExtractor {
         try {
             val response = app.get(url).parsedSafe<SubtitlesAPI>()
             response?.subtitles?.forEach { sub ->
-                // Menggunakan SubtitleHelper untuk parsing bahasa
-                val lang = SubtitleHelper.fromTwoLettersToLanguage(sub.lang) ?: sub.lang
+                // PERBAIKAN: Menggunakan getLanguage() dari Lateri3PlayUtils
+                val lang = getLanguage(sub.lang)
                 subtitleCallback(newSubtitleFile(lang, sub.url))
             }
         } catch (e: Exception) {
