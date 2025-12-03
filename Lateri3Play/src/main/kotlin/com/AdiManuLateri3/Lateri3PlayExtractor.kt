@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.api.Log // Import Log ditambahkan
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -14,7 +15,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile
+import com.lagradost.cloudstream3.utils.newSubtitleFile // Import newSubtitleFile ditambahkan
 import com.AdiManuLateri3.Lateri3Play.Companion.UHDMoviesAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.MultiMoviesAPI
 import com.AdiManuLateri3.Lateri3Play.Companion.NineTvAPI
@@ -33,7 +34,6 @@ import java.util.Locale
 
 object Lateri3PlayExtractor {
 
-    // ================= 1. UHD Movies (High Quality) =================
     suspend fun invokeUhdmovies(
         title: String?,
         year: Int?,
@@ -46,23 +46,17 @@ object Lateri3PlayExtractor {
         val url = "$UHDMoviesAPI/?s=$searchTitle"
         
         val doc = app.get(url).documentLarge
-        val searchResults = doc.select("a.movie-card, article.post a") // Selector umum tema WP
+        val searchResults = doc.select("a.movie-card, article.post a") 
 
         for (result in searchResults) {
             val href = result.attr("href")
             val text = result.text()
-            
-            // Filter tahun jika ada
             if (year != null && !text.contains(year.toString()) && season == null) continue
 
             val detailDoc = app.get(href).documentLarge
-            
-            // Logika untuk Episode/Movie
             val links = if (season == null) {
-                // Movie: Ambil link "Download" atau "Watch"
                 detailDoc.select("a:contains(Download), a:contains(Watch)").map { it.attr("href") }
             } else {
-                // Series: Cari Episode tertentu
                 val episodeRegex = Regex("(?i)(Episode\\s*$episode|E$episode\\b)")
                 detailDoc.select("p, h3, h4").filter { 
                     it.text().contains("Season $season", true) 
@@ -75,7 +69,6 @@ object Lateri3PlayExtractor {
 
             links.forEach { link ->
                 if (link.contains("drive") || link.contains("gdflix")) {
-                    // Gunakan GDFlix Extractor (akan ada di file Extractors.kt)
                     GDFlix().getUrl(link, "UHDMovies", subtitleCallback, callback)
                 } else {
                     loadExtractor(link, subtitleCallback, callback)
@@ -84,7 +77,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================= 2. MultiMovies (Stable Scraping) =================
     suspend fun invokeMultimovies(
         title: String?,
         season: Int?,
@@ -93,17 +85,12 @@ object Lateri3PlayExtractor {
         callback: (ExtractorLink) -> Unit
     ) {
         val slug = title?.lowercase()?.replace(" ", "-")?.replace(":", "") ?: return
-        val url = if (season == null) {
-            "$MultiMoviesAPI/movies/$slug"
-        } else {
-            "$MultiMoviesAPI/episodes/$slug-$season-x-$episode"
-        }
+        val url = if (season == null) "$MultiMoviesAPI/movies/$slug" else "$MultiMoviesAPI/episodes/$slug-$season-x-$episode"
 
         val response = app.get(url)
         if (response.code != 200) return
         val doc = response.documentLarge
 
-        // MultiMovies menggunakan Ajax player
         doc.select("ul#playeroptionsul li").forEach { li ->
             val id = li.attr("data-post")
             val nume = li.attr("data-nume")
@@ -111,24 +98,17 @@ object Lateri3PlayExtractor {
 
             val json = app.post(
                 "$MultiMoviesAPI/wp-admin/admin-ajax.php",
-                data = mapOf(
-                    "action" to "doo_player_ajax",
-                    "post" to id,
-                    "nume" to nume,
-                    "type" to type
-                )
+                data = mapOf("action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type)
             ).text
 
             val embedUrl = tryParseJson<ResponseHash>(json)?.embed_url ?: return@forEach
             val cleanUrl = embedUrl.trim('"').replace("\\", "")
-            
             loadExtractor(cleanUrl, subtitleCallback, callback)
         }
     }
 
     data class ResponseHash(@JsonProperty("embed_url") val embed_url: String)
 
-    // ================= 3. NineTV (Simple Iframe) =================
     suspend fun invokeNinetv(
         id: Int?,
         season: Int?,
@@ -136,18 +116,12 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (season == null) {
-            "$NineTvAPI/movie/$id"
-        } else {
-            "$NineTvAPI/tv/$id-$season-$episode"
-        }
-
+        val url = if (season == null) "$NineTvAPI/movie/$id" else "$NineTvAPI/tv/$id-$season-$episode"
         val res = app.get(url, referer = "https://pressplay.top/")
         val iframe = res.documentLarge.selectFirst("iframe")?.attr("src") ?: return
         loadExtractor(iframe, subtitleCallback, callback)
     }
 
-    // ================= 4. RidoMovies (Good for Movies) =================
     suspend fun invokeRidomovies(
         tmdbId: Int?,
         imdbId: String?,
@@ -156,21 +130,16 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Search
         val query = imdbId ?: return
         val search = app.get("$RidoMoviesAPI/core/api/search?q=$query").parsedSafe<RidoSearch>()
-        val slug = search?.data?.items?.firstOrNull { 
-            it.contentable?.tmdbId == tmdbId || it.contentable?.imdbId == imdbId 
-        }?.slug ?: return
+        val slug = search?.data?.items?.firstOrNull { it.contentable?.tmdbId == tmdbId || it.contentable?.imdbId == imdbId }?.slug ?: return
 
-        // Get Video ID
         val contentId = if (season == null) slug else {
             val epUrl = "$RidoMoviesAPI/tv/$slug/season-$season/episode-$episode"
             val epRes = app.get(epUrl).text
             epRes.substringAfter("postid\":\"").substringBefore("\"")
         }
 
-        // Get Streams
         val apiUrl = "$RidoMoviesAPI/core/api/${if (season == null) "movies" else "episodes"}/$contentId/videos"
         val videos = app.get(apiUrl).parsedSafe<RidoResponse>()?.data ?: return
 
@@ -180,7 +149,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // Data Classes for Rido
     data class RidoSearch(val data: RidoData?)
     data class RidoData(val items: List<RidoItem>?)
     data class RidoItem(val slug: String?, val contentable: RidoIds?)
@@ -188,25 +156,20 @@ object Lateri3PlayExtractor {
     data class RidoResponse(val data: List<RidoVideo>?)
     data class RidoVideo(val url: String?)
 
-    // ================= 5. ZoeChip (Popular) =================
     suspend fun invokeZoechip(
         title: String?,
         year: Int?,
         season: Int?,
         episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit, // Ditambahkan agar match saat dipanggil dari provider list
         callback: (ExtractorLink) -> Unit
     ) {
         val slug = title?.lowercase()?.replace(" ", "-") ?: return
-        val url = if (season == null) {
-            "$ZoeChipAPI/film/$slug-$year"
-        } else {
-            "$ZoeChipAPI/episode/$slug-season-$season-episode-$episode"
-        }
+        val url = if (season == null) "$ZoeChipAPI/film/$slug-$year" else "$ZoeChipAPI/episode/$slug-season-$season-episode-$episode"
 
         val res = app.get(url)
         val movieId = res.documentLarge.selectFirst("#show_player_ajax")?.attr("movie-id") ?: return
 
-        // Get Servers
         val ajaxUrl = "$ZoeChipAPI/wp-admin/admin-ajax.php"
         val serverRes = app.post(
             ajaxUrl,
@@ -214,17 +177,15 @@ object Lateri3PlayExtractor {
             headers = mapOf("X-Requested-With" to "XMLHttpRequest")
         ).documentLarge
 
-        // Prioritize Filemoon/Vidcloud
         val servers = serverRes.select("li[data-server]")
         servers.forEach { server ->
             val serverUrl = server.attr("data-server")
             if (serverUrl.contains("filemoon") || serverUrl.contains("vidcloud")) {
-                loadExtractor(serverUrl, null, callback)
+                loadExtractor(serverUrl, subtitleCallback, callback) // Sekarang parameter tidak null
             }
         }
     }
 
-    // ================= 6. Nepu (AJAX based) =================
     suspend fun invokeNepu(
         title: String?,
         year: Int?,
@@ -232,41 +193,21 @@ object Lateri3PlayExtractor {
         episode: Int?,
         callback: (ExtractorLink) -> Unit
     ) {
-        val search = app.get(
-            "$NepuAPI/ajax/posts?q=$title", 
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsedSafe<NepuSearch>()
+        val search = app.get("$NepuAPI/ajax/posts?q=$title", headers = mapOf("X-Requested-With" to "XMLHttpRequest")).parsedSafe<NepuSearch>()
+        val matched = search?.data?.firstOrNull { it.name?.contains(title ?: "", true) == true && (year == null || it.url?.contains(year.toString()) == true) } ?: return
 
-        val matched = search?.data?.firstOrNull { 
-            it.name?.contains(title ?: "", true) == true && (year == null || it.url?.contains(year.toString()) == true)
-        } ?: return
-
-        val mediaUrl = if (season == null) {
-            matched.url ?: return
-        } else {
-            "${matched.url}/season/$season/episode/$episode"
-        }
-
+        val mediaUrl = if (season == null) matched.url ?: return else "${matched.url}/season/$season/episode/$episode"
         val doc = app.get(mediaUrl).documentLarge
         val embedId = doc.selectFirst("a[data-embed]")?.attr("data-embed") ?: return
 
-        val embedRes = app.post(
-            "$NepuAPI/ajax/embed",
-            data = mapOf("id" to embedId),
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).text
-
-        // Extract M3U8 directly from response
+        val embedRes = app.post("$NepuAPI/ajax/embed", data = mapOf("id" to embedId), headers = mapOf("X-Requested-With" to "XMLHttpRequest")).text
         val m3u8 = Regex("file\":\"(.*?)\"").find(embedRes)?.groupValues?.get(1)?.replace("\\", "")
-        if (m3u8 != null) {
-            M3u8Helper.generateM3u8("Nepu", m3u8, NepuAPI).forEach(callback)
-        }
+        if (m3u8 != null) M3u8Helper.generateM3u8("Nepu", m3u8, NepuAPI).forEach(callback)
     }
 
     data class NepuSearch(val data: List<NepuItem>?)
     data class NepuItem(val name: String?, val url: String?)
 
-    // ================= 7. PlayDesi (Regional/General) =================
     suspend fun invokePlaydesi(
         title: String?,
         season: Int?,
@@ -275,34 +216,25 @@ object Lateri3PlayExtractor {
         callback: (ExtractorLink) -> Unit
     ) {
         val slug = title?.lowercase()?.replace(" ", "-") ?: return
-        val url = if (season == null) {
-            "$PlayDesiAPI/$slug"
-        } else {
-            "$PlayDesiAPI/$slug-season-$season-episode-$episode-watch-online"
-        }
-
+        val url = if (season == null) "$PlayDesiAPI/$slug" else "$PlayDesiAPI/$slug-season-$season-episode-$episode-watch-online"
         val doc = app.get(url).documentLarge
         doc.select("div.entry-content iframe").forEach { iframe ->
             loadExtractor(iframe.attr("src"), subtitleCallback, callback)
         }
     }
 
-    // ================= 8. Moflix (Aggregator) =================
     suspend fun invokeMoflix(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Base64 ID Construction
         val rawId = if (season == null) "tmdb|movie|$tmdbId" else "tmdb|series|$tmdbId"
         val b64Id = android.util.Base64.encodeToString(rawId.toByteArray(), android.util.Base64.NO_WRAP)
 
-        // API Call
         val url = if (season == null) {
             "$MoflixAPI/api/v1/titles/$b64Id?loader=titlePage"
         } else {
-            // Need to get internal ID first
             val meta = app.get("$MoflixAPI/api/v1/titles/$b64Id?loader=titlePage").parsedSafe<MoflixMeta>()
             val internalId = meta?.title?.id ?: return
             "$MoflixAPI/api/v1/titles/$internalId/seasons/$season/episodes/$episode?loader=episodePage"
@@ -313,7 +245,6 @@ object Lateri3PlayExtractor {
 
         videos.forEach { video ->
             if (video.src != null) {
-                // Resolving potential redirect or direct link
                 callback.invoke(
                     newExtractorLink(
                         "Moflix [${video.name}]",
@@ -333,37 +264,24 @@ object Lateri3PlayExtractor {
     data class MoflixObj(val id: Int?, val videos: List<MoflixVideo>?)
     data class MoflixVideo(val name: String?, val src: String?)
 
-    // ================= 9. Vidsrc (Basic) =================
     suspend fun invokeVidsrc(
         id: Int?,
         season: Int?,
         episode: Int?,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (season == null) {
-            "$VidsrcAPI/v2/embed/movie/$id"
-        } else {
-            "$VidsrcAPI/v2/embed/tv/$id/$season/$episode"
-        }
-
+        val url = if (season == null) "$VidsrcAPI/v2/embed/movie/$id" else "$VidsrcAPI/v2/embed/tv/$id/$season/$episode"
         val doc = app.get(url).documentLarge
-        // Extract links from script or iframe
-        val sources = doc.select("a[data-hash]")
-        sources.forEach { source ->
+        doc.select("a[data-hash]").forEach { source ->
             val hash = source.attr("data-hash")
-            val srcUrl = "$VidsrcAPI/api/source/$hash"
-            val json = app.get(srcUrl).text
-            // Simple logic: if returns raw m3u8 or iframe
+            val json = app.get("$VidsrcAPI/api/source/$hash").text
             if (json.contains("m3u8")) {
                 val m3u8 = Regex("source\":\"(.*?)\"").find(json)?.groupValues?.get(1)
-                if (m3u8 != null) {
-                    M3u8Helper.generateM3u8("Vidsrc", m3u8, VidsrcAPI).forEach(callback)
-                }
+                if (m3u8 != null) M3u8Helper.generateM3u8("Vidsrc", m3u8, VidsrcAPI).forEach(callback)
             }
         }
     }
 
-    // ================= 10. WatchSoMuch (Subs/Direct) =================
     suspend fun invokeWatchsomuch(
         imdbId: String?,
         season: Int?,
@@ -371,29 +289,12 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
         val id = imdbId?.removePrefix("tt") ?: return
+        val data = mapOf("index" to "0", "mid" to id, "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45")
         
-        // Ambil Subtitle (Seringkali provider ini bagus di subtitle)
-        val data = mapOf(
-            "index" to "0",
-            "mid" to id,
-            "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45" // Public key
-        )
-        
-        val res = app.post(
-            "$WatchSomuchAPI/Watch/ajMovieTorrents.aspx",
-            data = data,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsedSafe<WSMResponse>()
-
+        val res = app.post("$WatchSomuchAPI/Watch/ajMovieTorrents.aspx", data = data, headers = mapOf("X-Requested-With" to "XMLHttpRequest")).parsedSafe<WSMResponse>()
         val torrents = res?.movie?.torrents ?: return
         
-        // Logic untuk mencocokkan episode
-        val target = if (season == null) {
-            torrents.firstOrNull()
-        } else {
-            torrents.find { it.season == season && it.episode == episode }
-        }
-
+        val target = if (season == null) torrents.firstOrNull() else torrents.find { it.season == season && it.episode == episode }
         val tid = target?.id ?: return
         val epStr = if (season != null) "S${season.toString().padStart(2,'0')}E${episode.toString().padStart(2,'0')}" else ""
         
@@ -413,20 +314,8 @@ object Lateri3PlayExtractor {
     data class WSMSubResponse(val subtitles: List<WSMSub>?)
     data class WSMSub(val url: String?, val label: String?)
 
-    // ================= HELPER: SUBTITLES =================
-    
-    suspend fun invokeSubtitleAPI(
-        imdbId: String?,
-        season: Int?,
-        episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit
-    ) {
-        val url = if (season == null) {
-            "$SubtitlesAPI/subtitles/movie/$imdbId.json"
-        } else {
-            "$SubtitlesAPI/subtitles/series/$imdbId:$season:$episode.json"
-        }
-        
+    suspend fun invokeSubtitleAPI(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
+        val url = if (season == null) "$SubtitlesAPI/subtitles/movie/$imdbId.json" else "$SubtitlesAPI/subtitles/series/$imdbId:$season:$episode.json"
         try {
             val res = app.get(url).parsedSafe<SubAPIResponse>()
             res?.subtitles?.forEach { sub ->
@@ -436,23 +325,12 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { Log.e("SubAPI", e.message.toString()) }
     }
 
-    suspend fun invokeWyZIESUBAPI(
-        imdbId: String?,
-        season: Int?,
-        episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit
-    ) {
+    suspend fun invokeWyZIESUBAPI(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
         if (imdbId == null) return
-        val url = buildString {
-            append("$WyZIESUBAPI/search?id=$imdbId")
-            if (season != null) append("&season=$season&episode=$episode")
-        }
-
+        val url = buildString { append("$WyZIESUBAPI/search?id=$imdbId"); if (season != null) append("&season=$season&episode=$episode") }
         try {
             val res = app.get(url).parsedSafe<List<WyzieSub>>()
-            res?.forEach { sub ->
-                subtitleCallback(newSubtitleFile(sub.display ?: sub.language ?: "Unknown", sub.url ?: return@forEach))
-            }
+            res?.forEach { sub -> subtitleCallback(newSubtitleFile(sub.display ?: sub.language ?: "Unknown", sub.url ?: return@forEach)) }
         } catch (e: Exception) { Log.e("Wyzie", e.message.toString()) }
     }
 
