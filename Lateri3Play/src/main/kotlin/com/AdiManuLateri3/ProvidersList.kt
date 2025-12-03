@@ -4,18 +4,21 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeBollyflix
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeDotmovies
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeHdmovie2
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoviesdrive
+
+// Import fungsi-fungsi dari Extractor
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeUhdmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeVegamovies
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoviesmod
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMultimovies
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeRidomovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoviesdrive
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeDotmovies
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeRogmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeHdmovie2
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeTopMovies
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeUhdmovies
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeVegamovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeBollyflix
 
+// Definisi Data Class Provider
 data class Provider(
     val id: String,
     val name: String,
@@ -29,59 +32,117 @@ data class Provider(
 @RequiresApi(Build.VERSION_CODES.O)
 fun buildProviders(): List<Provider> {
     return listOf(
-        // 1. UHD Movies
-        Provider("uhdmovies", "UHD Movies") { res, subtitleCallback, callback ->
-            invokeUhdmovies(res.title, res.year, res.season, res.episode, callback, subtitleCallback)
+        Provider("uhdmovies", "UHD Movies") { res, sub, cb ->
+            invokeUhdmovies(
+                title = res.title,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                callback = cb,
+                subtitleCallback = sub
+            )
         },
-        
-        // 2. VegaMovies
-        Provider("vegamovies", "VegaMovies") { res, subtitleCallback, callback ->
-            invokeVegamovies(res.title, res.year, res.season, res.episode, res.imdbId, subtitleCallback, callback)
+        Provider("vegamovies", "VegaMovies") { res, sub, cb ->
+            invokeVegamovies(
+                title = res.title,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                imdbId = res.imdbId,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 3. MoviesMod
-        Provider("moviesmod", "MoviesMod") { res, subtitleCallback, callback ->
-            invokeMoviesmod(res.imdbId, res.year, res.season, res.episode, subtitleCallback, callback)
+        Provider("moviesmod", "MoviesMod") { res, sub, cb ->
+            invokeMoviesmod(
+                imdbId = res.imdbId,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 4. MultiMovies
-        Provider("multimovies", "MultiMovies") { res, subtitleCallback, callback ->
-            invokeMultimovies(res.title, res.season, res.episode, subtitleCallback, callback)
+        Provider("multimovies", "MultiMovies") { res, sub, cb ->
+            invokeMultimovies(
+                title = res.title,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 5. RidoMovies
-        Provider("ridomovies", "RidoMovies") { res, subtitleCallback, callback ->
-            invokeRidomovies(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback)
+        Provider("ridomovies", "RidoMovies") { res, sub, cb ->
+            invokeRidomovies(
+                tmdbId = res.id,
+                imdbId = res.imdbId,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 6. MoviesDrive
-        Provider("moviesdrive", "MoviesDrive") { res, subtitleCallback, callback ->
-            invokeMoviesdrive(res.title, res.season, res.episode, res.year, res.imdbId, subtitleCallback, callback)
+        Provider("moviesdrive", "MoviesDrive") { res, sub, cb ->
+            invokeMoviesdrive(
+                title = res.title,
+                season = res.season,
+                episode = res.episode,
+                year = res.year,
+                imdbId = res.imdbId,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 7. DotMovies
-        Provider("dotmovies", "DotMovies") { res, subtitleCallback, callback ->
-            invokeDotmovies(res.imdbId, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
+        Provider("dotmovies", "DotMovies") { res, sub, cb ->
+            invokeDotmovies(
+                imdbId = res.imdbId,
+                title = res.title,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                sub = sub,
+                cb = cb
+            )
         },
-        
-        // 8. RogMovies
-        Provider("rogmovies", "RogMovies") { res, subtitleCallback, callback ->
-            invokeRogmovies(res.imdbId, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
+        Provider("rogmovies", "RogMovies") { res, sub, cb ->
+            invokeRogmovies(
+                imdbId = res.imdbId,
+                title = res.title,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                sub = sub,
+                cb = cb
+            )
         },
-        
-        // 9. HDMovie2
-        Provider("hdmovie2", "Hdmovie2") { res, subtitleCallback, callback ->
-            invokeHdmovie2(res.title, res.year, res.season, res.episode, subtitleCallback, callback)
+        Provider("hdmovie2", "HDMovie2") { res, sub, cb ->
+            invokeHdmovie2(
+                title = res.title,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // 10. TopMovies
-        Provider("topmovies", "Top Movies") { res, subtitleCallback, callback ->
-            invokeTopMovies(res.imdbId, res.year, res.season, res.episode, subtitleCallback, callback)
+        Provider("topmovies", "TopMovies") { res, sub, cb ->
+            invokeTopMovies(
+                imdbId = res.imdbId,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         },
-        
-        // Tambahan (Opsional/Cadangan dari source code asli yang bagus)
-        Provider("bollyflix", "Bollyflix") { res, subtitleCallback, callback ->
-            invokeBollyflix(res.imdbId, res.season, res.episode, subtitleCallback, callback)
+        Provider("bollyflix", "BollyFlix") { res, sub, cb ->
+            invokeBollyflix(
+                id = res.imdbId, // Bollyflix biasanya butuh IMDB ID atau Query
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
         }
     )
 }
