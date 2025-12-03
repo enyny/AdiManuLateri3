@@ -1,70 +1,58 @@
-// File: build.gradle.kts
+@file:Suppress("UnstableApiUsage")
 
-import com.lagradost.cloudstream3.gradle.CloudstreamExtension 
-import com.android.build.gradle.BaseExtension
+import org.jetbrains.kotlin.konan.properties.Properties
 
-@Suppress("DSL_SCOPE_VIOLATION") // Menghindari peringatan IDE yang salah
-plugins {
-    id("com.android.library")
-    id("kotlin-android")
-    id("com.lagradost.cloudstream3.gradle")
-}
+val cloudstreamUser = "AdiManuLateri3" 
+val cloudstreamRepo = "Lateri3Play"
 
 android {
-    namespace = "com.AdiManuLateri3"
-    compileSdk = 33
-
-    defaultConfig {
-        minSdk = 21
-        targetSdk = 33
-        
-        // Konfigurasi API Key TMDB (Sesuai permintaan)
-        buildConfigField("String", "TMDB_API", "\"1cfadd9dbfc534abf6de40e1e7eaf4c7\"")
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-    }
-    
-    // Mengaktifkan fitur BuildConfig agar kita bisa memanggil TMDB_API di kode Kotlin
     buildFeatures {
         buildConfig = true
         viewBinding = true
     }
+    
+    defaultConfig {
+        // API Key TMDb Khusus sesuai permintaan
+        buildConfigField("String", "TMDB_API", "\"1cfadd9dbfc534abf6de40e1e7eaf4c7\"")
+        
+        // URL API untuk Subtitle dan Provider tertentu yang tidak memerlukan secret key kompleks
+        buildConfigField("String", "Whvx_API", "\"https://api.whvx.net\"")
+        buildConfigField("String", "ZSHOW_API", "\"https://zshow.tv\"")
+        buildConfigField("String", "MOVIE_API", "\"https://moviehub-api.vercel.app\"")
+        
+        // Versi plugin
+        versionCode = 1
+        versionName = "1.0.0"
+    }
 }
 
 cloudstream {
-    // Metadata Ekstensi
+    // Metadata Plugin
     name = "Lateri3Play"
-    description = "Provider Streaming Pilihan (Top 10 + Subs)"
+    language = "id" // Mengutamakan Indonesia/Inggris
+    description = "Ringan, Cepat, dan Stabil. 10 Provider Pilihan + Wyzie Subs."
     authors = listOf("AdiManuLateri3")
-    language = "id" // Bahasa utama Indonesia
-    version = 1
-
-    // Tipe konten yang didukung
+    
+    // Kategori konten
     tvTypes = listOf(
-        "Movie",
         "TvSeries",
+        "Movie",
         "Anime",
         "AsianDrama",
         "Cartoon"
     )
 
-    // Icon (Opsional, menggunakan placeholder default atau link gambar)
-    iconUrl = "https://i.imgur.com/3Z6S9Qx.png" 
-    
-    isCrossPlatform = true
+    // Icon (Bisa diganti nanti)
+    iconUrl = "https://i.imgur.com/Op9Rjs5.png" 
+
     requiresResources = true
 }
 
 dependencies {
-    implementation(kotlin("stdlib"))
-    implementation("com.github.Blatzar:NiceHttp:0.4.11") // Library HTTP standar CloudStream
-    implementation("org.jsoup:jsoup:1.17.2") // Parsing HTML
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.browser:browser:1.8.0")
     
-    // Dependensi CloudStream Core (Stub)
+    // CloudStream Core Dependency
+    val cloudstream by configurations
     cloudstream("com.lagradost:cloudstream3:pre-release")
 }
