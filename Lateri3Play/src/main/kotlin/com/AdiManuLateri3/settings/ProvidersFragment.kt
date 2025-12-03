@@ -37,43 +37,36 @@ class ProvidersFragment(
     private lateinit var container: LinearLayout
     private var providers: List<Provider> = emptyList()
 
+    // FIX: Menggunakan string literal langsung untuk package name
     private fun <T : View> View.findView(name: String): T {
-        // Hapus BuildConfig, gunakan package name dari context plugin
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val packageName = "com.AdiManuLateri3"
         val id = res.getIdentifier(name, "id", packageName)
-        // Fallback jika tidak ketemu di package utama (untuk kasus library)
-        val finalId = if (id == 0) res.getIdentifier(name, "id", "com.AdiManuLateri3") else id
-        if (finalId == 0) throw Exception("View ID $name not found.")
-        return this.findViewById(finalId)
+        if (id == 0) throw Exception("View ID $name not found.")
+        return this.findViewById(id)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun getDrawable(name: String): Drawable? {
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val packageName = "com.AdiManuLateri3"
         val id = res.getIdentifier(name, "drawable", packageName)
-        val finalId = if (id == 0) res.getIdentifier(name, "drawable", "com.AdiManuLateri3") else id
-        return if (finalId != 0) res.getDrawable(finalId, null) else null
+        return if (id != 0) res.getDrawable(id, null) else null
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val packageName = "com.AdiManuLateri3"
         val id = res.getIdentifier("outline", "drawable", packageName)
-        val finalId = if (id == 0) res.getIdentifier("outline", "drawable", "com.AdiManuLateri3") else id
-        if (finalId != 0) {
-            this.background = res.getDrawable(finalId, null)
+        if (id != 0) {
+            this.background = res.getDrawable(id, null)
         }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val packageName = "com.AdiManuLateri3"
         val id = res.getIdentifier(name, "layout", packageName)
-        val finalId = if (id == 0) res.getIdentifier(name, "layout", "com.AdiManuLateri3") else id
-        return inflater.inflate(finalId, container, false)
+        return inflater.inflate(id, container, false)
     }
 
-    // ... (Sisa kode logic onViewCreated sama, tidak ada perubahan logic)
-    
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return getLayout("fragment_providers", inflater, container)
     }
@@ -112,11 +105,9 @@ class ProvidersFragment(
             updateUI()
         }
 
-        // Hapus BuildConfig di sini juga
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
-        val chkId = res.getIdentifier("chk_provider", "id", packageName).let {
-             if (it == 0) res.getIdentifier("chk_provider", "id", "com.AdiManuLateri3") else it
-        }
+        // FIX: Hardcode package name
+        val packageName = "com.AdiManuLateri3"
+        val chkId = res.getIdentifier("chk_provider", "id", packageName)
 
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
@@ -217,11 +208,8 @@ class ProvidersFragment(
     }
 
     private fun updateUI() {
-        // Hapus BuildConfig
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
-        val chkId = res.getIdentifier("chk_provider", "id", packageName).let {
-             if (it == 0) res.getIdentifier("chk_provider", "id", "com.AdiManuLateri3") else it
-        }
+        val packageName = "com.AdiManuLateri3"
+        val chkId = res.getIdentifier("chk_provider", "id", packageName)
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
             chk.isChecked = !adapter.isDisabled(providers[i].id)
