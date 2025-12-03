@@ -1,72 +1,55 @@
 package com.AdiManuLateri3
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.network.CloudflareKiller
-import com.lagradost.cloudstream3.newSubtitleFile
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 import org.jsoup.Jsoup
-import java.net.URI
-import java.util.Locale
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 object Lateri3PlayExtractor {
     
     private const val TAG = "Lateri3Play"
     private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
     
-    // Subtitle APIs
-    private const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
-    private const val WyZIESUBAPI = "https://sub.wyzie.ru"
-
     private var cachedDomains: DomainsParser? = null
 
-    // Domain Cadangan (Hardcoded Fallback) - Penyelamat jika GitHub gagal/diblokir
+    // Fallback domains jika GitHub gagal/diblokir
     private val fallbackDomains = DomainsParser(
-        uhdmovies = "https://uhdmovies.fyi",
-        vegamovies = "https://vegamovies.rs",
-        moviesmod = "https://moviesmod.com.in",
-        multiMovies = "https://multimovies.cloud",
         moviesdrive = "https://moviesdrive.io",
-        luxmovies = "https://luxmovies.org",
-        rogmovies = "https://rogmovies.com",
-        hdmovie2 = "https://hdmovie2.rest",
-        topMovies = "https://topmovies.boo",
+        hdhub4u = "https://hdhub4u.tienda",
+        n4khdhub = "https://4khdhub.com",
+        multiMovies = "https://multimovies.cloud",
         bollyflix = "https://bollyflix.boo",
-        extramovies = "https://extramovies.bar"
+        uhdmovies = "https://uhdmovies.fyi",
+        moviesmod = "https://moviesmod.com.in",
+        topMovies = "https://topmovies.boo",
+        hdmovie2 = "https://hdmovie2.rest",
+        vegamovies = "https://vegamovies.rs",
+        rogmovies = "https://rogmovies.com",
+        luxmovies = "https://luxmovies.org",
+        xprime = "https://xprime.tv",
+        extramovies = "https://extramovies.bar",
+        dramadrip = "https://dramadrip.me",
+        toonstream = "https://toonstream.co"
     )
 
     private suspend fun getDomains(): DomainsParser {
         if (cachedDomains != null) return cachedDomains!!
-
         return try {
             val response = app.get(DOMAINS_URL).parsedSafe<DomainsParser>()
             if (response != null) {
-                Log.i(TAG, "Domains loaded from GitHub successfully")
                 cachedDomains = response
                 response
             } else {
-                Log.e(TAG, "Failed to parse GitHub domains, using fallback")
-                cachedDomains = fallbackDomains
                 fallbackDomains
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to connect to GitHub domains: ${e.message}, using fallback")
-            cachedDomains = fallbackDomains
+            Log.e(TAG, "Gagal memuat domain dari GitHub, menggunakan fallback: ${e.message}")
             fallbackDomains
         }
     }
@@ -80,17 +63,12 @@ object Lateri3PlayExtractor {
         callback: (ExtractorLink) -> Unit,
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
-        val uhdmoviesAPI = getDomains().uhdmovies // Dijamin tidak null karena fallback
+        val api = getDomains().uhdmovies
         val searchTitle = title?.replace("-", " ")?.replace(":", " ") ?: return
-        val searchUrl = if (season != null) "$uhdmoviesAPI/search/$searchTitle $year" else "$uhdmoviesAPI/search/$searchTitle"
+        val searchUrl = if (season != null) "$api/search/$searchTitle $year" else "$api/search/$searchTitle"
 
         try {
             val searchRes = app.get(searchUrl)
-            if (searchRes.code != 200) {
-                Log.e(TAG, "UHDMovies search failed: Code ${searchRes.code}")
-                return
-            }
-            
             val url = searchRes.documentLarge.select("article div.entry-image a")
                 .firstOrNull()?.attr("href") ?: return
 
@@ -115,7 +93,7 @@ object Lateri3PlayExtractor {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "UHDMovies Error: ${e.message}")
+            Log.e(TAG, "UHD Error: ${e.message}")
         }
     }
 
@@ -129,65 +107,50 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val vegaMoviesAPI = getDomains().vegamovies
-        // Membersihkan judul agar pencarian lebih akurat
+        val api = getDomains().vegamovies
         val fixtitle = title?.substringBefore("-")?.substringBefore(":")?.replace("&", " ")?.trim().orEmpty()
         val query = if (season == null) "$fixtitle $year" else "$fixtitle season $season $year"
-        val url = "$vegaMoviesAPI/?s=$query"
-        val interceptor = CloudflareKiller()
-
-        Log.d(TAG, "Searching VegaMovies: $url")
-
-        val searchDoc = try { app.get(url, interceptor = interceptor).documentLarge } catch(e: Exception) { 
-            Log.e(TAG, "VegaMovies Connection Failed: ${e.message}")
-            return 
-        }
+        val url = "$api/?s=$query"
         
-        for (article in searchDoc.select("article h2")) {
-            val href = article.selectFirst("a")?.attr("href") ?: continue
-            val doc = try { app.get(href).documentLarge } catch(e: Exception) { continue }
+        try {
+            val searchDoc = app.get(url, interceptor = CloudflareKiller()).documentLarge
+            for (article in searchDoc.select("article h2")) {
+                val href = article.selectFirst("a")?.attr("href") ?: continue
+                val doc = app.get(href).documentLarge
 
-            // Verifikasi IMDB jika ada
-            if (imdbId != null) {
-                val imdbLink = doc.selectFirst("a[href*=\"imdb.com/title/tt\"]")?.attr("href")
-                if (imdbLink != null && !imdbLink.contains(imdbId, true)) continue
-            }
-
-            if (season == null) {
-                val links = doc.select("button.dwd-button, button.btn-outline").mapNotNull { 
-                    it.closest("a")?.attr("href") 
+                // Validasi IMDB
+                if (imdbId != null) {
+                    val imdbLink = doc.selectFirst("a[href*=\"imdb.com/title/tt\"]")?.attr("href")
+                    if (imdbLink != null && !imdbLink.contains(imdbId, true)) continue
                 }
-                links.forEach { link ->
-                    try {
+
+                if (season == null) {
+                    doc.select("button.dwd-button, button.btn-outline").forEach { btn ->
+                        val link = btn.closest("a")?.attr("href") ?: return@forEach
                         val detailDoc = app.get(link).documentLarge
-                        detailDoc.select("button.btn-outline").forEach { btn ->
-                            val dlLink = btn.closest("a")?.attr("href")
+                        detailDoc.select("button.btn-outline").forEach { dlBtn ->
+                            val dlLink = dlBtn.closest("a")?.attr("href")
                             if (!dlLink.isNullOrBlank()) {
-                                loadSourceNameExtractor("VegaMovies", dlLink, "$vegaMoviesAPI/", subtitleCallback, callback)
+                                loadSourceNameExtractor("VegaMovies", dlLink, "$api/", subtitleCallback, callback)
                             }
                         }
-                    } catch (_: Exception) {}
-                }
-            } else {
-                val episodePattern = "(?i)(V-Cloud|Single|Episode|G-Direct)"
-                val seasonBlock = doc.select("h4:matches((?i)Season $season), h3:matches((?i)Season $season)")
-                
-                seasonBlock.forEach { block ->
-                    val epLinks = block.nextElementSibling()?.select("a:matches($episodePattern)") ?: return@forEach
-                    epLinks.forEach { epLink ->
-                        val epUrl = epLink.attr("href")
-                        try {
+                    }
+                } else {
+                    val seasonBlock = doc.select("h4:matches((?i)Season $season), h3:matches((?i)Season $season)")
+                    seasonBlock.forEach { block ->
+                        val epLinks = block.nextElementSibling()?.select("a:matches((?i)(Episode $episode|Ep\\s*$episode))") ?: return@forEach
+                        epLinks.forEach { epLink ->
+                            val epUrl = epLink.attr("href")
                             val epDoc = app.get(epUrl).documentLarge
-                            val links = epDoc.selectFirst("h4:contains($episode)")?.nextElementSibling()
-                                ?.select("a:matches((?i)(V-Cloud|G-Direct))")
-                            
-                            links?.forEach { 
-                                loadSourceNameExtractor("VegaMovies", it.attr("href"), "$vegaMoviesAPI/", subtitleCallback, callback) 
+                            epDoc.select("a:matches((?i)(V-Cloud|G-Direct))").forEach { 
+                                loadSourceNameExtractor("VegaMovies", it.attr("href"), "$api/", subtitleCallback, callback) 
                             }
-                        } catch (_: Exception) {}
+                        }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "VegaMovies Error: ${e.message}")
         }
     }
 
@@ -208,8 +171,7 @@ object Lateri3PlayExtractor {
             val doc = app.get(href, interceptor = CloudflareKiller()).documentLarge
 
             if (season == null) {
-                val links = doc.select("a.maxbutton-download-links")
-                links.forEach { 
+                doc.select("a.maxbutton-download-links").forEach { 
                     val decoded = base64Decode(it.attr("href").substringAfter("="))
                     val detailDoc = app.get(decoded).documentLarge
                     detailDoc.select("a.maxbutton-fast-server-gdrive").forEach { dl ->
@@ -235,7 +197,7 @@ object Lateri3PlayExtractor {
                 }
             }
         } catch (e: Exception) {
-            Log.e("MoviesMod", e.message.toString())
+            Log.e(TAG, "MoviesMod Error: ${e.message}")
         }
     }
 
@@ -272,7 +234,7 @@ object Lateri3PlayExtractor {
                     loadSourceNameExtractor("MultiMovies", embedUrl, "$api/", subtitleCallback, callback)
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Log.e(TAG, "MultiMovies Error: ${e.message}") }
     }
 
     // ================== PROVIDER 5: RIDOMOVIES ==================
@@ -314,7 +276,7 @@ object Lateri3PlayExtractor {
                     loadSourceNameExtractor("Ridomovies", iframe, "$api/", subtitleCallback, callback)
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Log.e(TAG, "RidoMovies Error: ${e.message}") }
     }
 
     // ================== PROVIDER 6: MOVIESDRIVE ==================
@@ -335,7 +297,6 @@ object Lateri3PlayExtractor {
             val link = search.select("figure a").firstOrNull()?.attr("href") ?: return
             val doc = app.get(link).documentLarge
             
-            // IMDB check
             val imdbLink = doc.selectFirst("a[href*=\"imdb.com\"]")?.attr("href")
             if (imdbId != null && imdbLink != null && !imdbLink.contains(imdbId)) return
 
@@ -348,11 +309,9 @@ object Lateri3PlayExtractor {
             } else {
                 val sBlock = doc.select("h5:matches((?i)Season\\s*0?$season)").first()
                 val epUrl = sBlock?.nextElementSibling()?.selectFirst("a")?.attr("href") ?: return
-                
                 val epDoc = app.get(epUrl).documentLarge
                 val epBlock = epDoc.select("h5:matches((?i)Episode\\s+0?$episode)").first()
                 
-                // Get all links until next hr tag
                 var sibling = epBlock?.nextElementSibling()
                 while (sibling != null && sibling.tagName() != "hr") {
                     if (sibling.tagName() == "h5") {
@@ -364,7 +323,7 @@ object Lateri3PlayExtractor {
                     sibling = sibling.nextElementSibling()
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Log.e(TAG, "MoviesDrive Error: ${e.message}") }
     }
 
     private suspend fun processDriveLink(url: String, source: String, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
@@ -493,45 +452,7 @@ object Lateri3PlayExtractor {
         } catch (_: Exception) {}
     }
 
-    // ================== SUBTITLES ==================
-    
-    suspend fun invokeSubtitleAPI(
-        id: String? = null,
-        season: Int? = null,
-        episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-    ) {
-        val url = if (season == null) "$SubtitlesAPI/subtitles/movie/$id.json" 
-                  else "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
-        
-        try {
-            val res = app.get(url).parsedSafe<SubtitleResponse>() 
-            res?.subtitles?.forEach { 
-                subtitleCallback(newSubtitleFile(it.lang, it.url))
-            }
-        } catch (_: Exception) {}
-    }
-
-    suspend fun invokeWyZIESUBAPI(
-        id: String? = null,
-        season: Int? = null,
-        episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit
-    ) {
-        if (id == null) return
-        val url = StringBuilder("$WyZIESUBAPI/search?id=$id")
-        if (season != null) url.append("&season=$season&episode=$episode")
-        
-        try {
-            val json = app.get(url.toString()).text
-            val items = tryParseJson<List<WyZIESUB>>(json)
-            items?.forEach {
-                subtitleCallback(newSubtitleFile(it.display, it.url))
-            }
-        } catch (_: Exception) {}
-    }
-    
-    // Backup
+    // ================== PROVIDER 11: BOLLYFLIX ==================
     suspend fun invokeBollyflix(
         id: String? = null,
         season: Int? = null,
@@ -545,72 +466,36 @@ object Lateri3PlayExtractor {
             val search = app.get("$api/search/$query", interceptor = CloudflareKiller()).documentLarge
             val link = search.selectFirst("div > article > a")?.attr("href") ?: return
             val doc = app.get(link).documentLarge
-            val links = doc.select("a[href*=\"gdflix\"]")
-            links.forEach {
-                val url = it.attr("href")
-                GDFlix().getUrl(url, "BollyFlix", subtitleCallback, callback)
+            
+            val hTag = if (season == null) "h5" else "h4"
+            val sTag = if (season != null) "Season $season" else ""
+            
+            val entries = doc.select("div.thecontent.clearfix > $hTag:matches((?i)$sTag.*(720p|1080p))")
+            
+            entries.forEach { entry ->
+                val href = entry.nextElementSibling()?.selectFirst("a")?.attr("href") ?: return@forEach
+                val token = href.substringAfter("id=", "")
+                if (token.isNotEmpty()) {
+                    val encoded = app.get("https://blog.finzoox.com/?id=$token").text.substringAfter("link\":\"").substringBefore("\"};")
+                    val decoded = base64Decode(encoded)
+                    
+                    if (season == null) {
+                        processBollyLink(decoded, subtitleCallback, callback)
+                    } else {
+                        val epLink = app.get(decoded).documentLarge.selectFirst("article h3 a:contains(Episode 0$episode)")?.attr("href")
+                        if (epLink != null) processBollyLink(epLink, subtitleCallback, callback)
+                    }
+                }
             }
         } catch (_: Exception) {}
     }
 
-    // ================== HELPER DATA CLASSES ==================
-
-    data class DomainsParser(
-        @JsonProperty("UHDMovies") val uhdmovies: String,
-        @JsonProperty("VegaMovies") val vegamovies: String,
-        @JsonProperty("MoviesMod") val moviesmod: String,
-        @JsonProperty("MultiMovies") val multiMovies: String,
-        @JsonProperty("MoviesDrive") val moviesdrive: String,
-        @JsonProperty("LuxMovies") val luxmovies: String,
-        @JsonProperty("RogMovies") val rogmovies: String,
-        val hdmovie2: String,
-        val topMovies: String,
-        val bollyflix: String,
-        val extramovies: String
-    )
-
-    data class ResponseHash(
-        val embed_url: String,
-        val type: String?
-    )
-
-    data class RidoSearch(
-        val data: RidoData?
-    )
-    
-    data class RidoData(
-        val items: List<RidoItem>?
-    )
-    
-    data class RidoItem(
-        val slug: String?,
-        val contentable: RidoContent?
-    )
-    
-    data class RidoContent(
-        val tmdbId: Int?,
-        val imdbId: String?
-    )
-    
-    data class RidoResponses(
-        val data: List<RidoUrl>?
-    )
-    
-    data class RidoUrl(
-        val url: String?
-    )
-
-    data class SubtitleResponse(
-        val subtitles: List<Subtitle>
-    )
-
-    data class Subtitle(
-        val lang: String,
-        val url: String
-    )
-
-    data class WyZIESUB(
-        val display: String,
-        val url: String
-    )
+    private suspend fun processBollyLink(url: String, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
+        val redirect = app.get(url, allowRedirects = false).headers["location"] ?: return
+        if (redirect.contains("gdflix")) {
+            GDFlix().getUrl(redirect, "BollyFlix", sub, cb)
+        } else {
+            loadSourceNameExtractor("BollyFlix", url, "", sub, cb)
+        }
+    }
 }
