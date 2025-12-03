@@ -1,115 +1,24 @@
 package com.AdiManuLateri3
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.Filesim
-import com.lagradost.cloudstream3.extractors.VidhideExtractor
-import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType // ✅ Added
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.getPacked
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-// HAPUS BARIS INI: import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
-import okhttp3.FormBody
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
 import java.net.URI
 import java.net.URL
 
-// ================= BASE & GENERIC EXTRACTORS =================
+// ================== MULTI-HOST EXTRACTORS ==================
 
-open class Ridoo : ExtractorApi() {
-    override val name = "Ridoo"
-    override var mainUrl = "https://ridoo.net"
-    override val requiresReferer = true
-    open val defaulQuality = Qualities.P1080.value
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val response = app.get(url, referer = referer)
-        val script = if (!getPacked(response.text).isNullOrEmpty()) {
-            getAndUnpack(response.text)
-        } else {
-            response.documentLarge.selectFirst("script:containsData(sources:)")?.data()
-        }
-        val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script ?: return)?.groupValues?.getOrNull(1)
-        val quality = "qualityLabels.*\"(\\d{3,4})[pP]\"".toRegex().find(script)?.groupValues?.get(1)
-        
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                this.name,
-                url = m3u8 ?: return,
-                INFER_TYPE
-            ) {
-                this.referer = mainUrl
-                this.quality = quality?.toIntOrNull() ?: defaulQuality
-            }
-        )
-    }
-}
-
-class Multimovies : Ridoo() {
-    override val name = "Multimovies"
-    override var mainUrl = "https://multimovies.cloud"
-}
-
-class Filelions : VidhideExtractor() {
-    override var name = "Filelions"
-    override var mainUrl = "https://alions.pro"
-    override val requiresReferer = false
-}
-
-open class Streamruby : ExtractorApi() {
-    override val name = "Streamruby"
-    override val mainUrl = "https://streamruby.com"
-    override val requiresReferer = true
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val id = "/e/(\\w+)".toRegex().find(url)?.groupValues?.get(1) ?: return
-        val response = app.post(
-            "$mainUrl/dl", data = mapOf(
-                "op" to "embed",
-                "file_code" to id,
-                "auto" to "1",
-                "referer" to "",
-            ), referer = referer
-        )
-        val script = if (!getPacked(response.text).isNullOrEmpty()) {
-            getAndUnpack(response.text)
-        } else {
-            response.documentLarge.selectFirst("script:containsData(sources:)")?.data()
-        }
-        val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script ?: return)?.groupValues?.getOrNull(1)
-        
-        if (m3u8 != null) {
-            callback.invoke(
-                newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8)
-            )
-        }
-    }
-}
-
-// ================= COMPLEX HOSTS (HubCloud, GDFlix, Driveseed) =================
-
-class HubCloud : ExtractorApi() {
+open class HubCloud : ExtractorApi() {
     override val name = "Hub-Cloud"
     override val mainUrl = "https://hubcloud.ink"
     override val requiresReferer = false
@@ -125,6 +34,8 @@ class HubCloud : ExtractorApi() {
         } ?: return
 
         val baseUrl = getBaseUrl(realUrl)
+        
+        // Coba perbaiki URL jika perlu
         val href = try {
             if ("hubcloud.php" in realUrl) {
                 realUrl
@@ -133,63 +44,54 @@ class HubCloud : ExtractorApi() {
                 if (rawHref.startsWith("http", ignoreCase = true)) rawHref 
                 else baseUrl.trimEnd('/') + "/" + rawHref.trimStart('/')
             }
-        } catch (e: Exception) { "" }
+        } catch (e: Exception) {
+            return
+        }
 
         if (href.isBlank()) return
 
         val document = app.get(href).documentLarge
         val size = document.selectFirst("i#size")?.text().orEmpty()
         val header = document.selectFirst("div.card-header")?.text().orEmpty()
-        val quality = getIndexQuality(header)
-        val labelExtras = if (size.isNotEmpty()) " [$size]" else ""
+        val quality = getQuality(header) // Menggunakan fungsi dari Utils
 
-        document.select("div.card-body h2 a.btn").amap { element ->
+        val labelExtras = " $size"
+
+        document.select("div.card-body h2 a.btn").forEach { element ->
             val link = element.attr("href")
             val text = element.text()
 
             when {
-                text.contains("FSL Server", true) -> {
-                    callback.invoke(newExtractorLink("$referer [FSL]", "$referer [FSL]$labelExtras", link) { this.quality = quality })
-                }
-                text.contains("BuzzServer", true) -> {
-                    val buzzResp = app.get("$link/download", referer = link, allowRedirects = false)
-                    val dlink = buzzResp.headers["hx-redirect"].orEmpty()
-                    if (dlink.isNotBlank()) {
-                        callback.invoke(newExtractorLink("$referer [Buzz]", "$referer [Buzz]$labelExtras", dlink) { this.quality = quality })
-                    }
-                }
-                text.contains("pixeldra", true) || text.contains("pixel", true) -> {
+                text.contains("PixelDrain", true) || text.contains("Pixel", true) -> {
                     val finalURL = if (link.contains("download", true)) link
-                    else "${getBaseUrl(link)}/api/file/${link.substringAfterLast("/")}?download"
-                    callback(newExtractorLink("Pixeldrain", "Pixeldrain$labelExtras", finalURL) { this.quality = quality })
+                    else "https://pixeldrain.com/api/file/${link.substringAfterLast("/")}?download"
+
+                    callback.invoke(
+                        newExtractorLink(
+                            "Pixeldrain",
+                            "Pixeldrain$labelExtras",
+                            finalURL
+                        ) { this.quality = quality }
+                    )
                 }
-                text.contains("10Gbps", true) -> {
-                    var currentLink = link
-                    var redirectUrl: String?
-                    while (true) {
-                        val response = app.get(currentLink, allowRedirects = false)
-                        redirectUrl = response.headers["location"]
-                        if (redirectUrl == null || "link=" in redirectUrl) break
-                        currentLink = redirectUrl
-                    }
-                    val finalLink = redirectUrl?.substringAfter("link=") ?: ""
-                    if(finalLink.isNotEmpty())
-                        callback.invoke(newExtractorLink("$referer 10Gbps", "$referer 10Gbps$labelExtras", finalLink) { this.quality = quality })
+                text.contains("Instant Download", true) || text.contains("Fast Server", true) -> {
+                     callback.invoke(
+                        newExtractorLink(
+                            "$referer [Instant]",
+                            "$referer [Instant]$labelExtras",
+                            link
+                        ) { this.quality = quality }
+                    )
+                }
+                text.contains("Gofile", true) -> {
+                     Gofile().getUrl(link, referer, subtitleCallback, callback)
                 }
                 else -> {
-                    loadExtractor(link, "", subtitleCallback, callback)
+                    // Coba load sebagai extractor standar
+                    loadExtractor(link, referer, subtitleCallback, callback)
                 }
             }
         }
-    }
-
-    private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: Qualities.P1080.value
-    }
-    
-    private fun getBaseUrl(url: String): String {
-        return try { URI(url).let { "${it.scheme}://${it.host}" } } catch (_: Exception) { "" }
     }
 }
 
@@ -200,65 +102,87 @@ open class GDFlix : ExtractorApi() {
 
     override suspend fun getUrl(
         url: String,
-        referer: String?, 
+        referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         val newUrl = try {
-            app.get(url).documentLarge.selectFirst("meta[http-equiv=refresh]")
-                ?.attr("content")?.substringAfter("url=")
-        } catch (e: Exception) { null } ?: url
+            app.get(url).documentLarge
+                .selectFirst("meta[http-equiv=refresh]")
+                ?.attr("content")
+                ?.substringAfter("url=")
+        } catch (e: Exception) {
+            url
+        } ?: url
 
         val document = app.get(newUrl).documentLarge
-        val fileName = document.select("ul > li.list-group-item:contains(Name)").text().substringAfter("Name : ")
-        val quality = getIndexQuality(fileName)
-        val fileSize = document.select("ul > li.list-group-item:contains(Size)").text().substringAfter("Size : ")
-        val sourceName = referer ?: "GDFlix"
-
-        document.select("div.text-center a").amap { anchor ->
+        val size = document.select("ul > li.list-group-item:contains(Size)").text().substringAfter("Size : ")
+        
+        document.select("div.text-center a").forEach { anchor ->
             val text = anchor.text()
             val link = anchor.attr("href")
 
             when {
-                text.contains("DIRECT DL", true) -> {
-                    callback.invoke(newExtractorLink("$sourceName [Direct]", "$sourceName [Direct] [$fileSize]", link) { this.quality = quality })
-                }
                 text.contains("Instant DL", true) -> {
-                    try {
-                        val instantLink = app.get(link, allowRedirects = false).headers["location"]?.substringAfter("url=").orEmpty()
-                        if(instantLink.isNotEmpty())
-                            callback.invoke(newExtractorLink("$sourceName [Instant]", "$sourceName [Instant] [$fileSize]", instantLink) { this.quality = quality })
-                    } catch (_: Exception) {}
+                    val finalLink = app.get(link, allowRedirects = false)
+                        .headers["location"]?.substringAfter("url=").orEmpty()
+                    
+                    if (finalLink.isNotEmpty()) {
+                        callback.invoke(
+                            newExtractorLink(
+                                "$referer [Instant]",
+                                "$referer [Instant] $size",
+                                finalLink
+                            ) { this.quality = Qualities.Unknown.value }
+                        )
+                    }
                 }
                 text.contains("PixelDrain", true) -> {
-                    callback.invoke(newExtractorLink("$sourceName [Pixeldrain]", "$sourceName [Pixeldrain] [$fileSize]", link) { this.quality = quality })
+                     callback.invoke(
+                        newExtractorLink(
+                            "Pixeldrain",
+                            "Pixeldrain $size",
+                            link
+                        ) { this.quality = Qualities.Unknown.value }
+                    )
                 }
                 text.contains("Gofile", true) -> {
-                     loadExtractor(link, "", subtitleCallback, callback)
+                    try {
+                        // Terkadang link Gofile ada di dalam halaman lain
+                        val doc = app.get(link).documentLarge
+                        doc.select("a").forEach { 
+                            if(it.attr("href").contains("gofile.io")) {
+                                Gofile().getUrl(it.attr("href"), referer, subtitleCallback, callback)
+                            }
+                        }
+                    } catch (_: Exception) {}
                 }
             }
         }
     }
-    
-    private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull() ?: Qualities.Unknown.value
-    }
 }
 
-// ================= OTHER HOSTS =================
+// ================== SINGLE HOST EXTRACTORS ==================
 
-open class PixelDrain : ExtractorApi() {
+class PixelDrain : ExtractorApi() {
     override val name = "PixelDrain"
     override val mainUrl = "https://pixeldrain.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val mId = Regex("/u/(.*)").find(url)?.groupValues?.get(1)
-        val finalUrl = if (mId.isNullOrEmpty()) url else "$mainUrl/api/file/${mId}?download"
-        callback.invoke(newExtractorLink(this.name, this.name, finalUrl) {
-            this.referer = url
-            this.quality = Qualities.P1080.value
-        })
+        val id = url.substringAfter("/u/").substringBefore("/")
+        if (id.isNotEmpty()) {
+            callback.invoke(
+                newExtractorLink(
+                    this.name,
+                    this.name,
+                    url = "https://pixeldrain.com/api/file/${id}?download"
+                ) {
+                    this.referer = "https://pixeldrain.com/"
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
     }
 }
 
@@ -276,63 +200,132 @@ class Gofile : ExtractorApi() {
     ) {
         try {
             val id = Regex("/(?:\\?c=|d/)([\\da-zA-Z-]+)").find(url)?.groupValues?.get(1) ?: return
-            val token = JSONObject(app.post("$mainApi/accounts").text).getJSONObject("data").getString("token")
-            val wt = Regex("""appdata\.wt\s*=\s*["']([^"']+)["']""").find(app.get("$mainUrl/dist/js/global.js").text)?.groupValues?.getOrNull(1) ?: return
-
-            val response = app.get("$mainApi/contents/$id?wt=$wt", headers = mapOf("Authorization" to "Bearer $token")).text
-            val data = JSONObject(response).getJSONObject("data").getJSONObject("children")
-            val firstFile = data.getJSONObject(data.keys().next())
             
-            callback.invoke(newExtractorLink("Gofile", "Gofile", firstFile.getString("link")) {
-                this.headers = mapOf("Cookie" to "accountToken=$token")
-            })
-        } catch (e: Exception) { Log.e("Gofile", e.message.toString()) }
+            // Get Token
+            val tokenJson = app.post("$mainApi/accounts").text
+            val token = JSONObject(tokenJson).getJSONObject("data").getString("token")
+
+            // Get WT Token (Web Token) from JS
+            val js = app.get("$mainUrl/dist/js/global.js").text
+            val wt = Regex("""appdata\.wt\s*=\s*["']([^"']+)["']""").find(js)?.groupValues?.getOrNull(1) ?: return
+
+            // Get Content
+            val contentJson = app.get(
+                "$mainApi/contents/$id?wt=$wt",
+                headers = mapOf("Authorization" to "Bearer $token")
+            ).text
+
+            val data = JSONObject(contentJson).getJSONObject("data").getJSONObject("children")
+            val firstKey = data.keys().next()
+            val fileObj = data.getJSONObject(firstKey)
+            
+            val link = fileObj.getString("link")
+            val quality = getQuality(fileObj.optString("name", ""))
+
+            callback.invoke(
+                newExtractorLink(
+                    name,
+                    name,
+                    link
+                ) {
+                    this.quality = quality
+                    this.headers = mapOf("Cookie" to "accountToken=$token")
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("Gofile", "Error: ${e.message}")
+        }
     }
 }
 
+// Untuk RidoMovies
+open class Ridoo : ExtractorApi() {
+    override val name = "Ridoo"
+    override var mainUrl = "https://ridoo.net"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val response = app.get(url, referer = referer)
+        val script = response.documentLarge.selectFirst("script:containsData(sources:)")?.data() ?: return
+        val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script)?.groupValues?.getOrNull(1)
+        
+        if (m3u8 != null) {
+            callback.invoke(
+                newExtractorLink(
+                    this.name,
+                    this.name,
+                    url = m3u8,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = mainUrl
+                    this.quality = Qualities.P1080.value
+                }
+            )
+        }
+    }
+}
+
+// Untuk MoviesMod
 open class Modflix : ExtractorApi() {
     override val name = "Modflix"
     override val mainUrl = "https://video-seed.xyz"
     override val requiresReferer = true
 
-    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
         val token = url.substringAfter("url=")
         val json = app.post(
-            "$mainUrl/api",
+            "https://video-seed.xyz/api",
             data = mapOf("keys" to token),
             referer = url,
             headers = mapOf("x-token" to "video-seed.xyz")
         ).text
-        val link = JSONObject(json).getString("url")
-        callback.invoke(newExtractorLink(name, name, link))
-    }
-}
-
-open class Driveseed : ExtractorApi() {
-    override val name = "Driveseed"
-    override val mainUrl = "https://driveseed.org"
-    override val requiresReferer = false
-
-    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val doc = app.get(url).documentLarge
-        val quality = Regex("(\\d{3,4})[pP]").find(doc.selectFirst("li.list-group-item")?.text().orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: Qualities.P720.value
         
-        doc.select("div.text-center > a").forEach {
-            if (it.text().contains("Direct Links", true)) {
-                val cfUrl = "$url?type=1" // Simple Cloudflare bypass attempt
-                try {
-                    val cfDoc = app.get(cfUrl).documentLarge
-                    val link = cfDoc.selectFirst("a.btn-success")?.attr("href")
-                    if (!link.isNullOrBlank()) {
-                        callback(newExtractorLink("$name CF", "$name CF", link) { this.quality = quality })
-                    }
-                } catch (_: Exception) {}
-            }
+        val link = JSONObject(json).optString("url").replace("\\/", "/")
+        if(link.startsWith("http")) {
+             callback.invoke(
+                newExtractorLink(
+                    name,
+                    name,
+                    link
+                ) { this.quality = Qualities.P720.value }
+            )
         }
     }
 }
 
-class Driveleech : Driveseed() {
-    override val name = "Driveleech"
-    override val mainUrl = "https://driveleech.org"
+// Extractor tambahan
+class Streamruby : ExtractorApi() {
+    override val name = "Streamruby"
+    override val mainUrl = "https://streamruby.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val response = app.get(url, referer = referer)
+        val script = response.documentLarge.selectFirst("script:containsData(sources:)")?.data()
+        val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script ?: "")?.groupValues?.getOrNull(1)
+        
+        if (m3u8 != null) {
+            M3u8Helper.generateM3u8(name, m3u8, mainUrl).forEach(callback)
+        }
+    }
 }
+
+// Alias class untuk kompatibilitas
+class Driveleech : ExtractorApi() { override val name = "Driveleech"; override val mainUrl = "https://driveleech.org"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
+class Driveseed : ExtractorApi() { override val name = "Driveseed"; override val mainUrl = "https://driveseed.org"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
+class Filelions : ExtractorApi() { override val name = "Filelions"; override val mainUrl = "https://filelions.to"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
