@@ -14,7 +14,6 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-// HAPUS BARIS INI: import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -26,38 +25,52 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object Lateri3PlayExtractor {
-    // ... Sisa kode SAMA seperti sebelumnya ...
-    // Pastikan tidak ada perubahan logika, hanya menghapus import yang salah
     
-    // ... (Isi kode sama dengan yang saya berikan sebelumnya di Lateri3PlayExtractor.kt)
-    // Pastikan DOMAINS_URL dan fungsi invokeUhdmovies dll tetap ada.
+    private const val TAG = "Lateri3Play"
     private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
-    private var cachedDomains: DomainsParser? = null
     
     // Subtitle APIs
     private const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
     private const val WyZIESUBAPI = "https://sub.wyzie.ru"
 
-    private suspend fun getDomains(): DomainsParser? {
-        if (cachedDomains == null) {
-            try {
-                cachedDomains = app.get(DOMAINS_URL).parsedSafe<DomainsParser>()
-            } catch (e: Exception) {
-                e.printStackTrace()
+    private var cachedDomains: DomainsParser? = null
+
+    // Domain Cadangan (Hardcoded Fallback) - Penyelamat jika GitHub gagal/diblokir
+    private val fallbackDomains = DomainsParser(
+        uhdmovies = "https://uhdmovies.fyi",
+        vegamovies = "https://vegamovies.rs",
+        moviesmod = "https://moviesmod.com.in",
+        multiMovies = "https://multimovies.cloud",
+        moviesdrive = "https://moviesdrive.io",
+        luxmovies = "https://luxmovies.org",
+        rogmovies = "https://rogmovies.com",
+        hdmovie2 = "https://hdmovie2.rest",
+        topMovies = "https://topmovies.boo",
+        bollyflix = "https://bollyflix.boo",
+        extramovies = "https://extramovies.bar"
+    )
+
+    private suspend fun getDomains(): DomainsParser {
+        if (cachedDomains != null) return cachedDomains!!
+
+        return try {
+            val response = app.get(DOMAINS_URL).parsedSafe<DomainsParser>()
+            if (response != null) {
+                Log.i(TAG, "Domains loaded from GitHub successfully")
+                cachedDomains = response
+                response
+            } else {
+                Log.e(TAG, "Failed to parse GitHub domains, using fallback")
+                cachedDomains = fallbackDomains
+                fallbackDomains
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to connect to GitHub domains: ${e.message}, using fallback")
+            cachedDomains = fallbackDomains
+            fallbackDomains
         }
-        return cachedDomains
     }
-    
-    // ... lanjutkan dengan fungsi invokeUhdmovies dan seterusnya ...
-    // ... Pastikan fungsi loadSourceNameExtractor dipanggil langsung tanpa prefix ...
-    
-    // Contoh pemanggilan yang benar (sudah ada di kode sebelumnya):
-    // loadSourceNameExtractor("UHDMovies", finalLink, "", subtitleCallback, callback)
-    
-    // (Copy seluruh isi Lateri3PlayExtractor.kt dari jawaban sebelumnya, 
-    // tapi pastikan baris import Lateri3PlayUtils DIHAPUS)
-    
+
     // ================== PROVIDER 1: UHD MOVIES ==================
     suspend fun invokeUhdmovies(
         title: String? = null,
@@ -67,13 +80,16 @@ object Lateri3PlayExtractor {
         callback: (ExtractorLink) -> Unit,
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
-        val uhdmoviesAPI = getDomains()?.uhdmovies ?: return
+        val uhdmoviesAPI = getDomains().uhdmovies // Dijamin tidak null karena fallback
         val searchTitle = title?.replace("-", " ")?.replace(":", " ") ?: return
         val searchUrl = if (season != null) "$uhdmoviesAPI/search/$searchTitle $year" else "$uhdmoviesAPI/search/$searchTitle"
 
         try {
             val searchRes = app.get(searchUrl)
-            if (searchRes.code != 200) return
+            if (searchRes.code != 200) {
+                Log.e(TAG, "UHDMovies search failed: Code ${searchRes.code}")
+                return
+            }
             
             val url = searchRes.documentLarge.select("article div.entry-image a")
                 .firstOrNull()?.attr("href") ?: return
@@ -99,7 +115,7 @@ object Lateri3PlayExtractor {
                 }
             }
         } catch (e: Exception) {
-            Log.e("UHDMovies", "Error: ${e.message}")
+            Log.e(TAG, "UHDMovies Error: ${e.message}")
         }
     }
 
@@ -113,19 +129,25 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val vegaMoviesAPI = getDomains()?.vegamovies ?: return
+        val vegaMoviesAPI = getDomains().vegamovies
+        // Membersihkan judul agar pencarian lebih akurat
         val fixtitle = title?.substringBefore("-")?.substringBefore(":")?.replace("&", " ")?.trim().orEmpty()
         val query = if (season == null) "$fixtitle $year" else "$fixtitle season $season $year"
         val url = "$vegaMoviesAPI/?s=$query"
         val interceptor = CloudflareKiller()
 
-        val searchDoc = try { app.get(url, interceptor = interceptor).documentLarge } catch(e: Exception) { return }
+        Log.d(TAG, "Searching VegaMovies: $url")
+
+        val searchDoc = try { app.get(url, interceptor = interceptor).documentLarge } catch(e: Exception) { 
+            Log.e(TAG, "VegaMovies Connection Failed: ${e.message}")
+            return 
+        }
         
         for (article in searchDoc.select("article h2")) {
             val href = article.selectFirst("a")?.attr("href") ?: continue
             val doc = try { app.get(href).documentLarge } catch(e: Exception) { continue }
 
-            // Verifikasi IMDB
+            // Verifikasi IMDB jika ada
             if (imdbId != null) {
                 val imdbLink = doc.selectFirst("a[href*=\"imdb.com/title/tt\"]")?.attr("href")
                 if (imdbLink != null && !imdbLink.contains(imdbId, true)) continue
@@ -178,7 +200,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val api = getDomains()?.moviesmod ?: return
+        val api = getDomains().moviesmod
         val searchUrl = if (season == null) "$api/search/$imdbId $year" else "$api/search/$imdbId Season $season $year"
         
         try {
@@ -225,7 +247,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val api = getDomains()?.multiMovies ?: return
+        val api = getDomains().multiMovies
         val slug = title?.createSlug() ?: return
         val url = if (season == null) "$api/movies/$slug" else "$api/episodes/$slug-$season" + "x$episode"
 
@@ -305,7 +327,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val api = getDomains()?.moviesdrive ?: return
+        val api = getDomains().moviesdrive
         val query = if (season != null) "$title $season" else "$title $year"
         
         try {
@@ -355,12 +377,12 @@ object Lateri3PlayExtractor {
 
     // ================== PROVIDER 7 & 8: DOTMOVIES & ROGMOVIES ==================
     suspend fun invokeDotmovies(imdbId: String?, title: String?, year: Int?, season: Int?, episode: Int?, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
-        val api = getDomains()?.luxmovies ?: return
+        val api = getDomains().luxmovies
         invokeWpredis("DotMovies", api, imdbId, title, year, season, episode, sub, cb)
     }
 
     suspend fun invokeRogmovies(imdbId: String?, title: String?, year: Int?, season: Int?, episode: Int?, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
-        val api = getDomains()?.rogmovies ?: return
+        val api = getDomains().rogmovies
         invokeWpredis("RogMovies", api, imdbId, title, year, season, episode, sub, cb)
     }
 
@@ -401,7 +423,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val api = getDomains()?.hdmovie2 ?: return
+        val api = getDomains().hdmovie2
         val slug = title?.createSlug() ?: return
         val url = "$api/movies/$slug-$year"
         
@@ -443,7 +465,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val api = getDomains()?.topMovies ?: return
+        val api = getDomains().topMovies
         val query = if (season == null) "$imdbId $year" else "$imdbId Season $season"
         
         try {
@@ -517,7 +539,7 @@ object Lateri3PlayExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val api = getDomains()?.bollyflix ?: return
+        val api = getDomains().bollyflix
         val query = if (season != null) "$id $season" else id
         try {
             val search = app.get("$api/search/$query", interceptor = CloudflareKiller()).documentLarge
