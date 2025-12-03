@@ -17,11 +17,10 @@ class MainSettingsFragment(
 
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
-    // Helper untuk Resource ID Dinamis (Aman tanpa BuildConfig)
+    // FIX: Menggunakan string literal langsung untuk package name
     private fun getResId(name: String, type: String): Int {
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
-        val id = res.getIdentifier(name, type, packageName)
-        return if (id == 0) res.getIdentifier(name, type, "com.AdiManuLateri3") else id
+        val packageName = "com.AdiManuLateri3"
+        return res.getIdentifier(name, type, packageName)
     }
 
     private fun getDrawable(name: String): Drawable? {
