@@ -2,18 +2,18 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape>
-            <stroke android:width="2dp"
-                android:color="#FFF" />
-            <corners
-                android:bottomLeftRadius="6dp"
-                android:bottomRightRadius="6dp"
-                android:topLeftRadius="6dp"
-                android:topRightRadius="6dp" />
+            <stroke android:width="2dp" android:color="#FFFFFF" />
+            <corners android:radius="6dp" />
+            <solid android:color="#22FFFFFF"/>
         </shape>
     </item>
     <item android:state_hovered="true">
         <shape>
-            <solid android:color="#99FFFFFF" />
+            <solid android:color="#22FFFFFF" />
+            <corners android:radius="6dp" />
         </shape>
+    </item>
+    <item>
+        <shape><solid android:color="#00000000" /></shape>
     </item>
 </selector>
