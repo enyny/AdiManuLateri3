@@ -48,6 +48,7 @@ data class MediaDetail(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("original_title") val originalTitle: String? = null,
     @JsonProperty("original_name") val originalName: String? = null,
+    @JsonProperty("original_language") val originalLanguage: String? = null, // DITAMBAHKAN
     @JsonProperty("poster_path") val posterPath: String? = null,
     @JsonProperty("backdrop_path") val backdropPath: String? = null,
     @JsonProperty("release_date") val releaseDate: String? = null,
@@ -137,7 +138,7 @@ data class TmdbDate(
     val lastWeekStart: String
 )
 
-// ==================== DOMAINS & EXTRACTOR PARSERS (LATERI3PLAY) ====================
+// ==================== DOMAINS & EXTRACTOR PARSERS ====================
 
 data class DomainsParser(
     val moviesdrive: String,
@@ -218,109 +219,42 @@ data class RidoDataUrl(
     @JsonProperty("url") var url: String? = null,
 )
 
-// ==================== NEW SOURCES (FROM ADICINEMAX21) ====================
+// ==================== NEW SOURCES DATA ====================
 
-// --- Vixsrc ---
-data class VixsrcSource(
-    val name: String,
-    val url: String,
-    val referer: String,
-)
+data class VixsrcSource(val name: String, val url: String, val referer: String)
 
-// --- VidFast ---
 data class VidFastSources(
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("tracks") val tracks: ArrayList<Tracks>? = null,
 ) {
-    data class Tracks(
-        @JsonProperty("file") val file: String? = null,
-        @JsonProperty("label") val label: String? = null,
-    )
+    data class Tracks(@JsonProperty("file") val file: String? = null, @JsonProperty("label") val label: String? = null)
 }
 
-data class VidFastServers(
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("description") val description: String? = null,
-    @JsonProperty("data") val data: String? = null,
-)
+data class VidFastServers(@JsonProperty("name") val name: String? = null, @JsonProperty("description") val description: String? = null, @JsonProperty("data") val data: String? = null)
 
-// --- Vidlink ---
-data class VidlinkSources(
-    @JsonProperty("stream") val stream: Stream? = null,
-) {
-    data class Stream(
-        @JsonProperty("playlist") val playlist: String? = null,
-    )
+data class VidlinkSources(@JsonProperty("stream") val stream: Stream? = null) {
+    data class Stream(@JsonProperty("playlist") val playlist: String? = null)
 }
 
-// --- Mapple ---
-data class MappleSubtitle(
-    @JsonProperty("display") val display: String? = null,
-    @JsonProperty("url") val url: String? = null,
-)
+data class MappleSubtitle(@JsonProperty("display") val display: String? = null, @JsonProperty("url") val url: String? = null)
 
-data class MappleSources(
-    @JsonProperty("data") val data: Data? = null,
-) {
-    data class Data(
-        @JsonProperty("stream_url") val stream_url: String? = null,
-    )
+data class MappleSources(@JsonProperty("data") val data: Data? = null) {
+    data class Data(@JsonProperty("stream_url") val stream_url: String? = null)
 }
 
-// --- Vidsrccc ---
-data class VidsrcccServer(
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("hash") val hash: String? = null,
-)
+data class VidsrcccServer(@JsonProperty("name") val name: String? = null, @JsonProperty("hash") val hash: String? = null)
+data class VidsrcccResponse(@JsonProperty("data") val data: ArrayList<VidsrcccServer>? = arrayListOf())
+data class VidsrcccResult(@JsonProperty("data") val data: VidsrcccSources? = null)
+data class VidsrcccSources(@JsonProperty("subtitles") val subtitles: ArrayList<VidsrcccSubtitles>? = arrayListOf(), @JsonProperty("source") val source: String? = null)
+data class VidsrcccSubtitles(@JsonProperty("label") val label: String? = null, @JsonProperty("file") val file: String? = null)
+data class UpcloudSources(@JsonProperty("file") val file: String? = null)
+data class UpcloudResult(@JsonProperty("sources") val sources: ArrayList<UpcloudSources>? = arrayListOf())
 
-data class VidsrcccResponse(
-    @JsonProperty("data") val data: ArrayList<VidsrcccServer>? = arrayListOf(),
-)
+data class Player4uLinkData(val name: String, val url: String)
 
-data class VidsrcccResult(
-    @JsonProperty("data") val data: VidsrcccSources? = null,
-)
+data class AdiDewasaSearchResponse(@JsonProperty("data") val data: ArrayList<AdiDewasaItem>? = arrayListOf(), @JsonProperty("success") val success: Boolean? = null)
+data class AdiDewasaItem(@JsonProperty("name") val name: String? = null, @JsonProperty("title") val title: String? = null, @JsonProperty("slug") val slug: String? = null, @JsonProperty("image") val image: String? = null, @JsonProperty("year") val year: String? = null)
 
-data class VidsrcccSources(
-    @JsonProperty("subtitles") val subtitles: ArrayList<VidsrcccSubtitles>? = arrayListOf(),
-    @JsonProperty("source") val source: String? = null,
-)
-
-data class VidsrcccSubtitles(
-    @JsonProperty("label") val label: String? = null,
-    @JsonProperty("file") val file: String? = null,
-)
-
-// --- Upcloud (via Vidsrccc) ---
-data class UpcloudSources(
-    @JsonProperty("file") val file: String? = null,
-)
-
-data class UpcloudResult(
-    @JsonProperty("sources") val sources: ArrayList<UpcloudSources>? = arrayListOf(),
-)
-
-// --- Player4U ---
-data class Player4uLinkData(
-    val name: String,
-    val url: String,
-)
-
-// --- AdiDewasa ---
-data class AdiDewasaSearchResponse(
-    @JsonProperty("data") val data: ArrayList<AdiDewasaItem>? = arrayListOf(),
-    @JsonProperty("success") val success: Boolean? = null
-)
-
-data class AdiDewasaItem(
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("slug") val slug: String? = null,
-    @JsonProperty("image") val image: String? = null,
-    @JsonProperty("year") val year: String? = null 
-)
-
-// --- Adimoviebox ---
 data class AdimovieboxSearch(val data: AdimovieboxData?)
 data class AdimovieboxData(val items: List<AdimovieboxItem>?)
 data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
@@ -331,7 +265,6 @@ data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
 data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
 data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
 
-// --- Kisskh ---
 data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
 data class KisskhDetail(@JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>?)
 data class KisskhEpisode(@JsonProperty("id") val id: Int?, @JsonProperty("number") val number: Double?)
