@@ -12,24 +12,23 @@ android {
     }
     
     defaultConfig {
+        // HAPUS versionCode dan versionName dari sini karena ini adalah Library Module
+        
         // API Key TMDb Khusus sesuai permintaan
         buildConfigField("String", "TMDB_API", "\"1cfadd9dbfc534abf6de40e1e7eaf4c7\"")
         
-        // URL API untuk Subtitle dan Provider tertentu yang tidak memerlukan secret key kompleks
+        // URL API untuk Subtitle dan Provider tertentu
         buildConfigField("String", "Whvx_API", "\"https://api.whvx.net\"")
         buildConfigField("String", "ZSHOW_API", "\"https://zshow.tv\"")
         buildConfigField("String", "MOVIE_API", "\"https://moviehub-api.vercel.app\"")
-        
-        // Versi plugin
-        versionCode = 1
-        versionName = "1.0.0"
     }
 }
 
 cloudstream {
-    // Metadata Plugin
-    name = "Lateri3Play"
-    language = "id" // Mengutamakan Indonesia/Inggris
+    // HAPUS baris 'name = ...' karena properti ini read-only.
+    // Nama plugin akan otomatis diambil dari metadata kelas utama.
+    
+    language = "id"
     description = "Ringan, Cepat, dan Stabil. 10 Provider Pilihan + Wyzie Subs."
     authors = listOf("AdiManuLateri3")
     
@@ -42,7 +41,7 @@ cloudstream {
         "Cartoon"
     )
 
-    // Icon (Bisa diganti nanti)
+    // Icon
     iconUrl = "https://i.imgur.com/Op9Rjs5.png" 
 
     requiresResources = true
