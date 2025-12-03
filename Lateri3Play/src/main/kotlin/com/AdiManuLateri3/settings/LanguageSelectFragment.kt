@@ -14,11 +14,9 @@ import androidx.core.widget.addTextChangedListener
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-// IMPORT PENTING:
-import com.AdiManuLateri3.BuildConfig
 
 class LanguageSelectFragment(
-    plugin: Lateri3PlayPlugin,
+    private val plugin: Lateri3PlayPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
@@ -49,22 +47,28 @@ class LanguageSelectFragment(
 
     private lateinit var adapter: LanguageAdapter
 
+    // Helper untuk mendapatkan ID Resource secara aman tanpa BuildConfig
+    private fun getResId(name: String, type: String): Int {
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier(name, type, packageName)
+        return if (id == 0) res.getIdentifier(name, type, "com.AdiManuLateri3") else id
+    }
+
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val outlineId = getResId("outline", "drawable")
         if (outlineId != 0) {
             this.background = res.getDrawable(outlineId, null)
         }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
-        val layout = res.getLayout(id)
-        return inflater.inflate(layout, container, false)
+        val id = getResId(name, "layout")
+        return inflater.inflate(id, container, false)
     }
 
     private fun <T : View> View.findView(name: String): T {
-        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = getResId(name, "id")
         if (id == 0) throw Exception("View ID $name not found.")
         return this.findViewById(id)
     }
@@ -106,9 +110,7 @@ class LanguageSelectFragment(
         private var filteredList = originalList.toMutableList()
 
         inner class VH(val v: View) : RecyclerView.ViewHolder(v) {
-            val radio: RadioButton = v.findViewById(
-                res.getIdentifier("radio_language", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
-            )
+            val radio: RadioButton = v.findViewById(getResId("radio_language", "id"))
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
