@@ -1,18 +1,20 @@
 package com.AdiManuLateri3
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
-
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeUhdmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeBollyflix
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeDotmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeHdmovie2
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoviesdrive
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoviesmod
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMultimovies
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeNinetv
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeRidomovies
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeZoechip
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeNepu
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokePlaydesi
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeMoflix
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeVidsrc
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeWatchsomuch
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeRogmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeTopMovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeUhdmovies
+import com.AdiManuLateri3.Lateri3PlayExtractor.invokeVegamovies
 
 data class Provider(
     val id: String,
@@ -24,38 +26,62 @@ data class Provider(
     ) -> Unit
 )
 
+@RequiresApi(Build.VERSION_CODES.O)
 fun buildProviders(): List<Provider> {
     return listOf(
-        Provider("uhdmovies", "UHD Movies") { res, sc, cb ->
-            if (!res.isAnime) invokeUhdmovies(res.title, res.year, res.season, res.episode, sc, cb)
+        // 1. UHD Movies
+        Provider("uhdmovies", "UHD Movies") { res, subtitleCallback, callback ->
+            invokeUhdmovies(res.title, res.year, res.season, res.episode, callback, subtitleCallback)
         },
-        Provider("multimovies", "MultiMovies") { res, sc, cb ->
-            if (!res.isAnime) invokeMultimovies(res.title, res.season, res.episode, sc, cb)
+        
+        // 2. VegaMovies
+        Provider("vegamovies", "VegaMovies") { res, subtitleCallback, callback ->
+            invokeVegamovies(res.title, res.year, res.season, res.episode, res.imdbId, subtitleCallback, callback)
         },
-        Provider("ninetv", "NineTV") { res, sc, cb ->
-            if (!res.isAnime) invokeNinetv(res.id, res.season, res.episode, sc, cb)
+        
+        // 3. MoviesMod
+        Provider("moviesmod", "MoviesMod") { res, subtitleCallback, callback ->
+            invokeMoviesmod(res.imdbId, res.year, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("ridomovies", "RidoMovies") { res, sc, cb ->
-            if (!res.isAnime) invokeRidomovies(res.id, res.imdbId, res.season, res.episode, sc, cb)
+        
+        // 4. MultiMovies
+        Provider("multimovies", "MultiMovies") { res, subtitleCallback, callback ->
+            invokeMultimovies(res.title, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("zoechip", "ZoeChip") { res, sc, cb ->
-            if (!res.isAnime) invokeZoechip(res.title, res.year, res.season, res.episode, sc, cb)
+        
+        // 5. RidoMovies
+        Provider("ridomovies", "RidoMovies") { res, subtitleCallback, callback ->
+            invokeRidomovies(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("nepu", "Nepu") { res, sc, cb ->
-            if (!res.isAnime) invokeNepu(res.title, res.year, res.season, res.episode, cb)
+        
+        // 6. MoviesDrive
+        Provider("moviesdrive", "MoviesDrive") { res, subtitleCallback, callback ->
+            invokeMoviesdrive(res.title, res.season, res.episode, res.year, res.imdbId, subtitleCallback, callback)
         },
-        Provider("playdesi", "PlayDesi") { res, sc, cb ->
-            if (!res.isAnime) invokePlaydesi(res.title, res.season, res.episode, sc, cb)
+        
+        // 7. DotMovies
+        Provider("dotmovies", "DotMovies") { res, subtitleCallback, callback ->
+            invokeDotmovies(res.imdbId, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("moflix", "Moflix") { res, sc, cb ->
-            if (!res.isAnime) invokeMoflix(res.id, res.season, res.episode, cb)
+        
+        // 8. RogMovies
+        Provider("rogmovies", "RogMovies") { res, subtitleCallback, callback ->
+            invokeRogmovies(res.imdbId, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("vidsrc", "VidSrc") { res, sc, cb ->
-            // UPDATE: Menambahkan parameter subtitleCallback (sc) agar sesuai definisi di Extractor
-            if (!res.isAnime) invokeVidsrc(res.id, res.season, res.episode, sc, cb)
+        
+        // 9. HDMovie2
+        Provider("hdmovie2", "Hdmovie2") { res, subtitleCallback, callback ->
+            invokeHdmovie2(res.title, res.year, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("watchsomuch", "WatchSoMuch") { res, sc, cb ->
-            if (!res.isAnime) invokeWatchsomuch(res.imdbId, res.season, res.episode, sc)
+        
+        // 10. TopMovies
+        Provider("topmovies", "Top Movies") { res, subtitleCallback, callback ->
+            invokeTopMovies(res.imdbId, res.year, res.season, res.episode, subtitleCallback, callback)
+        },
+        
+        // Tambahan (Opsional/Cadangan dari source code asli yang bagus)
+        Provider("bollyflix", "Bollyflix") { res, subtitleCallback, callback ->
+            invokeBollyflix(res.imdbId, res.season, res.episode, subtitleCallback, callback)
         }
     )
 }
