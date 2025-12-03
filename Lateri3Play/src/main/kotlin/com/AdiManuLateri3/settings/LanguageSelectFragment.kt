@@ -47,11 +47,10 @@ class LanguageSelectFragment(
 
     private lateinit var adapter: LanguageAdapter
 
-    // Helper untuk mendapatkan ID Resource secara aman tanpa BuildConfig
+    // FIX: Menggunakan string literal langsung untuk package name
     private fun getResId(name: String, type: String): Int {
-        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
-        val id = res.getIdentifier(name, type, packageName)
-        return if (id == 0) res.getIdentifier(name, type, "com.AdiManuLateri3") else id
+        val packageName = "com.AdiManuLateri3"
+        return res.getIdentifier(name, type, packageName)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
