@@ -28,8 +28,8 @@ android {
 
 cloudstream {
     // 'name' dihapus karena read-only. Nama plugin diambil dari nama class utama.
-    language = "en"
-    description = "Lateri3Play Provider - 10 Sources"
+    language = "id"
+    description = "Lateri3Play Provider - Multi Sources"
     authors = listOf("AdiManu")
     
     /**
