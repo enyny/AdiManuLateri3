@@ -4,12 +4,14 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
+import com.lagradost.cloudstream3.base64UrlEncode
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.api.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +20,6 @@ import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import java.net.URI
-import java.net.URL
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Arrays
@@ -27,7 +28,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.min
 
-// ================= UTILITIES UMUM =================
+// ================= UTILITIES UMUM (LATERI3PLAY LAMA) =================
 
 fun getBaseUrl(url: String): String {
     return try {
@@ -79,7 +80,7 @@ suspend fun <T> retryIO(
     return block() // percobaan terakhir, biarkan error jika gagal
 }
 
-// Helper untuk memuat Extractor dengan nama custom (Diadaptasi dari StreamPlay)
+// Helper untuk memuat Extractor dengan nama custom
 suspend fun loadSourceNameExtractor(
     source: String,
     url: String,
@@ -109,7 +110,6 @@ suspend fun loadSourceNameExtractor(
     }
 }
 
-// Helper untuk Custom Extractor langsung
 suspend fun loadCustomExtractor(
     name: String? = null,
     url: String,
@@ -137,9 +137,8 @@ suspend fun loadCustomExtractor(
     }
 }
 
-// ================= BYPASS & SCRAPERS KHUSUS =================
+// ================= BYPASS & SCRAPERS KHUSUS (LATERI3PLAY LAMA) =================
 
-// Bypass Href.li / UnblockedGames (Versi StreamPlay yang lebih robust)
 suspend fun bypassHrefli(url: String): String? {
     fun Document.getFormUrl(): String = this.select("form#landing").attr("action")
     fun Document.getFormData(): Map<String, String> =
@@ -172,7 +171,6 @@ suspend fun bypassHrefli(url: String): String? {
     return fixUrl(path, getBaseUrl(driveUrl))
 }
 
-// HDHub4u Redirect Resolver (Versi StreamPlay)
 suspend fun hdhubgetRedirectLinks(url: String): String {
     val doc = app.get(url).text
     val regex = "s\\('o','([A-Za-z0-9+/=]+)'|ck\\('_wp_http_\\d+','([^']+)'".toRegex()
@@ -212,7 +210,6 @@ fun hdhubpen(value: String): String {
     }.joinToString("")
 }
 
-// MoviesDrive Link Extractor
 suspend fun extractMdrive(url: String): List<String> {
     val regex = Regex("hubcloud|gdflix|gdlink", RegexOption.IGNORE_CASE)
     return try {
@@ -227,7 +224,6 @@ suspend fun extractMdrive(url: String): List<String> {
     }
 }
 
-// Helper WP Key Generator (Untuk Multimovies/ZShow)
 fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
@@ -240,7 +236,6 @@ fun generateWpKey(r: String, m: String): String {
 
 // ================= CRYPTO ENGINES (AES & Standard) =================
 
-// CryptoJS Compatible AES (Versi StreamPlay - Lengkap)
 object CryptoJS {
     private const val KEY_SIZE = 256
     private const val IV_SIZE = 128
@@ -311,7 +306,6 @@ object CryptoJS {
     }
 }
 
-// Helper Hex String
 fun String.decodeHex(): ByteArray {
     check(length % 2 == 0) { "Must have an even length" }
     return chunked(2)
@@ -319,11 +313,9 @@ fun String.decodeHex(): ByteArray {
         .toByteArray()
 }
 
-// Standard AES Utils (Versi StreamPlay)
 object CryptoAES {
     private const val KEY_SIZE = 32
     private const val IV_SIZE = 16
-    private const val SALT_SIZE = 8
     private const val HASH_CIPHER = "AES/CBC/PKCS7PADDING"
     private const val AES = "AES"
 
@@ -340,7 +332,7 @@ object CryptoAES {
     }
 }
 
-// ================= LANGUAGE MAP (Dari StreamPlay) =================
+// ================= LANGUAGE MAP =================
 
 val languageMap: Map<String, Set<String>> = mapOf(
     "Afrikaans"   to setOf("af", "afr"),
@@ -418,4 +410,115 @@ val languageMap: Map<String, Set<String>> = mapOf(
 fun getLanguage(code: String): String {
     val lower = code.lowercase()
     return languageMap.entries.firstOrNull { lower in it.value }?.key ?: "UnKnown"
+}
+
+// ================= NEW HELPERS FROM ADICINEMAX21 =================
+
+// --- Player4U Helper ---
+suspend fun getPlayer4uUrl(
+    name: String,
+    selectedQuality: Int,
+    url: String,
+    referer: String?,
+    callback: (ExtractorLink) -> Unit
+) {
+    val response = app.get(url, referer = referer)
+    var script = getAndUnpack(response.text).takeIf { it.isNotEmpty() }
+        ?: response.document.selectFirst("script:containsData(sources:)")?.data()
+    if (script == null) {
+        val iframeUrl =
+            Regex("""<iframe src="(.*?)"""").find(response.text)?.groupValues?.getOrNull(1)
+                ?: return
+        val iframeResponse = app.get(
+            iframeUrl,
+            referer = null,
+            headers = mapOf("Accept-Language" to "en-US,en;q=0.5")
+        )
+        script = getAndUnpack(iframeResponse.text).takeIf { it.isNotEmpty() } ?: return
+    }
+
+    val m3u8 = Regex("\"hls2\":\\s*\"(.*?m3u8.*?)\"").find(script)?.groupValues?.getOrNull(1).orEmpty()
+    callback(newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
+        this.quality = selectedQuality
+    })
+}
+
+fun getPlayer4UQuality(quality: String): Int {
+    return when (quality) {
+        "4K", "2160P" -> Qualities.P2160.value
+        "FHD", "1080P" -> Qualities.P1080.value
+        "HQ", "HD", "720P", "DVDRIP", "TVRIP", "HDTC", "PREDVD" -> Qualities.P720.value
+        "480P" -> Qualities.P480.value
+        "360P", "CAM" -> Qualities.P360.value
+        "DS" -> Qualities.P144.value
+        "SD" -> Qualities.P480.value
+        "WEBRIP" -> Qualities.P720.value
+        "BLURAY", "BRRIP" -> Qualities.P1080.value
+        "HDRIP" -> Qualities.P1080.value
+        "TS" -> Qualities.P480.value
+        "R5" -> Qualities.P480.value
+        "SCR" -> Qualities.P480.value
+        "TC" -> Qualities.P480.value
+        else -> Qualities.Unknown.value
+    }
+}
+
+// --- AdiDewasa Helper ---
+object AdiDewasaHelper {
+    // Header statis agar terlihat seperti browser asli (Chrome Windows)
+    val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept" to "application/json, text/plain, */*",
+        "Accept-Language" to "en-US,en;q=0.9",
+        "Connection" to "keep-alive",
+        "Referer" to "https://dramafull.cc/"
+    )
+
+    // Fungsi untuk membersihkan judul agar mudah dicari
+    fun normalizeQuery(title: String): String {
+        return title
+            .replace(Regex("\\(\\d{4}\\)"), "") // Hapus tahun (2025)
+            .replace(Regex("[^a-zA-Z0-9\\s]"), " ") // Hapus simbol (: - !)
+            .trim()
+            .replace("\\s+".toRegex(), " ") // Hapus spasi ganda
+    }
+
+    // Fungsi pencocokan cerdas (Fuzzy Match)
+    fun isFuzzyMatch(original: String, result: String): Boolean {
+        val cleanOrg = original.lowercase().replace(Regex("[^a-z0-9]"), "")
+        val cleanRes = result.lowercase().replace(Regex("[^a-z0-9]"), "")
+
+        // Jika salah satu judul sangat pendek (misal "Adan"), harus match persis
+        if (cleanOrg.length < 5 || cleanRes.length < 5) {
+            return cleanOrg == cleanRes
+        }
+
+        // Cek apakah mengandung kata yang sama
+        return cleanOrg.contains(cleanRes) || cleanRes.contains(cleanOrg)
+    }
+}
+
+// --- Vidsrc Helper ---
+object VidsrcHelper {
+    fun encryptAesCbc(plainText: String, keyText: String): String {
+        val sha256 = MessageDigest.getInstance("SHA-256")
+        val keyBytes = sha256.digest(keyText.toByteArray(Charsets.UTF_8))
+        val secretKey = SecretKeySpec(keyBytes, "AES")
+
+        val iv = ByteArray(16) { 0 }
+        val ivSpec = IvParameterSpec(iv)
+
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+
+        val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+        return base64UrlEncode(encrypted)
+    }
+}
+
+// --- M3u8 Helper Wrapper (Jika diperlukan untuk Kisskh) ---
+object M3u8Helper {
+     // Kisskh menggunakan fungsi generateM3u8 dari com.lagradost.cloudstream3.utils.M3u8Helper
+     // Kita bisa memanggilnya langsung di Extractor, tidak perlu wrapper di sini 
+     // karena sudah di-import di file Extractor nantinya.
 }
