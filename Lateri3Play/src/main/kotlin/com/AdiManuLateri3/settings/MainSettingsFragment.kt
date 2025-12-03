@@ -9,37 +9,39 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-// IMPORT PENTING:
-import com.AdiManuLateri3.BuildConfig 
 
 class MainSettingsFragment(
     private val plugin: Lateri3PlayPlugin,
     private val sharedPref: android.content.SharedPreferences
 ) : BottomSheetDialogFragment() {
 
-    // Helper untuk mengambil Resource ID secara dinamis (Wajib untuk Plugin)
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
+    // Helper untuk Resource ID Dinamis (Aman tanpa BuildConfig)
+    private fun getResId(name: String, type: String): Int {
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier(name, type, packageName)
+        return if (id == 0) res.getIdentifier(name, type, "com.AdiManuLateri3") else id
+    }
+
     private fun getDrawable(name: String): Drawable? {
-        val id = res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = getResId(name, "drawable")
         return if (id != 0) res.getDrawable(id, null) else null
     }
 
     private fun <T : View> View.findView(name: String): T {
-        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = getResId(name, "id")
         if (id == 0) throw Exception("View ID $name not found.")
         return this.findViewById(id)
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
-        val layout = res.getLayout(id)
-        return inflater.inflate(layout, container, false)
+        val id = getResId(name, "layout")
+        return inflater.inflate(id, container, false)
     }
 
-    // Menambahkan efek border putih saat tombol dipilih (Penting untuk Android TV)
     private fun View.makeTvCompatible() {
-        val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val outlineId = getResId("outline", "drawable")
         if (outlineId != 0) {
             this.background = res.getDrawable(outlineId, null)
             this.isFocusable = true
@@ -53,37 +55,29 @@ class MainSettingsFragment(
     ): View {
         val view = getLayout("fragment_main_settings", inflater, container)
 
-        // Binding Views dari XML
-        val loginCard: ImageView = view.findView("loginCard") // Akan disembunyikan
-        val featureCard: ImageView = view.findView("featureCard") // Akan disembunyikan
+        val loginCard: ImageView = view.findView("loginCard")
+        val featureCard: ImageView = view.findView("featureCard")
         val toggleproviders: ImageView = view.findView("toggleproviders") 
         val languagechange: ImageView = view.findView("languageCard") 
         val saveIcon: ImageView = view.findView("saveIcon")
 
-        // Set Icons
         loginCard.setImageDrawable(getDrawable("settings_icon"))
         languagechange.setImageDrawable(getDrawable("settings_icon"))
         featureCard.setImageDrawable(getDrawable("settings_icon"))
         toggleproviders.setImageDrawable(getDrawable("settings_icon"))
         saveIcon.setImageDrawable(getDrawable("save_icon"))
 
-        // Apply TV Styles
         loginCard.makeTvCompatible()
         featureCard.makeTvCompatible()
         toggleproviders.makeTvCompatible()
         languagechange.makeTvCompatible()
         saveIcon.makeTvCompatible()
 
-        // --- Logika Menu ---
-
-        // 1. Login (Febbox/Token) - Dinonaktifkan di versi Lite
-        // Kita sembunyikan parent layout-nya agar UI lebih bersih
+        // Sembunyikan menu yang tidak terpakai (Login & Extension Toggle)
         (loginCard.parent.parent as? View)?.visibility = View.GONE
-
-        // 2. Toggle Extensions (StreamPlay vs Lite) - Dinonaktifkan karena Single Provider
         (featureCard.parent.parent as? View)?.visibility = View.GONE
 
-        // 3. Enable/Disable Sources (Memilih 10 Provider)
+        // Tombol Pilih Source
         toggleproviders.setOnClickListener {
             val providersFragment = ProvidersFragment(plugin, sharedPref)
             providersFragment.show(
@@ -92,7 +86,7 @@ class MainSettingsFragment(
             )
         }
 
-        // 4. Change Language (TMDb)
+        // Tombol Ganti Bahasa
         languagechange.setOnClickListener {
             val langFragment = LanguageSelectFragment(plugin, sharedPref)
             langFragment.show(
@@ -101,7 +95,7 @@ class MainSettingsFragment(
             )
         }
 
-        // 5. Save & Restart Button
+        // Tombol Simpan & Restart
         saveIcon.setOnClickListener {
             val context = this.context ?: return@setOnClickListener
             AlertDialog.Builder(context)
