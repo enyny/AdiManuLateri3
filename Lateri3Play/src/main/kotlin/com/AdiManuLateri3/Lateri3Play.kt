@@ -21,6 +21,7 @@ import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
+import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
@@ -50,19 +51,15 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         TvType.AsianDrama
     )
 
-    // Bahasa default diambil dari settings
+    // Bahasa default
     val langCode = sharedPref.getString("tmdb_language_code", "en-US")
 
     companion object {
         private const val TMDB_API_URL = "https://api.themoviedb.org/3"
-        // API Key baru sesuai request
         private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
-        fun getApiBase(): String {
-            return TMDB_API_URL
-        }
+        fun getApiBase(): String = TMDB_API_URL
 
-        // Helper tanggal untuk query trending
         fun getDate(): TmdbDate {
             val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val calendar = Calendar.getInstance()
@@ -158,7 +155,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // Tags & Keywords
         val genres = res.genres?.mapNotNull { it.name }
         val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
             .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
@@ -178,17 +174,16 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
             .reversed()
 
         if (type == TvType.TvSeries) {
-            val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$API_KEY&language=$langCode")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
-                        com.lagradost.cloudstream3.newEpisode(
+                        newEpisode(
                             LinkData(
-                                data.id,
-                                res.external_ids?.imdb_id,
-                                data.type,
-                                eps.seasonNumber,
-                                eps.episodeNumber,
+                                id = data.id,
+                                imdbId = res.external_ids?.imdb_id,
+                                type = data.type,
+                                season = eps.seasonNumber,
+                                episode = eps.episodeNumber,
                                 title = title,
                                 year = year,
                                 orgTitle = orgTitle,
@@ -227,9 +222,9 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
                 url,
                 TvType.Movie,
                 LinkData(
-                    data.id,
-                    res.external_ids?.imdb_id,
-                    data.type,
+                    id = data.id,
+                    imdbId = res.external_ids?.imdb_id,
+                    type = data.type,
                     title = title,
                     year = year,
                     orgTitle = orgTitle
@@ -260,21 +255,25 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
-        // Mengambil daftar provider yang dipilih dari ProvidersList
-        // Filter berdasarkan disabled_providers dari preferences
         val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
-        runAllAsync(
-            { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) },
-            { invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) },
-            *providersList.map { provider ->
-                suspend {
-                    // Panggil provider invoke
-                    provider.invoke(res, subtitleCallback, callback)
-                }
-            }.toTypedArray()
-        )
+        // Mempersiapkan array fungsi suspend untuk dijalankan secara paralel
+        val tasks = mutableListOf<suspend () -> Unit>()
+        
+        // Task Subtitle
+        tasks.add { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
+        tasks.add { invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
+        
+        // Task Providers
+        providersList.forEach { provider ->
+            tasks.add { 
+                provider.invoke(res, subtitleCallback, callback)
+            }
+        }
+
+        // Jalankan semua task
+        runAllAsync(*tasks.toTypedArray())
 
         return true
     }
