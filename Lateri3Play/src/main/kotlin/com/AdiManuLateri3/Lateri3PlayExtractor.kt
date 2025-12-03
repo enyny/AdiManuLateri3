@@ -7,27 +7,32 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.newSubtitleFile
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.AdiManuLateri3.Lateri3PlayUtils.loadSourceNameExtractor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 import java.net.URI
+import java.net.URLDecoder
 import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 object Lateri3PlayExtractor {
 
     private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
     private var cachedDomains: DomainsParser? = null
     
-    // Subtitle APIs
+    // URL Constants
     private const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
     private const val WyZIESUBAPI = "https://sub.wyzie.ru"
 
@@ -120,7 +125,6 @@ object Lateri3PlayExtractor {
                     it.closest("a")?.attr("href") 
                 }
                 links.forEach { link ->
-                    // Deep crawling to find direct download link
                     try {
                         val detailDoc = app.get(link).documentLarge
                         detailDoc.select("button.btn-outline").forEach { btn ->
@@ -132,7 +136,6 @@ object Lateri3PlayExtractor {
                     } catch (_: Exception) {}
                 }
             } else {
-                // TV Series logic
                 val episodePattern = "(?i)(V-Cloud|Single|Episode|G-Direct)"
                 val seasonBlock = doc.select("h4:matches((?i)Season $season), h3:matches((?i)Season $season)")
                 
@@ -339,7 +342,7 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== PROVIDER 7 & 8: DOTMOVIES & ROGMOVIES (Generic WpRedis) ==================
+    // ================== PROVIDER 7 & 8: DOTMOVIES & ROGMOVIES ==================
     suspend fun invokeDotmovies(imdbId: String?, title: String?, year: Int?, season: Int?, episode: Int?, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
         val api = getDomains()?.luxmovies ?: return
         invokeWpredis("DotMovies", api, imdbId, title, year, season, episode, sub, cb)
@@ -366,7 +369,6 @@ object Lateri3PlayExtractor {
             } else {
                 val sBlock = detailDoc.select("h3:matches((?i)Season\\s*$season)").first()
                 var sibling = sBlock?.nextElementSibling()
-                // Find episode block
                 while (sibling != null) {
                     if (sibling.text().contains("Episode $episode", true) || sibling.select("a").text().contains("Episode $episode", true)) {
                         sibling.select("a").forEach { link ->
@@ -398,12 +400,10 @@ object Lateri3PlayExtractor {
             var nume = ""
             
             if (episode != null) {
-                // TV Series logic finding
                 val epItem = doc.select("ul#playeroptionsul > li").getOrNull(1)
                 post = epItem?.attr("data-post") ?: ""
                 nume = (episode + 1).toString()
             } else {
-                // Movie
                 val mvItem = doc.select("ul#playeroptionsul > li").firstOrNull { it.text().contains("v2", true) }
                 post = mvItem?.attr("data-post") ?: ""
                 nume = mvItem?.attr("data-nume") ?: ""
@@ -460,7 +460,7 @@ object Lateri3PlayExtractor {
         } catch (_: Exception) {}
     }
 
-    // ================== SUBTITLE APIS ==================
+    // ================== SUBTITLES ==================
     
     suspend fun invokeSubtitleAPI(
         id: String? = null,
@@ -472,7 +472,7 @@ object Lateri3PlayExtractor {
                   else "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
         
         try {
-            val res = app.get(url).parsedSafe<SubtitlesAPI>()
+            val res = app.get(url).parsedSafe<SubtitleResponse>() // Menggunakan Class Baru
             res?.subtitles?.forEach { 
                 subtitleCallback(newSubtitleFile(it.lang, it.url))
             }
@@ -491,7 +491,6 @@ object Lateri3PlayExtractor {
         
         try {
             val json = app.get(url.toString()).text
-            // Parsing manual array JSON
             val items = tryParseJson<List<WyZIESUB>>(json)
             items?.forEach {
                 subtitleCallback(newSubtitleFile(it.display, it.url))
@@ -499,7 +498,7 @@ object Lateri3PlayExtractor {
         } catch (_: Exception) {}
     }
     
-    // Backup Provider (Optional from original code)
+    // Backup
     suspend fun invokeBollyflix(
         id: String? = null,
         season: Int? = null,
@@ -513,9 +512,6 @@ object Lateri3PlayExtractor {
             val search = app.get("$api/search/$query", interceptor = CloudflareKiller()).documentLarge
             val link = search.selectFirst("div > article > a")?.attr("href") ?: return
             val doc = app.get(link).documentLarge
-            
-            // Logic similar to MoviesDrive/Modflix for Bollyflix
-            // Simplified for brevity as requested mostly 10 providers
             val links = doc.select("a[href*=\"gdflix\"]")
             links.forEach {
                 val url = it.attr("href")
@@ -571,7 +567,8 @@ object Lateri3PlayExtractor {
         val url: String?
     )
 
-    data class SubtitlesAPI(
+    // RENAMED TO AVOID CONFLICT
+    data class SubtitleResponse(
         val subtitles: List<Subtitle>
     )
 
