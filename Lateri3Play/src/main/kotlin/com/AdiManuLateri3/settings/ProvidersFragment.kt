@@ -29,7 +29,6 @@ class ProvidersFragment(
 ) : BottomSheetDialogFragment() {
 
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
-    
     private lateinit var btnSave: ImageButton
     private lateinit var btnSelectAll: Button
     private lateinit var btnDeselectAll: Button
@@ -37,34 +36,28 @@ class ProvidersFragment(
     private lateinit var container: LinearLayout
     private var providers: List<Provider> = emptyList()
 
-    // FIX: Menggunakan string literal langsung untuk package name
     private fun <T : View> View.findView(name: String): T {
-        val packageName = "com.AdiManuLateri3"
-        val id = res.getIdentifier(name, "id", packageName)
+        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         if (id == 0) throw Exception("View ID $name not found.")
         return this.findViewById(id)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
-    private fun getDrawable(name: String): Drawable? {
-        val packageName = "com.AdiManuLateri3"
-        val id = res.getIdentifier(name, "drawable", packageName)
-        return if (id != 0) res.getDrawable(id, null) else null
+    private fun getDrawable(name: String): Drawable {
+        val id = res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        return res.getDrawable(id, null) ?: throw Exception("Drawable $name not found")
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val packageName = "com.AdiManuLateri3"
-        val id = res.getIdentifier("outline", "drawable", packageName)
-        if (id != 0) {
-            this.background = res.getDrawable(id, null)
-        }
+        val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+        this.background = res.getDrawable(outlineId, null)
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val packageName = "com.AdiManuLateri3"
-        val id = res.getIdentifier(name, "layout", packageName)
-        return inflater.inflate(id, container, false)
+        val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val layout = res.getLayout(id)
+        return inflater.inflate(layout, container, false)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -78,26 +71,32 @@ class ProvidersFragment(
             bottomSheet?.let { sheet ->
                 val behavior = BottomSheetBehavior.from(sheet)
                 behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                behavior.isDraggable = true
                 behavior.skipCollapsed = true
+                sheet.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
             }
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
+    @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         btnSave = view.findView("btn_save")
-        btnSelectAll = view.findView("btn_select_all")
-        btnDeselectAll = view.findView("btn_deselect_all")
-        container = view.findView("list_container")
-        val searchView = view.findView<SearchView>("search_provider")
-
         btnSave.setImageDrawable(getDrawable("save_icon"))
         btnSave.makeTvCompatible()
+
+        btnSelectAll = view.findView("btn_select_all")
+        btnDeselectAll = view.findView("btn_deselect_all")
         
+        container = view.findView("list_container")
+        container.makeTvCompatible()
+        
+        // Memuat provider dari ProvidersList.kt
         providers = buildProviders().sortedBy { it.name.lowercase() }
 
+        // Load disabled providers
         val savedDisabled = sharedPref.getStringSet(PREFS_DISABLED, emptySet()) ?: emptySet()
 
         adapter = ProviderAdapter(providers, savedDisabled) { disabled ->
@@ -105,15 +104,14 @@ class ProvidersFragment(
             updateUI()
         }
 
-        // FIX: Hardcode package name
-        val packageName = "com.AdiManuLateri3"
-        val chkId = res.getIdentifier("chk_provider", "id", packageName)
+        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
 
+        // Generate Checkboxes
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
             val chk = item.findViewById<CheckBox>(chkId)
-            
             item.makeTvCompatible()
+            chk.makeTvCompatible()
             chk.text = provider.name
             chk.isChecked = !adapter.isDisabled(provider.id)
 
@@ -125,25 +123,73 @@ class ProvidersFragment(
 
             container.addView(item)
         }
-
+        
+        // Focus handling for TV
         container.post {
             if (container.isNotEmpty()) {
-                container.getChildAt(0).requestFocus()
+                val firstItem = container.getChildAt(0)
+                firstItem.isFocusable = true
+                firstItem.requestFocusFromTouch()
+                firstItem.nextFocusUpId = btnSave.id
             }
         }
 
-        btnSelectAll.setOnClickListener { adapter.setAll(true); updateUI() }
-        btnDeselectAll.setOnClickListener { adapter.setAll(false); updateUI() }
-        btnSave.setOnClickListener { dismiss() }
+        btnSelectAll.setOnClickListener { adapter.setAll(true) }
+        btnDeselectAll.setOnClickListener { adapter.setAll(false) }
+        btnSave.setOnClickListener { dismissFragment() }
 
-        setupProfileFeatures(view)
-        setupSearch(searchView, chkId)
-    }
+        // === Profile Handling ===
+        val btnSaveProfile = view.findView<Button>("btn_save_profile")
+        val btnLoadProfile = view.findView<Button>("btn_load_profile")
+        val btnDeleteProfile = view.findView<Button>("btn_delete_profile")
 
-    private fun setupSearch(searchView: SearchView, chkId: Int) {
+        btnSaveProfile.setOnClickListener {
+            val input = android.widget.EditText(requireContext())
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Save Profile")
+                .setMessage("Enter profile name:")
+                .setView(input)
+                .setPositiveButton("Save") { _, _ ->
+                    val name = input.text.toString().trim()
+                    if (name.isNotEmpty()) {
+                        saveProfile(name)
+                        showMessage("Profile saved.")
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        btnLoadProfile.setOnClickListener {
+            val profiles = getAllProfiles().keys.toTypedArray()
+            if (profiles.isEmpty()) {
+                showMessage("No profiles found.")
+                return@setOnClickListener
+            }
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Select Profile")
+                .setItems(profiles) { _, which ->
+                    loadProfile(profiles[which])
+                }
+                .show()
+        }
+
+        btnDeleteProfile.setOnClickListener {
+            val profiles = getAllProfiles().keys.toTypedArray()
+            if (profiles.isEmpty()) return@setOnClickListener
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Delete Profile")
+                .setItems(profiles) { _, which ->
+                    deleteProfile(profiles[which])
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        // Search Functionality
+        val searchView = view.findView<SearchView>("search_provider")
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean = false
-
             override fun onQueryTextChange(newText: String?): Boolean {
                 val query = newText.orEmpty().trim().lowercase()
                 for (i in 0 until container.childCount) {
@@ -157,63 +203,16 @@ class ProvidersFragment(
         })
     }
 
-    private fun setupProfileFeatures(view: View) {
-        val btnSaveProfile = view.findView<Button>("btn_save_profile")
-        val btnLoadProfile = view.findView<Button>("btn_load_profile")
-        val btnDeleteProfile = view.findView<Button>("btn_delete_profile")
-
-        btnSaveProfile.setOnClickListener {
-            val input = android.widget.EditText(requireContext())
-            android.app.AlertDialog.Builder(requireContext())
-                .setTitle("Simpan Profil")
-                .setMessage("Beri nama profil ini:")
-                .setView(input)
-                .setPositiveButton("Simpan") { _, _ ->
-                    val name = input.text.toString().trim()
-                    if (name.isNotEmpty()) {
-                        saveProfile(name)
-                        Toast.makeText(context, "Profil tersimpan", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                .setNegativeButton("Batal", null)
-                .show()
-        }
-
-        btnLoadProfile.setOnClickListener {
-            val profiles = getAllProfiles().keys.toTypedArray()
-            if (profiles.isEmpty()) {
-                Toast.makeText(context, "Belum ada profil", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            android.app.AlertDialog.Builder(requireContext())
-                .setTitle("Pilih Profil")
-                .setItems(profiles) { _, which ->
-                    loadProfile(profiles[which])
-                }
-                .show()
-        }
-
-        btnDeleteProfile.setOnClickListener {
-            val profiles = getAllProfiles().keys.toTypedArray()
-            if (profiles.isEmpty()) return@setOnClickListener
-            
-            android.app.AlertDialog.Builder(requireContext())
-                .setTitle("Hapus Profil")
-                .setItems(profiles) { _, which ->
-                    deleteProfile(profiles[which])
-                }
-                .setNegativeButton("Batal", null)
-                .show()
-        }
-    }
-
     private fun updateUI() {
-        val packageName = "com.AdiManuLateri3"
-        val chkId = res.getIdentifier("chk_provider", "id", packageName)
+        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
             chk.isChecked = !adapter.isDisabled(providers[i].id)
         }
+    }
+
+    private fun dismissFragment() {
+        parentFragmentManager.beginTransaction().remove(this).commitAllowingStateLoss()
     }
 
     inner class ProviderAdapter(
@@ -230,9 +229,9 @@ class ProvidersFragment(
             onChange(disabled)
         }
 
-        fun setAll(enable: Boolean) {
+        fun setAll(value: Boolean) {
             disabled.clear()
-            if (!enable) disabled.addAll(items.map { it.id })
+            if (!value) disabled.addAll(items.map { it.id })
             onChange(disabled)
         }
     }
@@ -241,7 +240,8 @@ class ProvidersFragment(
         val disabled = sharedPref.getStringSet(PREFS_DISABLED, emptySet()) ?: emptySet()
         val allProfiles = getAllProfiles().toMutableMap()
         allProfiles[name] = disabled
-        saveProfilesToPrefs(allProfiles)
+        val encoded = allProfiles.entries.joinToString("|") { "${it.key}:${it.value.joinToString(",")}" }
+        sharedPref.edit { putString(PREFS_PROFILES, encoded) }
     }
 
     private fun getAllProfiles(): Map<String, Set<String>> {
@@ -257,30 +257,25 @@ class ProvidersFragment(
     }
 
     private fun loadProfile(name: String) {
-        val profiles = getAllProfiles()
-        val disabled = profiles[name] ?: return
+        val disabled = getAllProfiles()[name] ?: return
         sharedPref.edit { putStringSet(PREFS_DISABLED, disabled) }
-        
         adapter = ProviderAdapter(providers, disabled) { updated ->
             sharedPref.edit { putStringSet(PREFS_DISABLED, updated) }
             updateUI()
         }
         updateUI()
-        Toast.makeText(context, "Profil dimuat", Toast.LENGTH_SHORT).show()
     }
 
     private fun deleteProfile(name: String) {
         val allProfiles = getAllProfiles().toMutableMap()
         if (allProfiles.remove(name) != null) {
-            saveProfilesToPrefs(allProfiles)
-            Toast.makeText(context, "Profil dihapus", Toast.LENGTH_SHORT).show()
+            val encoded = allProfiles.entries.joinToString("|") { "${it.key}:${it.value.joinToString(",")}" }
+            sharedPref.edit { putString(PREFS_PROFILES, encoded) }
+            showMessage("Deleted.")
         }
     }
 
-    private fun saveProfilesToPrefs(profiles: Map<String, Set<String>>) {
-        val encoded = profiles.entries.joinToString("|") { (key, value) ->
-            "$key:${value.joinToString(",")}"
-        }
-        sharedPref.edit { putString(PREFS_PROFILES, encoded) }
+    private fun showMessage(msg: String) {
+        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
     }
 }
