@@ -14,6 +14,8 @@ import androidx.core.widget.addTextChangedListener
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+// IMPORT PENTING:
+import com.AdiManuLateri3.BuildConfig
 
 class LanguageSelectFragment(
     plugin: Lateri3PlayPlugin,
@@ -22,9 +24,8 @@ class LanguageSelectFragment(
 
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
-    // Daftar Bahasa (Negara -> Kode ISO TMDb)
     private val languages = listOf(
-        "Indonesia (Indonesian)" to "id-ID", // Prioritas
+        "Indonesia (Indonesian)" to "id-ID",
         "United States (English)" to "en-US",
         "United Kingdom (English)" to "en-GB",
         "Japan (Japanese)" to "ja-JP",
@@ -48,7 +49,6 @@ class LanguageSelectFragment(
 
     private lateinit var adapter: LanguageAdapter
 
-    // Helper: TV Focus Border
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
@@ -75,24 +75,21 @@ class LanguageSelectFragment(
         val recycler: RecyclerView = root.findView("languageRecycler")
         val search: EditText = root.findView("searchLanguage")
         
-        // Style TV
         recycler.makeTvCompatible()
         search.makeTvCompatible()
 
         recycler.layoutManager = LinearLayoutManager(requireContext())
 
-        // Load saved language or default to English
         val savedCode = sharedPref.getString("tmdb_language_code", "en-US") ?: "en-US"
 
         adapter = LanguageAdapter(languages, savedCode) { code ->
             sharedPref.edit { putString("tmdb_language_code", code) }
-            Toast.makeText(requireContext(), "Bahasa diubah ke $code. Refresh halaman utama.", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), "Bahasa diubah ke $code.", Toast.LENGTH_SHORT).show()
             dismiss()
         }
 
         recycler.adapter = adapter
 
-        // Logic Search
         search.addTextChangedListener { text ->
             adapter.filter(text.toString())
         }
@@ -100,7 +97,6 @@ class LanguageSelectFragment(
         return root
     }
 
-    // --- Inner Adapter Class ---
     inner class LanguageAdapter(
         private val originalList: List<Pair<String, String>>,
         private val selectedCode: String,
@@ -110,8 +106,6 @@ class LanguageSelectFragment(
         private var filteredList = originalList.toMutableList()
 
         inner class VH(val v: View) : RecyclerView.ViewHolder(v) {
-            // Menggunakan helper findView dari outer class tidak bisa langsung di inner class ViewHolder
-            // Kita pakai findViewById manual dengan ID dinamis
             val radio: RadioButton = v.findViewById(
                 res.getIdentifier("radio_language", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
             )
@@ -128,13 +122,8 @@ class LanguageSelectFragment(
             holder.radio.text = name
             holder.radio.isChecked = code == selectedCode
 
-            // Klik item (bukan hanya radio button) untuk memilih
-            holder.itemView.setOnClickListener {
-                onClick(code)
-            }
-            holder.radio.setOnClickListener {
-                onClick(code)
-            }
+            holder.itemView.setOnClickListener { onClick(code) }
+            holder.radio.setOnClickListener { onClick(code) }
         }
 
         override fun getItemCount() = filteredList.size
