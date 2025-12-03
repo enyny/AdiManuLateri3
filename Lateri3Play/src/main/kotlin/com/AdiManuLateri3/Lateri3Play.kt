@@ -21,10 +21,7 @@ import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
-// IMPORT PENTING YANG HILANG:
-import com.lagradost.cloudstream3.addEpisodes 
-import com.AdiManuLateri3.BuildConfig 
-
+import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -65,11 +62,13 @@ open class Lateri3Play(val sharedPref: SharedPreferences? = null) : TmdbProvider
 
     companion object {
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
-        private const val apiKey = BuildConfig.TMDB_API 
+        // Menggunakan API Key langsung untuk menghindari error BuildConfig
+        private const val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
         
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
         private var currentBaseUrl: String? = null
 
+        // Konfigurasi URL Provider
         const val UHDMoviesAPI = "https://uhdmovies.fyi"
         const val MultiMoviesAPI = "https://multimovies.sbs" 
         const val NineTvAPI = "https://moviesapi.club"
