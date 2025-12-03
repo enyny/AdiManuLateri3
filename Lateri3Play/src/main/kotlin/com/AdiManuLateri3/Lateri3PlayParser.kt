@@ -3,6 +3,135 @@ package com.AdiManuLateri3
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.gson.annotations.SerializedName
 
+// ==================== TMDB & MAIN STRUCTURES ====================
+
+data class LinkData(
+    val id: Int? = null,
+    val imdbId: String? = null,
+    val type: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val title: String? = null,
+    val year: Int? = null,
+    val orgTitle: String? = null,
+    val epsTitle: String? = null,
+    val date: String? = null,
+)
+
+data class Data(
+    val id: Int? = null,
+    val type: String? = null,
+)
+
+data class Results(
+    @JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
+)
+
+data class Media(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("original_title") val originalTitle: String? = null,
+    @JsonProperty("original_name") val originalName: String? = null,
+    @JsonProperty("media_type") val mediaType: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
+)
+
+data class MediaDetail(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("original_title") val originalTitle: String? = null,
+    @JsonProperty("original_name") val originalName: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("backdrop_path") val backdropPath: String? = null,
+    @JsonProperty("release_date") val releaseDate: String? = null,
+    @JsonProperty("first_air_date") val firstAirDate: String? = null,
+    @JsonProperty("overview") val overview: String? = null,
+    @JsonProperty("runtime") val runtime: Int? = null,
+    @JsonProperty("vote_average") val vote_average: Any? = null,
+    @JsonProperty("status") val status: String? = null,
+    @JsonProperty("genres") val genres: ArrayList<Genres>? = arrayListOf(),
+    @JsonProperty("keywords") val keywords: KeywordResults? = null,
+    @JsonProperty("last_episode_to_air") val last_episode_to_air: LastEpisodeToAir? = null,
+    @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+    @JsonProperty("videos") val videos: ResultsTrailer? = null,
+    @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
+    @JsonProperty("credits") val credits: Credits? = null,
+    @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
+)
+
+data class Genres(
+    @JsonProperty("name") val name: String? = null,
+)
+
+data class KeywordResults(
+    @JsonProperty("results") val results: ArrayList<Keywords>? = arrayListOf(),
+    @JsonProperty("keywords") val keywords: ArrayList<Keywords>? = arrayListOf(),
+)
+
+data class Keywords(
+    @JsonProperty("name") val name: String? = null,
+)
+
+data class Seasons(
+    @JsonProperty("season_number") val seasonNumber: Int? = null,
+    @JsonProperty("air_date") val airDate: String? = null,
+)
+
+data class MediaDetailEpisodes(
+    @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
+)
+
+data class Episodes(
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("overview") val overview: String? = null,
+    @JsonProperty("air_date") val airDate: String? = null,
+    @JsonProperty("still_path") val stillPath: String? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
+    @JsonProperty("episode_number") val episodeNumber: Int? = null,
+    @JsonProperty("season_number") val seasonNumber: Int? = null,
+)
+
+data class Credits(
+    @JsonProperty("cast") val cast: ArrayList<Cast>? = arrayListOf(),
+)
+
+data class Cast(
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("original_name") val originalName: String? = null,
+    @JsonProperty("character") val character: String? = null,
+    @JsonProperty("profile_path") val profilePath: String? = null,
+)
+
+data class ResultsTrailer(
+    @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
+)
+
+data class Trailers(
+    @JsonProperty("key") val key: String? = null,
+    @JsonProperty("type") val type: String? = null,
+)
+
+data class ResultsRecommendations(
+    @JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
+)
+
+data class ExternalIds(
+    @JsonProperty("imdb_id") val imdb_id: String? = null,
+)
+
+data class LastEpisodeToAir(
+    @JsonProperty("season_number") val season_number: Int? = null,
+)
+
+data class TmdbDate(
+    val today: String,
+    val nextWeek: String,
+    val lastWeekStart: String
+)
+
 // ==================== CONFIGURATION & DOMAINS ====================
 
 data class DomainsParser(
@@ -34,10 +163,6 @@ data class ResponseHash(
     @JsonProperty("embed_url") val embed_url: String,
     @JsonProperty("key") val key: String? = null,
     @JsonProperty("type") val type: String? = null,
-)
-
-data class UHDBackupUrl(
-    @JsonProperty("url") val url: String? = null,
 )
 
 // ==================== SUBTITLES ====================
@@ -96,134 +221,4 @@ data class RidoResponses(
 
 data class RidoDataUrl(
     @JsonProperty("url") var url: String? = null,
-)
-
-// --- KissKH ---
-data class KisskhResults(
-    @JsonProperty("id") val id: Int?,
-    @JsonProperty("title") val title: String?,
-)
-
-data class KisskhDetail(
-    @JsonProperty("episodes") val episodes: ArrayList<KisskhEpisodes>? = arrayListOf(),
-)
-
-data class KisskhEpisodes(
-    @JsonProperty("id") val id: Int?,
-    @JsonProperty("number") val number: Int?,
-)
-
-data class KisskhSources(
-    @JsonProperty("Video") val video: String?,
-    @JsonProperty("ThirdParty") val thirdParty: String?,
-)
-
-data class KisskhSubtitle(
-    @JsonProperty("src") val src: String?,
-    @JsonProperty("label") val label: String?,
-)
-
-data class KisskhKey(
-    val id: String,
-    val version: String,
-    val key: String,
-)
-
-// --- OXXFile / Drive ---
-data class oxxfile(
-    val id: String,
-    val code: String,
-    val fileName: String,
-    val size: Long,
-    val driveLinks: List<DriveLink>,
-    val metadata: Metadata,
-    val createdAt: String,
-    val views: Long,
-    val status: String,
-    val gdtotLink: String?,
-    val gdtotName: String?,
-    val hubcloudLink: String,
-    val filepressLink: String,
-    val vikingLink: String?,
-    val pixeldrainLink: String?,
-    @SerializedName("credential_index")
-    val credentialIndex: Long,
-    val duration: String?,
-    val userName: String,
-)
-
-data class DriveLink(
-    val fileId: String,
-    val webViewLink: String,
-    val driveLabel: String,
-    val credentialIndex: Int,
-    val isLoginDrive: Boolean,
-    val isDrive2: Boolean
-)
-
-data class Metadata(
-    val mimeType: String,
-    val fileExtension: String,
-    val modifiedTime: String,
-    val createdTime: String,
-    val pixeldrainConversionFailed: Boolean,
-    val pixeldrainConversionError: String,
-    val vikingConversionFailed: Boolean,
-    val vikingConversionFailedAt: String
-)
-
-// --- VidSrc ---
-data class Vidsrcccservers(
-    val data: List<VidsrcccDaum>,
-    val success: Boolean,
-)
-
-data class VidsrcccDaum(
-    val name: String,
-    val hash: String,
-)
-
-data class Vidsrcccm3u8(
-    val data: VidsrcccData,
-    val success: Boolean,
-)
-
-data class VidsrcccData(
-    val type: String,
-    val source: String,
-)
-
-// --- SuperStream (External) ---
-data class ExternalResponse(
-    @JsonProperty("code") val code: Int? = null,
-    @JsonProperty("msg") val msg: String? = null,
-    @JsonProperty("data") val data: ExternalData? = null,
-)
-
-data class ExternalData(
-    @JsonProperty("link") val link: String? = null,
-    @JsonProperty("file_list") val fileList: List<FileList>? = null,
-)
-
-data class FileList(
-    @JsonProperty("fid") val fid: Long? = null,
-    @JsonProperty("file_name") val fileName: String? = null,
-    @JsonProperty("oss_fid") val ossFid: Long? = null,
-)
-
-data class ExternalSourcesWrapper(
-    @JsonProperty("sources") val sources: List<ExternalSources>? = null
-)
-
-data class ExternalSources(
-    @JsonProperty("source") val source: String? = null,
-    @JsonProperty("file") val file: String? = null,
-    @JsonProperty("label") val label: String? = null,
-    @JsonProperty("type") val type: String? = null,
-    @JsonProperty("size") val size: String? = null,
-)
-
-// --- General Helper ---
-data class DriveBotLink(
-    @JsonProperty("url") val url: String? = null,
 )
