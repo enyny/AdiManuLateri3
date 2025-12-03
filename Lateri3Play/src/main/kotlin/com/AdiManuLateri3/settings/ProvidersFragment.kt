@@ -32,7 +32,6 @@ class ProvidersFragment(
 ) : BottomSheetDialogFragment() {
 
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
-    // Hardcoded package name to avoid BuildConfig issues
     private val packageName = "com.AdiManuLateri3"
     
     private lateinit var btnSave: ImageButton
@@ -44,26 +43,32 @@ class ProvidersFragment(
 
     private fun <T : View> View.findView(name: String): T {
         val id = res.getIdentifier(name, "id", packageName)
-        if (id == 0) throw Exception("View ID $name not found.")
+        if (id == 0) throw Exception("View ID $name not found in package $packageName")
         return this.findViewById(id)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun getDrawable(name: String): Drawable {
         val id = res.getIdentifier(name, "drawable", packageName)
-        return res.getDrawable(id, null) ?: throw Exception("Drawable $name not found")
+        if (id == 0) throw Exception("Drawable $name not found")
+        return res.getDrawable(id, null) ?: throw Exception("Drawable cannot be loaded")
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val outlineId = res.getIdentifier("outline", "drawable", packageName)
-        this.background = res.getDrawable(outlineId, null)
+        try {
+            val outlineId = res.getIdentifier("outline", "drawable", packageName)
+            if (outlineId != 0) {
+                this.background = res.getDrawable(outlineId, null)
+            }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
         val id = res.getIdentifier(name, "layout", packageName)
-        val layout = res.getLayout(id)
-        return inflater.inflate(layout, container, false)
+        if (id == 0) throw Exception("Layout $name not found")
+        val parser = res.getLayout(id)
+        return inflater.inflate(parser, container, false)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -140,6 +145,7 @@ class ProvidersFragment(
         btnDeselectAll.setOnClickListener { adapter.setAll(false) }
         btnSave.setOnClickListener { dismissFragment() }
 
+        // --- Profile Handling ---
         val btnSaveProfile = view.findView<Button>("btn_save_profile")
         val btnLoadProfile = view.findView<Button>("btn_load_profile")
         val btnDeleteProfile = view.findView<Button>("btn_delete_profile")
