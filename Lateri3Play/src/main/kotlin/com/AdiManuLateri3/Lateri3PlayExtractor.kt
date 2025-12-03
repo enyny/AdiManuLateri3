@@ -5,10 +5,13 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.network.CloudflareKiller
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.SubtitleHelper
 import org.jsoup.Jsoup
 
 object Lateri3PlayExtractor {
@@ -16,6 +19,10 @@ object Lateri3PlayExtractor {
     private const val TAG = "Lateri3Play"
     private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
     
+    // API Subtitle
+    private const val SubtitlesAPI = "https://opensubtitles-v3.strem.io"
+    private const val WyZIESUBAPI = "https://sub.wyzie.ru"
+
     private var cachedDomains: DomainsParser? = null
 
     // Fallback domains jika GitHub gagal/diblokir
@@ -118,7 +125,6 @@ object Lateri3PlayExtractor {
                 val href = article.selectFirst("a")?.attr("href") ?: continue
                 val doc = app.get(href).documentLarge
 
-                // Validasi IMDB
                 if (imdbId != null) {
                     val imdbLink = doc.selectFirst("a[href*=\"imdb.com/title/tt\"]")?.attr("href")
                     if (imdbLink != null && !imdbLink.contains(imdbId, true)) continue
@@ -496,6 +502,54 @@ object Lateri3PlayExtractor {
             GDFlix().getUrl(redirect, "BollyFlix", sub, cb)
         } else {
             loadSourceNameExtractor("BollyFlix", url, "", sub, cb)
+        }
+    }
+
+    // ================== SUBTITLES (YANG HILANG SEBELUMNYA) ==================
+
+    suspend fun invokeSubtitleAPI(
+        id: String? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+    ) {
+        val url = if (season == null) {
+            "$SubtitlesAPI/subtitles/movie/$id.json"
+        } else {
+            "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
+        }
+        
+        try {
+            val response = app.get(url).parsedSafe<SubtitlesAPI>()
+            response?.subtitles?.forEach { sub ->
+                // Menggunakan SubtitleHelper untuk parsing bahasa
+                val lang = SubtitleHelper.fromTwoLettersToLanguage(sub.lang) ?: sub.lang
+                subtitleCallback(newSubtitleFile(lang, sub.url))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "SubtitleAPI Error: ${e.message}")
+        }
+    }
+
+    suspend fun invokeWyZIESUBAPI(
+        id: String? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        if (id.isNullOrBlank()) return
+
+        val url = StringBuilder("$WyZIESUBAPI/search?id=$id")
+        if (season != null && episode != null) url.append("&season=$season&episode=$episode")
+
+        try {
+            val response = app.get(url.toString()).text
+            val items = tryParseJson<List<WyZIESUB>>(response) ?: return
+            items.forEach {
+                subtitleCallback(newSubtitleFile(it.display, it.url))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "WyZIE Error: ${e.message}")
         }
     }
 }
