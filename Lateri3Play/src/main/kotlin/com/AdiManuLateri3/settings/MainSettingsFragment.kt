@@ -7,9 +7,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+// IMPORT PENTING:
+import com.AdiManuLateri3.BuildConfig 
 
 class MainSettingsFragment(
     private val plugin: Lateri3PlayPlugin,
@@ -55,8 +56,8 @@ class MainSettingsFragment(
         // Binding Views dari XML
         val loginCard: ImageView = view.findView("loginCard") // Akan disembunyikan
         val featureCard: ImageView = view.findView("featureCard") // Akan disembunyikan
-        val toggleproviders: ImageView = view.findView("toggleproviders") // PENTING
-        val languagechange: ImageView = view.findView("languageCard") // PENTING
+        val toggleproviders: ImageView = view.findView("toggleproviders") 
+        val languagechange: ImageView = view.findView("languageCard") 
         val saveIcon: ImageView = view.findView("saveIcon")
 
         // Set Icons
