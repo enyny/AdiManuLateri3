@@ -24,8 +24,7 @@ class Lateri3PlayPlugin : Plugin() {
         // 1. Mendaftarkan API Utama (Otak dari ekstensi)
         registerMainAPI(Lateri3Play(sharedPref))
 
-        // 2. Mendaftarkan Custom Extractors (Dari file Extractors.kt yang baru dibuat)
-        // Extractor ini menangani situs download seperti HubCloud, GDFlix, dll.
+        // 2. Mendaftarkan Custom Extractors (LAMA - Lateri3Play)
         registerExtractorAPI(HubCloud())
         registerExtractorAPI(GDFlix())
         registerExtractorAPI(PixelDrain())
@@ -33,13 +32,20 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(Modflix())
         registerExtractorAPI(Streamruby())
         registerExtractorAPI(Ridoo())
-        
-        // Register Alias/Kompatibilitas
+
+        // 3. Mendaftarkan Custom Extractors (BARU - Adicinemax21)
+        registerExtractorAPI(Jeniusplay2()) // Untuk Idlix
+        registerExtractorAPI(MegaUp())      // Untuk Yflix
+        registerExtractorAPI(Fourspromax()) // Clone MegaUp
+        registerExtractorAPI(Rapidairmax()) // Clone MegaUp
+        registerExtractorAPI(Rapidshare())  // Clone MegaUp
+
+        // 4. Register Aliases
         registerExtractorAPI(Driveleech())
         registerExtractorAPI(Driveseed())
         registerExtractorAPI(Filelions())
 
-        // 3. Mendaftarkan Standard Extractors (Untuk link video langsung)
+        // 5. Mendaftarkan Standard Extractors
         registerExtractorAPI(StreamWishExtractor())
         registerExtractorAPI(DoodYtExtractor())
         registerExtractorAPI(MixDrop())
@@ -49,11 +55,11 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(FileMoon())
         registerExtractorAPI(VidHidePro6())
 
-        // Konfigurasi Settings (Diaktifkan)
+        // 6. Konfigurasi Settings (Aktif)
         openSettings = { ctx ->
             try {
                 val act = ctx as AppCompatActivity
-                // Asumsi MainSettingsFragment ada di package settings seperti di kode lama
+                // Membuka fragment pengaturan (Pastikan file MainSettingsFragment ada di package settings)
                 val frag = com.AdiManuLateri3.settings.MainSettingsFragment(this, sharedPref)
                 frag.show(act.supportFragmentManager, "Settings")
             } catch (e: Exception) {
