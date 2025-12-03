@@ -1,22 +1,29 @@
 package com.AdiManuLateri3
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URI
 import java.net.URL
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
-// ================== MULTI-HOST EXTRACTORS ==================
+// ================== LATERI3PLAY EXTRACTORS (MULTI-HOST) ==================
 
 open class HubCloud : ExtractorApi() {
     override val name = "Hub-Cloud"
@@ -35,7 +42,6 @@ open class HubCloud : ExtractorApi() {
 
         val baseUrl = getBaseUrl(realUrl)
         
-        // Coba perbaiki URL jika perlu
         val href = try {
             if ("hubcloud.php" in realUrl) {
                 realUrl
@@ -53,7 +59,7 @@ open class HubCloud : ExtractorApi() {
         val document = app.get(href).documentLarge
         val size = document.selectFirst("i#size")?.text().orEmpty()
         val header = document.selectFirst("div.card-header")?.text().orEmpty()
-        val quality = getQuality(header) // Menggunakan fungsi dari Utils
+        val quality = getQuality(header)
 
         val labelExtras = " $size"
 
@@ -87,7 +93,6 @@ open class HubCloud : ExtractorApi() {
                      Gofile().getUrl(link, referer, subtitleCallback, callback)
                 }
                 else -> {
-                    // Coba load sebagai extractor standar
                     loadExtractor(link, referer, subtitleCallback, callback)
                 }
             }
@@ -148,7 +153,6 @@ open class GDFlix : ExtractorApi() {
                 }
                 text.contains("Gofile", true) -> {
                     try {
-                        // Terkadang link Gofile ada di dalam halaman lain
                         val doc = app.get(link).documentLarge
                         doc.select("a").forEach { 
                             if(it.attr("href").contains("gofile.io")) {
@@ -162,7 +166,7 @@ open class GDFlix : ExtractorApi() {
     }
 }
 
-// ================== SINGLE HOST EXTRACTORS ==================
+// ================== STANDARD EXTRACTORS ==================
 
 class PixelDrain : ExtractorApi() {
     override val name = "PixelDrain"
@@ -200,16 +204,10 @@ class Gofile : ExtractorApi() {
     ) {
         try {
             val id = Regex("/(?:\\?c=|d/)([\\da-zA-Z-]+)").find(url)?.groupValues?.get(1) ?: return
-            
-            // Get Token
             val tokenJson = app.post("$mainApi/accounts").text
             val token = JSONObject(tokenJson).getJSONObject("data").getString("token")
-
-            // Get WT Token (Web Token) from JS
             val js = app.get("$mainUrl/dist/js/global.js").text
             val wt = Regex("""appdata\.wt\s*=\s*["']([^"']+)["']""").find(js)?.groupValues?.getOrNull(1) ?: return
-
-            // Get Content
             val contentJson = app.get(
                 "$mainApi/contents/$id?wt=$wt",
                 headers = mapOf("Authorization" to "Bearer $token")
@@ -223,11 +221,7 @@ class Gofile : ExtractorApi() {
             val quality = getQuality(fileObj.optString("name", ""))
 
             callback.invoke(
-                newExtractorLink(
-                    name,
-                    name,
-                    link
-                ) {
+                newExtractorLink(name, name, link) {
                     this.quality = quality
                     this.headers = mapOf("Cookie" to "accountToken=$token")
                 }
@@ -238,7 +232,6 @@ class Gofile : ExtractorApi() {
     }
 }
 
-// Untuk RidoMovies
 open class Ridoo : ExtractorApi() {
     override val name = "Ridoo"
     override var mainUrl = "https://ridoo.net"
@@ -256,12 +249,7 @@ open class Ridoo : ExtractorApi() {
         
         if (m3u8 != null) {
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    url = m3u8,
-                    ExtractorLinkType.M3U8
-                ) {
+                newExtractorLink(this.name, this.name, url = m3u8, ExtractorLinkType.M3U8) {
                     this.referer = mainUrl
                     this.quality = Qualities.P1080.value
                 }
@@ -270,7 +258,6 @@ open class Ridoo : ExtractorApi() {
     }
 }
 
-// Untuk MoviesMod
 open class Modflix : ExtractorApi() {
     override val name = "Modflix"
     override val mainUrl = "https://video-seed.xyz"
@@ -292,18 +279,11 @@ open class Modflix : ExtractorApi() {
         
         val link = JSONObject(json).optString("url").replace("\\/", "/")
         if(link.startsWith("http")) {
-             callback.invoke(
-                newExtractorLink(
-                    name,
-                    name,
-                    link
-                ) { this.quality = Qualities.P720.value }
-            )
+             callback.invoke(newExtractorLink(name, name, link) { this.quality = Qualities.P720.value })
         }
     }
 }
 
-// Extractor tambahan
 class Streamruby : ExtractorApi() {
     override val name = "Streamruby"
     override val mainUrl = "https://streamruby.com"
@@ -318,14 +298,148 @@ class Streamruby : ExtractorApi() {
         val response = app.get(url, referer = referer)
         val script = response.documentLarge.selectFirst("script:containsData(sources:)")?.data()
         val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script ?: "")?.groupValues?.getOrNull(1)
-        
-        if (m3u8 != null) {
-            M3u8Helper.generateM3u8(name, m3u8, mainUrl).forEach(callback)
-        }
+        if (m3u8 != null) M3u8Helper.generateM3u8(name, m3u8, mainUrl).forEach(callback)
     }
 }
 
-// Alias class untuk kompatibilitas
+// Aliases
 class Driveleech : ExtractorApi() { override val name = "Driveleech"; override val mainUrl = "https://driveleech.org"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
 class Driveseed : ExtractorApi() { override val name = "Driveseed"; override val mainUrl = "https://driveseed.org"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
 class Filelions : ExtractorApi() { override val name = "Filelions"; override val mainUrl = "https://filelions.to"; override val requiresReferer = false; override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {} }
+
+// ================== ADICINEMAX21 NEW EXTRACTORS ==================
+
+open class Jeniusplay2 : ExtractorApi() {
+    override val name = "Jeniusplay"
+    override val mainUrl = "https://jeniusplay.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val document = app.get(url, referer = "$mainUrl/").document
+        val hash = url.split("/").last().substringAfter("data=")
+
+        val m3uLink = app.post(
+            url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
+            data = mapOf("hash" to hash, "r" to "$referer"),
+            referer = url,
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).parsed<ResponseSource>().videoSource
+
+        callback.invoke(
+            newExtractorLink(this.name, this.name, m3uLink, ExtractorLinkType.M3U8) {
+                this.referer = url
+            }
+        )
+
+        document.select("script").map { script ->
+            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
+                val subData = getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
+                tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
+                    subtitleCallback.invoke(newSubtitleFile(getLanguage(subtitle.label ?: ""), subtitle.file))
+                }
+            }
+        }
+    }
+
+    private fun getLanguage(str: String): String {
+        return when {
+            str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
+            else -> str
+        }
+    }
+
+    data class ResponseSource(
+        @JsonProperty("hls") val hls: Boolean,
+        @JsonProperty("videoSource") val videoSource: String,
+        @JsonProperty("securedLink") val securedLink: String?,
+    )
+
+    data class Tracks(
+        @JsonProperty("kind") val kind: String?,
+        @JsonProperty("file") val file: String,
+        @JsonProperty("label") val label: String?,
+    )
+}
+
+// --- YFLIX EXTRACTORS (MegaUp & Clones) ---
+
+class Fourspromax : MegaUp() { override var mainUrl = "https://4spromax.site"; override val requiresReferer = true }
+class Rapidairmax : MegaUp() { override var mainUrl = "https://rapidairmax.site"; override val requiresReferer = true }
+class Rapidshare : MegaUp() { override var mainUrl = "https://rapidshare.cc"; override val requiresReferer = true }
+
+open class MegaUp : ExtractorApi() {
+    override var name = "MegaUp"
+    override var mainUrl = "https://megaup.live"
+    override val requiresReferer = true
+    private val SECRET_API_URL = "https://enc-dec.app/api/dec-mega"
+
+    companion object {
+        private val HEADERS = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+            "Accept" to "text/html, *//*; q=0.01",
+            "Accept-Language" to "en-US,en;q=0.5",
+            "Sec-GPC" to "1",
+            "Sec-Fetch-Dest" to "empty",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Site" to "same-origin",
+            "Priority" to "u=0",
+            "Pragma" to "no-cache",
+            "Cache-Control" to "no-cache",
+            "referer" to "https://yflix.to/",
+        )
+    }
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val mediaUrl = url.replace("/e/", "/media/").replace("/e2/", "/media/")
+        val displayName = referer ?: this.name
+        val encodedResult = app.get(mediaUrl, headers = HEADERS).parsedSafe<YflixResponse>()?.result ?: return
+        
+        val body = """{"text": "$encodedResult", "agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0"}"""
+            .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+
+        val m3u8Data = app.post(SECRET_API_URL, requestBody = body).text
+        if (m3u8Data.isBlank()) return
+
+        try {
+            val root = JSONObject(m3u8Data)
+            val result = root.optJSONObject("result") ?: return
+            val sources = result.optJSONArray("sources") ?: JSONArray()
+            
+            if (sources.length() > 0) {
+                val firstSourceObj = sources.optJSONObject(0)
+                val m3u8File = firstSourceObj?.optString("file")?.takeIf { it.isNotBlank() } ?: sources.optString(0).takeIf { it.isNotBlank() }
+                if (m3u8File != null) M3u8Helper.generateM3u8(displayName, m3u8File, mainUrl).forEach(callback)
+            }
+
+            val tracks = result.optJSONArray("tracks") ?: JSONArray()
+            for (i in 0 until tracks.length()) {
+                val trackObj = tracks.optJSONObject(i) ?: continue
+                val label = trackObj.optString("label").trim()
+                val file = trackObj.optString("file")
+                if (label.isNotEmpty() && file.isNotBlank()) subtitleCallback(newSubtitleFile(label, file))
+            }
+            
+            // Subtitle Fallback via URL parameter
+            if (url.contains("sub.list=")) {
+                val subtitleUrl = URLDecoder.decode(url.substringAfter("sub.list="), StandardCharsets.UTF_8.name())
+                tryParseJson<List<Map<String, Any>>>(app.get(subtitleUrl).text)?.forEach { sub ->
+                    val file = sub["file"]?.toString()
+                    val label = sub["label"]?.toString()
+                    if (!file.isNullOrBlank() && !label.isNullOrBlank()) subtitleCallback(newSubtitleFile(label, file))
+                }
+            }
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    data class YflixResponse(@JsonProperty("status") val status: Int, @JsonProperty("result") val result: String)
+}
