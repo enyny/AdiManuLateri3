@@ -3,11 +3,12 @@ package com.AdiManuLateri3
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.gson.annotations.SerializedName
 
-// ==================== TMDB & MAIN STRUCTURES (BAWAAN LATERI3PLAY) ====================
+// ==================== TMDB & MAIN STRUCTURES ====================
 
 data class LinkData(
     val id: Int? = null,
     val imdbId: String? = null,
+    val tvdbId: Int? = null,
     val type: String? = null,
     val season: Int? = null,
     val episode: Int? = null,
@@ -16,6 +17,9 @@ data class LinkData(
     val orgTitle: String? = null,
     val epsTitle: String? = null,
     val date: String? = null,
+    val isAnime: Boolean = false,
+    val isAsian: Boolean = false,
+    val isBollywood: Boolean = false,
 )
 
 data class Data(
@@ -120,6 +124,7 @@ data class ResultsRecommendations(
 
 data class ExternalIds(
     @JsonProperty("imdb_id") val imdb_id: String? = null,
+    @JsonProperty("tvdb_id") val tvdb_id: Int? = null,
 )
 
 data class LastEpisodeToAir(
@@ -132,7 +137,7 @@ data class TmdbDate(
     val lastWeekStart: String
 )
 
-// ==================== DOMAINS & EXTRACTOR PARSERS ====================
+// ==================== DOMAINS & EXTRACTOR PARSERS (LATERI3PLAY) ====================
 
 data class DomainsParser(
     val moviesdrive: String,
@@ -237,11 +242,7 @@ data class VidFastServers(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("description") val description: String? = null,
     @JsonProperty("data") val data: String? = null,
-) {
-    data class Stream(
-        @JsonProperty("playlist") val playlist: String? = null,
-    )
-}
+)
 
 // --- Vidlink ---
 data class VidlinkSources(
@@ -318,3 +319,22 @@ data class AdiDewasaItem(
     @JsonProperty("image") val image: String? = null,
     @JsonProperty("year") val year: String? = null 
 )
+
+// --- Adimoviebox ---
+data class AdimovieboxSearch(val data: AdimovieboxData?)
+data class AdimovieboxData(val items: List<AdimovieboxItem>?)
+data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
+data class AdimovieboxStreams(val data: AdimovieboxStreamData?)
+data class AdimovieboxStreamData(val streams: List<AdimovieboxStreamItem>?)
+data class AdimovieboxStreamItem(val id: String?, val format: String?, val url: String?, val resolutions: String?)
+data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
+data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
+data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
+
+// --- Kisskh ---
+data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
+data class KisskhDetail(@JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>?)
+data class KisskhEpisode(@JsonProperty("id") val id: Int?, @JsonProperty("number") val number: Double?)
+data class KisskhKey(@JsonProperty("key") val key: String?)
+data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
+data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
