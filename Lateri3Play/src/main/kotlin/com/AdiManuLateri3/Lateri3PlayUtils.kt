@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -15,6 +14,7 @@ import com.lagradost.api.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import java.net.URI
@@ -27,7 +27,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.min
 
-// ================= UTILITIES UTAMA =================
+// ================= UTILITIES UMUM =================
 
 fun getBaseUrl(url: String): String {
     return try {
@@ -56,14 +56,30 @@ fun getQuality(str: String): Int {
     }
 }
 
-fun String.createSlug(): String? {
-    return this.filter { it.isWhitespace() || it.isLetterOrDigit() }
-        .trim()
-        .replace("\\s+".toRegex(), "-")
-        .lowercase()
+fun String?.createSlug(): String? {
+    return this?.filter { it.isWhitespace() || it.isLetterOrDigit() }
+        ?.trim()
+        ?.replace("\\s+".toRegex(), "-")
+        ?.lowercase()
 }
 
-// Helper untuk memuat Extractor dengan nama custom
+// Fungsi Retry untuk koneksi yang tidak stabil
+suspend fun <T> retryIO(
+    times: Int = 3,
+    delayTime: Long = 1000,
+    block: suspend () -> T
+): T {
+    repeat(times - 1) {
+        try {
+            return block()
+        } catch (e: Exception) {
+            delay(delayTime)
+        }
+    }
+    return block() // percobaan terakhir, biarkan error jika gagal
+}
+
+// Helper untuk memuat Extractor dengan nama custom (Diadaptasi dari StreamPlay)
 suspend fun loadSourceNameExtractor(
     source: String,
     url: String,
@@ -93,9 +109,37 @@ suspend fun loadSourceNameExtractor(
     }
 }
 
+// Helper untuk Custom Extractor langsung
+suspend fun loadCustomExtractor(
+    name: String? = null,
+    url: String,
+    referer: String? = null,
+    subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit,
+    quality: Int? = null,
+) {
+    loadExtractor(url, referer, subtitleCallback) { link ->
+        CoroutineScope(Dispatchers.IO).launch {
+            callback.invoke(
+                newExtractorLink(
+                    name ?: link.source,
+                    name ?: link.name,
+                    link.url,
+                ) {
+                    this.quality = quality ?: link.quality
+                    this.type = link.type
+                    this.referer = link.referer
+                    this.headers = link.headers
+                    this.extractorData = link.extractorData
+                }
+            )
+        }
+    }
+}
+
 // ================= BYPASS & SCRAPERS KHUSUS =================
 
-// Bypass Href.li / UnblockedGames (Sering dipakai UHDMovies/VegaMovies)
+// Bypass Href.li / UnblockedGames (Versi StreamPlay yang lebih robust)
 suspend fun bypassHrefli(url: String): String? {
     fun Document.getFormUrl(): String = this.select("form#landing").attr("action")
     fun Document.getFormData(): Map<String, String> =
@@ -128,7 +172,7 @@ suspend fun bypassHrefli(url: String): String? {
     return fixUrl(path, getBaseUrl(driveUrl))
 }
 
-// HDHub4u Redirect Resolver
+// HDHub4u Redirect Resolver (Versi StreamPlay)
 suspend fun hdhubgetRedirectLinks(url: String): String {
     val doc = app.get(url).text
     val regex = "s\\('o','([A-Za-z0-9+/=]+)'|ck\\('_wp_http_\\d+','([^']+)'".toRegex()
@@ -183,14 +227,46 @@ suspend fun extractMdrive(url: String): List<String> {
     }
 }
 
-// ================= CRYPTO UTILS (AES) =================
+// Helper WP Key Generator (Untuk Multimovies/ZShow)
+fun generateWpKey(r: String, m: String): String {
+    val rList = r.split("\\x").toTypedArray()
+    var n = ""
+    val decodedM = String(base64Decode(m.split("").reversed().joinToString("")).toCharArray())
+    for (s in decodedM.split("|")) {
+        n += "\\x" + rList[Integer.parseInt(s) + 1]
+    }
+    return n
+}
 
+// ================= CRYPTO ENGINES (AES & Standard) =================
+
+// CryptoJS Compatible AES (Versi StreamPlay - Lengkap)
 object CryptoJS {
     private const val KEY_SIZE = 256
     private const val IV_SIZE = 128
     private const val HASH_CIPHER = "AES/CBC/PKCS7Padding"
     private const val AES = "AES"
     private const val KDF_DIGEST = "MD5"
+    private const val APPEND = "Salted__"
+
+    fun encrypt(password: String, plainText: String): String {
+        val saltBytes = generateSalt(8)
+        val key = ByteArray(KEY_SIZE / 8)
+        val iv = ByteArray(IV_SIZE / 8)
+        EvpKDF(password.toByteArray(), KEY_SIZE, IV_SIZE, saltBytes, key, iv)
+        val keyS = SecretKeySpec(key, AES)
+        val cipher = Cipher.getInstance(HASH_CIPHER)
+        val ivSpec = IvParameterSpec(iv)
+        cipher.init(Cipher.ENCRYPT_MODE, keyS, ivSpec)
+        val cipherText = cipher.doFinal(plainText.toByteArray())
+        
+        val sBytes = APPEND.toByteArray()
+        val b = ByteArray(sBytes.size + saltBytes.size + cipherText.size)
+        System.arraycopy(sBytes, 0, b, 0, sBytes.size)
+        System.arraycopy(saltBytes, 0, b, sBytes.size, saltBytes.size)
+        System.arraycopy(cipherText, 0, b, sBytes.size + saltBytes.size, cipherText.size)
+        return base64Encode(b)
+    }
 
     fun decrypt(password: String, cipherText: String): String {
         val ctBytes = base64DecodeArray(cipherText)
@@ -226,5 +302,40 @@ object CryptoJS {
         System.arraycopy(derivedBytes, 0, resultKey, 0, keySize / 8)
         System.arraycopy(derivedBytes, keySize / 8, resultIv, 0, ivSize / 8)
         return derivedBytes
+    }
+
+    private fun generateSalt(length: Int): ByteArray {
+        return ByteArray(length).apply {
+            SecureRandom().nextBytes(this)
+        }
+    }
+}
+
+// Helper Hex String
+fun String.decodeHex(): ByteArray {
+    check(length % 2 == 0) { "Must have an even length" }
+    return chunked(2)
+        .map { it.toInt(16).toByte() }
+        .toByteArray()
+}
+
+// Standard AES Utils (Versi StreamPlay)
+object CryptoAES {
+    private const val KEY_SIZE = 32
+    private const val IV_SIZE = 16
+    private const val SALT_SIZE = 8
+    private const val HASH_CIPHER = "AES/CBC/PKCS7PADDING"
+    private const val AES = "AES"
+
+    fun decrypt(cipherText: String, keyBytes: ByteArray, ivBytes: ByteArray): String {
+        return try {
+            val cipherTextBytes = base64DecodeArray(cipherText)
+            val cipher = Cipher.getInstance(HASH_CIPHER)
+            val keyS = SecretKeySpec(keyBytes, AES)
+            cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(ivBytes))
+            cipher.doFinal(cipherTextBytes).toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
     }
 }
