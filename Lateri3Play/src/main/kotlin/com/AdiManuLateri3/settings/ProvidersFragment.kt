@@ -19,8 +19,6 @@ import androidx.core.content.edit
 import androidx.core.view.isNotEmpty
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-// IMPORT PENTING:
-import com.AdiManuLateri3.BuildConfig
 
 private const val PREFS_PROFILES = "provider_profiles"
 private const val PREFS_DISABLED = "disabled_providers"
@@ -40,31 +38,42 @@ class ProvidersFragment(
     private var providers: List<Provider> = emptyList()
 
     private fun <T : View> View.findView(name: String): T {
-        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
-        if (id == 0) throw Exception("View ID $name not found.")
-        return this.findViewById(id)
+        // Hapus BuildConfig, gunakan package name dari context plugin
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier(name, "id", packageName)
+        // Fallback jika tidak ketemu di package utama (untuk kasus library)
+        val finalId = if (id == 0) res.getIdentifier(name, "id", "com.AdiManuLateri3") else id
+        if (finalId == 0) throw Exception("View ID $name not found.")
+        return this.findViewById(finalId)
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun getDrawable(name: String): Drawable? {
-        val id = res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
-        return if (id != 0) res.getDrawable(id, null) else null
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier(name, "drawable", packageName)
+        val finalId = if (id == 0) res.getIdentifier(name, "drawable", "com.AdiManuLateri3") else id
+        return if (finalId != 0) res.getDrawable(finalId, null) else null
     }
 
     @SuppressLint("UseCompatLoadingForDrawables")
     private fun View.makeTvCompatible() {
-        val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
-        if (outlineId != 0) {
-            this.background = res.getDrawable(outlineId, null)
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier("outline", "drawable", packageName)
+        val finalId = if (id == 0) res.getIdentifier("outline", "drawable", "com.AdiManuLateri3") else id
+        if (finalId != 0) {
+            this.background = res.getDrawable(finalId, null)
         }
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
-        val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
-        val layout = res.getLayout(id)
-        return inflater.inflate(layout, container, false)
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val id = res.getIdentifier(name, "layout", packageName)
+        val finalId = if (id == 0) res.getIdentifier(name, "layout", "com.AdiManuLateri3") else id
+        return inflater.inflate(finalId, container, false)
     }
 
+    // ... (Sisa kode logic onViewCreated sama, tidak ada perubahan logic)
+    
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return getLayout("fragment_providers", inflater, container)
     }
@@ -103,7 +112,11 @@ class ProvidersFragment(
             updateUI()
         }
 
-        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        // Hapus BuildConfig di sini juga
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val chkId = res.getIdentifier("chk_provider", "id", packageName).let {
+             if (it == 0) res.getIdentifier("chk_provider", "id", "com.AdiManuLateri3") else it
+        }
 
         providers.forEach { provider ->
             val item = getLayout("item_provider_checkbox", layoutInflater, container)
@@ -204,7 +217,11 @@ class ProvidersFragment(
     }
 
     private fun updateUI() {
-        val chkId = res.getIdentifier("chk_provider", "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        // Hapus BuildConfig
+        val packageName = plugin.context?.packageName ?: "com.AdiManuLateri3"
+        val chkId = res.getIdentifier("chk_provider", "id", packageName).let {
+             if (it == 0) res.getIdentifier("chk_provider", "id", "com.AdiManuLateri3") else it
+        }
         for (i in 0 until container.childCount) {
             val chk = container.getChildAt(i).findViewById<CheckBox>(chkId)
             chk.isChecked = !adapter.isDisabled(providers[i].id)
