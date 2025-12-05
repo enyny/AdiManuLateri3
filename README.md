@@ -3,9 +3,9 @@
 # 🎬 AdiManuLateri3 Cloudstream Extensions
 ### Nonton Film & Anime Sub Indo Gratis, Lancar, Tanpa Iklan!
 
-![GitHub stars](https://img.shields.io/github/stars/michat88/MichatAja?style=social)
-![GitHub forks](https://img.shields.io/github/forks/michat88/MichatAja?style=social)
-![Last Commit](https://img.shields.io/github/last-commit/michat88/MichatAja?style=flat&color=blue)
+![GitHub stars](https://img.shields.io/github/stars/michat88/AdiManuLateri3?style=social)
+![GitHub forks](https://img.shields.io/github/forks/michat88/AdiManuLateri3?style=social)
+![Last Commit](https://img.shields.io/github/last-commit/michat88/AdiManuLateri3?style=flat&color=blue)
 
 ---
 
