@@ -19,7 +19,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 // ==============================
-// EXISTING EXTRACTOR (JENIUSPLAY)
+// UPDATED EXTRACTOR (JENIUSPLAY)
 // ==============================
 
 open class Jeniusplay2 : ExtractorApi() {
@@ -33,38 +33,81 @@ open class Jeniusplay2 : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val document = app.get(url, referer = "$mainUrl/").document
-        val hash = url.split("/").last().substringAfter("data=")
+        // Ambil source page
+        val res = app.get(url, referer = referer)
+        val document = res.document
+        
+        // Ambil hash dari parameter URL
+        val hash = url.substringAfter("data=").substringBefore("&")
 
-        val m3uLink = app.post(
-            url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = url,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource
+        var videoUrl: String? = null
 
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                this.name,
-                m3uLink,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = url
+        // METODE 1: Coba API Lama (POST)
+        // Kadang masih bekerja untuk beberapa server lama
+        try {
+            val json = app.post(
+                url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
+                data = mapOf("hash" to hash, "r" to "$referer"),
+                referer = url,
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+            ).parsedSafe<ResponseSource>()
+            
+            videoUrl = json?.videoSource?.takeIf { it.isNotBlank() } 
+                      ?: json?.securedLink?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            // Abaikan error API, lanjut ke metode fallback
+        }
+
+        // METODE 2: JS Unpack (Fallback Kuat)
+        // Jika API gagal, kita bongkar kode JavaScript yang di-obfuscate
+        if (videoUrl.isNullOrEmpty()) {
+            document.select("script").forEach { script ->
+                val data = script.data()
+                if (data.contains("eval(function(p,a,c,k,e,d)")) {
+                    val unpacked = getAndUnpack(data)
+                    
+                    // Mencari pola: file:"https://..." atau src:"https://..."
+                    videoUrl = Regex("""file:\s*["']([^"']+)["']""").find(unpacked)?.groupValues?.get(1)
+                        ?: Regex("""src:\s*["']([^"']+)["']""").find(unpacked)?.groupValues?.get(1)
+                    
+                    if (!videoUrl.isNullOrEmpty()) return@forEach
+                }
             }
-        )
+        }
 
-        document.select("script").map { script ->
-            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                val subData =
-                    getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
-                tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    subtitleCallback.invoke(
-                        newSubtitleFile(
-                            getLanguage(subtitle.label ?: ""),
-                            subtitle.file
-                        )
+        // Jika link ditemukan, kirim ke CloudStream
+        if (!videoUrl.isNullOrEmpty()) {
+            callback.invoke(
+                newExtractorLink(
+                    this.name,
+                    this.name,
+                    videoUrl!!,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                    // Header penting untuk menghindari error 403 Forbidden
+                    this.headers = mapOf(
+                        "Origin" to mainUrl,
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
                     )
+                }
+            )
+        }
+
+        // Ekstrak Subtitle (Dari JS yang di-unpack)
+        document.select("script").forEach { script ->
+            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
+                val unpacked = getAndUnpack(script.data())
+                if (unpacked.contains("tracks")) {
+                    val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                    tryParseJson<List<Tracks>>("[$subData]")?.forEach { subtitle ->
+                        subtitleCallback.invoke(
+                            newSubtitleFile(
+                                getLanguage(subtitle.label ?: "Unknown"),
+                                subtitle.file
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -72,16 +115,15 @@ open class Jeniusplay2 : ExtractorApi() {
 
     private fun getLanguage(str: String): String {
         return when {
-            str.contains("indonesia", true) || str
-                .contains("bahasa", true) -> "Indonesian"
+            str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
             else -> str
         }
     }
 
     data class ResponseSource(
-        @JsonProperty("hls") val hls: Boolean,
-        @JsonProperty("videoSource") val videoSource: String,
-        @JsonProperty("securedLink") val securedLink: String?,
+        @JsonProperty("hls") val hls: Boolean? = null,
+        @JsonProperty("videoSource") val videoSource: String? = null,
+        @JsonProperty("securedLink") val securedLink: String? = null,
     )
 
     data class Tracks(
