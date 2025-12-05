@@ -8,11 +8,11 @@
 
 ---
 
-### 📥 INSTALASI CEPAT (Anti Ribet)
+### 📥 INSTALASI CEPAT
 
-Klik tombol hijau di bawah ini. Kamu akan diarahkan ke halaman konfirmasi, lalu klik link install di sana.
+Klik tombol hijau di bawah, lalu di halaman berikutnya klik link Install.
 
-[![Install via Rentry](https://img.shields.io/badge/INSTALL_VIA_RENTRY-KLIK_DISINI-green?style=for-the-badge&logo=android&logoColor=white)](LINK_RENTRY_KAMU)
+[![Install via Rentry](https://img.shields.io/badge/INSTALL_VIA_RENTRY-KLIK_DISINI-green?style=for-the-badge&logo=android&logoColor=white)](PASTE_LINK_RENTRY_DISINI)
 
 ---
 
@@ -23,7 +23,8 @@ Klik tombol hijau di bawah ini. Kamu akan diarahkan ke halaman konfirmasi, lalu 
 
 </div>
 
-## 🛠️ Cara Install Manual (Alternatif)
+## 🛠️ Cara Install Manual (Jika Tombol Error)
 
-Jika tombol di atas bermasalah, salin link di bawah ini dan tempel di CloudStream > Settings > Extensions > Add Repository:
-
+1. Buka **CloudStream** > **Settings** > **Extensions**.
+2. Klik **+ Add Repository**.
+3. Masukkan URL ini:
