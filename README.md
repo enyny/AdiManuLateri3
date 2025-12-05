@@ -22,10 +22,20 @@ Kalau repo ini bermanfaat buat nemenin gabutmu, boleh dong lempar receh buat bel
 
 ## 📥 Cara Install
 
+**Cara Otomatis (Klik Langsung):**
+Cukup klik tombol di bawah ini, lalu pilih **"Download"** di dalam aplikasi Cloudstream.
+
+<a href="cloudstreamrepo://raw.githubusercontent.com/michat88/AdiManuLateri3/refs/heads/builds/repo.json">
+  <img src="https://img.shields.io/badge/INSTALL_REPO-KLIK_DISINI-blue?style=for-the-badge&logo=android&logoColor=white" alt="Install Repo"/>
+</a>
+
+<br>
+
+**Cara Manual (Jika tombol di atas gagal):**
 1. Buka aplikasi **Cloudstream**.
 2. Masuk ke **Settings** ⚙️ > **Extensions**.
 3. Klik tombol **+ Add Repository**.
-4. Masukkan URL Repository ini; https://raw.githubusercontent.com//michat88/AdiManuLateri3/refs/heads/builds/repo.json
+4. Masukkan URL: `https://raw.githubusercontent.com/michat88/AdiManuLateri3/refs/heads/builds/repo.json`
 5. Klik **Download**.
 
 ## 💡 Tips & Trik (Penting!)
