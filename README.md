@@ -25,7 +25,7 @@ Kalau repo ini bermanfaat buat nemenin gabutmu, boleh dong lempar receh buat bel
 1. Buka aplikasi **Cloudstream**.
 2. Masuk ke **Settings** ⚙️ > **Extensions**.
 3. Klik tombol **+ Add Repository**.
-4. Masukkan URL Repository ini; https://bit.ly/amangacor
+4. Masukkan URL Repository ini; https://bit.ly/adimanu
 5. Klik **Download**.
 
 ## 💡 Tips & Trik (Penting!)
