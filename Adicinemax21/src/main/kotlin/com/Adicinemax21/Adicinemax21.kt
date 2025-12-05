@@ -36,6 +36,7 @@ open class Adicinemax21 : TmdbProvider() {
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
+    override var lang = "id"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
