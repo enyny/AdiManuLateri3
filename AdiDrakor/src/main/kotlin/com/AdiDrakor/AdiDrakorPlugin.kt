@@ -9,6 +9,8 @@ class AdiDrakorPlugin : Plugin() {
     override fun load(context: Context) {
         // All providers should be added in this manner. Please don't edit the providers list directly.
         registerMainAPI(AdiDrakor())
-        registerExtractorAPI(Jeniusplay2())
+        
+        // Register Extractor Jeniusplay yang baru (dari IdlixProvider)
+        registerExtractorAPI(Jeniusplay())
     }
 }
