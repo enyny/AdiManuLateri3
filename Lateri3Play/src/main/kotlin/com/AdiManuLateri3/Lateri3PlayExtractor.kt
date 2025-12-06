@@ -544,14 +544,14 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== IDLIX SOURCE ==================
+    // ================== IDLIX SOURCE (DIPERBAIKI) ==================
     suspend fun invokeIdlix(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // Helper khusus Idlix (WPMovies)
+    // Helper khusus Idlix (WPMovies) - DENGAN FIX URL
     private suspend fun invokeWpmovies(name: String? = null, url: String? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, fixIframe: Boolean = false, encrypt: Boolean = false) {
         val res = app.get(url ?: return)
         val referer = getBaseUrl(res.url)
@@ -563,7 +563,8 @@ object Lateri3PlayExtractor {
                     encrypt -> {
                         val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m") ?: return@forEach
                         val key = generateWpKey(it.key ?: return@forEach, meta)
-                        com.lagradost.cloudstream3.extractors.helper.AesHelper.cryptoAESHandler(it.embed_url, key.toByteArray(), false)
+                        // === PERBAIKAN DI SINI: Menambahkan replace untuk membersihkan URL ===
+                        com.lagradost.cloudstream3.extractors.helper.AesHelper.cryptoAESHandler(it.embed_url, key.toByteArray(), false)?.replace("\\", "")?.replace("\"", "")
                     }
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
                     else -> it.embed_url
