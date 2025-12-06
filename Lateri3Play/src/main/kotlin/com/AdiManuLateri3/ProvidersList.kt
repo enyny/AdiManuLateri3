@@ -18,10 +18,9 @@ import com.AdiManuLateri3.Lateri3PlayExtractor.invokeHdmovie2
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeTopMovies
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeBollyflix
 
-// Import Source Baru (Dari Adicinemax21)
+// Import Source Baru (Dari Adicinemax21)tanpa Yflix
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeAdiDewasa
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeKisskh
-import com.AdiManuLateri3.Lateri3PlayExtractor.invokeYflix
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeAdimoviebox
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeIdlix
 import com.AdiManuLateri3.Lateri3PlayExtractor.invokeVidsrccc
@@ -69,16 +68,6 @@ fun buildProviders(): List<Provider> {
         },
         Provider("kisskh", "Kisskh (Asian/Anime)") { res, sub, cb ->
             invokeKisskh(
-                title = res.title ?: return@Provider,
-                year = res.year,
-                season = res.season,
-                episode = res.episode,
-                subtitleCallback = sub,
-                callback = cb
-            )
-        },
-        Provider("yflix", "Yflix (Movies)") { res, sub, cb ->
-            invokeYflix(
                 title = res.title ?: return@Provider,
                 year = res.year,
                 season = res.season,
