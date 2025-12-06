@@ -9,46 +9,117 @@ import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-// ADDED IMPORT FOR parseJson HERE
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
-
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import org.json.JSONObject 
-
-// ADDED CONCURRENCY/UTILITY IMPORTS THAT WERE MISSING IN PREVIOUS ITERATION
-import com.lagradost.cloudstream3.amap
-import com.lagradost.cloudstream3.amapIndexed
-import com.lagradost.cloudstream3.base64Encode
-import com.lagradost.cloudstream3.runAllAsync
-
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
 import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
 import com.Adicinemax21.Adicinemax21.Companion.idlixAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidsrcccAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidSrcAPI
-import com.Adicinemax21.Adicinemax21.Companion.xprimeAPI
-import com.Adicinemax21.Adicinemax21.Companion.watchSomuchAPI
-import com.Adicinemax21.Adicinemax21.Companion.mappleAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidlinkAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidfastAPI
-import com.Adicinemax21.Adicinemax21.Companion.wyzieAPI
-import com.Adicinemax21.Adicinemax21.Companion.vixsrcAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidsrccxAPI
-import com.Adicinemax21.Adicinemax21.Companion.superembedAPI
-import com.Adicinemax21.Adicinemax21.Companion.vidrockAPI
-import com.Adicinemax21.Adicinemax21.Companion.gomoviesAPI
 
 object Adicinemax21Extractor : Adicinemax21() {
+
+    // ================== IDLIX SOURCE (UPDATED) ==================
+    suspend fun invokeIdlix(
+        title: String? = null,
+        year: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val fixTitle = title?.createSlug()
+        val url = if (season == null) {
+            "$idlixAPI/movie/$fixTitle-$year"
+        } else {
+            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
+        }
+
+        try {
+            val response = app.get(url)
+            val document = response.document
+            val directUrl = getBaseUrl(response.url)
+
+            // Extract Nonce and Time (New Logic)
+            val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
+            val script = document.select("script:containsData(window.idlix)").toString()
+            val match = scriptRegex.find(script)
+            val idlixNonce = match?.groups?.get(1)?.value ?: ""
+            val idlixTime = match?.groups?.get(2)?.value ?: ""
+
+            document.select("ul#playeroptionsul > li").map {
+                Triple(
+                    it.attr("data-post"),
+                    it.attr("data-nume"),
+                    it.attr("data-type")
+                )
+            }.amap { (id, nume, type) ->
+                val json = app.post(
+                    url = "$directUrl/wp-admin/admin-ajax.php",
+                    data = mapOf(
+                        "action" to "doo_player_ajax",
+                        "post" to id,
+                        "nume" to nume,
+                        "type" to type,
+                        "_n" to idlixNonce,
+                        "_p" to id,
+                        "_t" to idlixTime
+                    ),
+                    referer = url,
+                    headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest")
+                ).parsedSafe<ResponseHash>() ?: return@amap
+
+                // Decrypt Logic
+                val metrix = parseJson<AesData>(json.embed_url).m
+                val password = createIdlixKey(json.key, metrix)
+                val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
+                    ?.fixUrlBloat() ?: return@amap
+
+                when {
+                    decrypted.contains("jeniusplay", true) -> {
+                        val finalUrl = if (decrypted.startsWith("//")) "https:$decrypted" else decrypted
+                        Jeniusplay().getUrl(finalUrl, "$directUrl/", subtitleCallback, callback)
+                    }
+                    !decrypted.contains("youtube") -> {
+                        loadExtractor(decrypted, directUrl, subtitleCallback, callback)
+                    }
+                    else -> return@amap
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun createIdlixKey(r: String, m: String): String {
+        val rList = r.split("\\x").filter { it.isNotEmpty() }.toTypedArray()
+        var n = ""
+        var reversedM = m.split("").reversed().joinToString("")
+        while (reversedM.length % 4 != 0) reversedM += "="
+        val decodedBytes = try {
+            base64Decode(reversedM)
+        } catch (_: Exception) {
+            return ""
+        }
+        val decodedM = String(decodedBytes.toCharArray())
+        for (s in decodedM.split("|")) {
+            try {
+                val index = Integer.parseInt(s)
+                if (index in rList.indices) {
+                    n += "\\x" + rList[index]
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return n
+    }
 
     // ================== ADIDEWASA / DRAMAFULL SOURCE ==================
     @Suppress("UNCHECKED_CAST")
@@ -151,7 +222,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
     }
 
-    // ================== KISSKH SOURCE ==================
+    // ================== KISSKH SOURCE (INTEGRATED) ==================
     suspend fun invokeKisskh(
         title: String,
         year: Int?,
@@ -167,26 +238,19 @@ object Adicinemax21Extractor : Adicinemax21() {
         try {
             val searchRes = app.get("$mainUrl/api/DramaList/Search?q=$title&type=0").text
             val searchList = tryParseJson<ArrayList<KisskhMedia>>(searchRes) ?: return
-
             val matched = searchList.find { 
                 it.title.equals(title, true) 
             } ?: searchList.firstOrNull { it.title?.contains(title, true) == true } ?: return
-
             val dramaId = matched.id ?: return
-            
             val detailRes = app.get("$mainUrl/api/DramaList/Drama/$dramaId?isq=false").parsedSafe<KisskhDetail>() ?: return
             val episodes = detailRes.episodes ?: return
-
             val targetEp = if (season == null) {
                 episodes.lastOrNull()
             } else {
                 episodes.find { it.number?.toInt() == episode }
             } ?: return
-
             val epsId = targetEp.id ?: return
-
             val kkeyVideo = app.get("$KISSKH_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
-
             val videoUrl = "$mainUrl/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkeyVideo"
             val sources = app.get(videoUrl).parsedSafe<KisskhSources>()
 
@@ -217,7 +281,6 @@ object Adicinemax21Extractor : Adicinemax21() {
 
             val kkeySub = app.get("$KISSKH_SUB_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
             val subJson = app.get("$mainUrl/api/Sub/$epsId?kkey=$kkeySub").text
-            
             tryParseJson<List<KisskhSubtitle>>(subJson)?.forEach { sub ->
                 subtitleCallback.invoke(
                     newSubtitleFile(
@@ -331,7 +394,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             season,
             episode,
             callback,
-            gomoviesAPI,
+            Adicinemax21.gomoviesAPI,
             "Gomovies",
             base64Decode("X3NtUWFtQlFzRVRi"),
             base64Decode("X3NCV2NxYlRCTWFU"),
@@ -417,9 +480,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         )
         val script = getAndUnpack(serverRes.text)
         val key = """key\s*="\s*(\d+)"""".toRegex().find(script)?.groupValues?.get(1) ?: return
-        
-        // FIXED: amap import usage with explicit Element
-        serverRes.document.select("ul li").amap { el: Element ->
+        serverRes.document.select("ul li").amap { el ->
             val server = el.attr("data-value")
             val encryptedData = app.get(
                 "$url?server=$server&_=$unixTimeMS",
@@ -447,95 +508,6 @@ object Adicinemax21Extractor : Adicinemax21() {
 
     }
 
-    // ================== IDLIX SOURCE ==================
-    suspend fun invokeIdlix(
-        title: String? = null,
-        year: Int? = null,
-        season: Int? = null,
-        episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val fixTitle = title?.createSlug()
-        val url = if (season == null) {
-            "$idlixAPI/movie/$fixTitle-$year"
-        } else {
-            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
-        }
-
-        try {
-            val response = app.get(url)
-            val document = response.document
-            
-            val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
-            val script = document.select("script:containsData(window.idlix)").toString()
-            val match = scriptRegex.find(script)
-            val idlixNonce = match?.groups?.get(1)?.value ?: ""
-            val idlixTime = match?.groups?.get(2)?.value ?: ""
-
-            // FIXED: amap import usage with explicit Element
-            document.select("ul#playeroptionsul > li").amap { li: Element ->
-                val id = li.attr("data-post")
-                val nume = li.attr("data-nume")
-                val type = li.attr("data-type")
-
-                val jsonResponse = app.post(
-                    url = "$idlixAPI/wp-admin/admin-ajax.php",
-                    data = mapOf(
-                        "action" to "doo_player_ajax",
-                        "post" to id,
-                        "nume" to nume,
-                        "type" to type,
-                        "_n" to idlixNonce,
-                        "_p" to id,
-                        "_t" to idlixTime
-                    ),
-                    referer = url,
-                    headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest")
-                ).parsedSafe<ResponseHash>() ?: return@amap
-
-                val metrix = parseJson<AesData>(jsonResponse.embed_url).m
-                val password = createKey(jsonResponse.key ?: return@amap, metrix)
-                val decrypted = AesHelper.cryptoAESHandler(
-                    jsonResponse.embed_url, 
-                    password.toByteArray(), 
-                    false
-                )?.fixUrlBloat() ?: return@amap
-
-                if (!decrypted.contains("youtube")) {
-                    loadExtractor(decrypted, idlixAPI, subtitleCallback, callback)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun createKey(r: String, m: String): String {
-        val rList = r.split("\\x").filter { it.isNotEmpty() }.toTypedArray()
-        var n = ""
-        var reversedM = m.split("").reversed().joinToString("")
-        while (reversedM.length % 4 != 0) reversedM += "="
-        val decodedBytes = try {
-            base64Decode(reversedM)
-        } catch (_: Exception) {
-            return ""
-        }
-        val decodedM = String(decodedBytes.toCharArray())
-        for (s in decodedM.split("|")) {
-            try {
-                val index = Integer.parseInt(s)
-                if (index in rList.indices) {
-                    n += "\\x" + rList[index]
-                }
-            } catch (_: Exception) { }
-        }
-        return n
-    }
-
-    private data class AesData(@JsonProperty("m") val m: String)
-
-
     // ================== VIDSRCCC SOURCE ==================
     suspend fun invokeVidsrccc(
         tmdbId: Int?,
@@ -547,9 +519,9 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
 
         val url = if (season == null) {
-            "$vidsrcccAPI/v2/embed/movie/$tmdbId"
+            "${Adicinemax21.vidsrcccAPI}/v2/embed/movie/$tmdbId"
         } else {
-            "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
+            "${Adicinemax21.vidsrcccAPI}/v2/embed/tv/$tmdbId/$season/$episode"
         }
 
         val script =
@@ -561,14 +533,14 @@ object Adicinemax21Extractor : Adicinemax21() {
         val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId")
 
         val serverUrl = if (season == null) {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
+            "${Adicinemax21.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
         } else {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
+            "${Adicinemax21.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
         }
 
         app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
             val sources =
-                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
+                app.get("${Adicinemax21.vidsrcccAPI}/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
                     ?: return@amap
 
             when {
@@ -581,7 +553,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                             sources.source ?: return@amap,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "$vidsrcccAPI/"
+                            this.referer = "${Adicinemax21.vidsrcccAPI}/"
                         }
                     )
 
@@ -598,7 +570,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 it.name.equals("UpCloud") -> {
                     val scriptData = app.get(
                         sources.source ?: return@amap,
-                        referer = "$vidsrcccAPI/"
+                        referer = "${Adicinemax21.vidsrcccAPI}/"
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
                         scriptData ?: return@amap
@@ -624,7 +596,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                                 source.file ?: return@file,
                                 ExtractorLinkType.M3U8
                             ) {
-                                this.referer = "$vidsrcccAPI/"
+                                this.referer = "${Adicinemax21.vidsrcccAPI}/"
                             }
                         )
                     }
@@ -649,13 +621,12 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val api = "https://cloudnestra.com"
         val url = if (season == null) {
-            "$vidSrcAPI/embed/movie?imdb=$imdbId"
+            "${Adicinemax21.vidSrcAPI}/embed/movie?imdb=$imdbId"
         } else {
-            "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
+            "${Adicinemax21.vidSrcAPI}/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
         }
 
-        // FIXED: amap import usage with explicit Element
-        app.get(url).document.select(".serversList .server").amap { server: Element ->
+        app.get(url).document.select(".serversList .server").amap { server ->
             when {
                 server.text().equals("CloudStream Pro", ignoreCase = true) -> {
                     val hash =
@@ -694,7 +665,7 @@ object Adicinemax21Extractor : Adicinemax21() {
     suspend fun invokeXprime(
         tmdbId: Int?,
         title: String? = null,
-        year: Int?,
+        year: Int? = null,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
@@ -703,14 +674,12 @@ object Adicinemax21Extractor : Adicinemax21() {
         val servers = listOf("rage", "primebox")
         val serverName = servers.map { it.capitalize() }
         val referer = "https://xprime.tv/"
-        
-        // FIXED: runAllAsync import
         runAllAsync(
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId"
+                    "${Adicinemax21.xprimeAPI}/${servers.first()}?id=$tmdbId"
                 } else {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
+                    "${Adicinemax21.xprimeAPI}/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
                 }
 
                 val source = app.get(url).parsedSafe<RageSources>()?.url
@@ -728,9 +697,9 @@ object Adicinemax21Extractor : Adicinemax21() {
             },
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year"
+                    "${Adicinemax21.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year"
                 } else {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
+                    "${Adicinemax21.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
                 }
 
                 val sources = app.get(url).parsedSafe<PrimeboxSources>()
@@ -771,7 +740,7 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
-            "${watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
+            "${Adicinemax21.watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
                 "index" to "0",
                 "mid" to "$id",
                 "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45",
@@ -789,16 +758,16 @@ object Adicinemax21Extractor : Adicinemax21() {
         val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
 
         val subUrl = if (season == null) {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
+            "${Adicinemax21.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
         } else {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
+            "${Adicinemax21.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
         }
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                    fixUrl(sub.url ?: return@map null, Adicinemax21.watchSomuchAPI)
                 )
             )
         }
@@ -815,9 +784,9 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val mediaType = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$mappleAPI/watch/$mediaType/$tmdbId"
+            "${Adicinemax21.mappleAPI}/watch/$mediaType/$tmdbId"
         } else {
-            "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId"
+            "${Adicinemax21.mappleAPI}/watch/$mediaType/$season-$episode/$tmdbId"
         }
 
         val data = if (season == null) {
@@ -845,7 +814,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$mappleAPI/"
+                this.referer = "${Adicinemax21.mappleAPI}/"
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -853,14 +822,14 @@ object Adicinemax21Extractor : Adicinemax21() {
         )
 
         val subRes = app.get(
-            "$mappleAPI/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
-            referer = "$mappleAPI/"
+            "${Adicinemax21.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
+            referer = "${Adicinemax21.mappleAPI}/"
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
+                    fixUrl(subtitle.url ?: return@map, Adicinemax21.mappleAPI)
                 )
             )
         }
@@ -876,14 +845,14 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidlinkAPI/$type/$tmdbId"
+            "${Adicinemax21.vidlinkAPI}/$type/$tmdbId"
         } else {
-            "$vidlinkAPI/$type/$tmdbId/$season/$episode"
+            "${Adicinemax21.vidlinkAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val videoLink = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidlinkAPI/api/b/$type/A{32}"""), timeout = 15_000L
+                Regex("""${Adicinemax21.vidlinkAPI}/api/b/$type/A{32}"""), timeout = 15_000L
             )
         ).parsedSafe<VidlinkSources>()?.stream?.playlist
 
@@ -894,7 +863,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidlinkAPI/"
+                this.referer = "${Adicinemax21.vidlinkAPI}/"
             }
         )
 
@@ -911,23 +880,22 @@ object Adicinemax21Extractor : Adicinemax21() {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidfastAPI/$type/$tmdbId"
+            "${Adicinemax21.vidfastAPI}/$type/$tmdbId"
         } else {
-            "$vidfastAPI/$type/$tmdbId/$season/$episode"
+            "${Adicinemax21.vidfastAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val res = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidfastAPI/$module/JEwECseLZdY"""),
+                Regex("""${Adicinemax21.vidfastAPI}/$module/JEwECseLZdY"""),
                 timeout = 15_000L
             )
         ).text
 
-        // FIXED: amapIndexed with explicit types
         tryParseJson<ArrayList<VidFastServers>>(res)?.filter { it.description?.contains("Original audio") == true }
             ?.amapIndexed { index, server ->
                 val source =
-                    app.get("$vidfastAPI/$module/Sdoi/${server.data}", referer = "$vidfastAPI/")
+                    app.get("${Adicinemax21.vidfastAPI}/$module/Sdoi/${server.data}", referer = "${Adicinemax21.vidfastAPI}/")
                         .parsedSafe<VidFastSources>()
 
                 callback.invoke(
@@ -962,9 +930,9 @@ object Adicinemax21Extractor : Adicinemax21() {
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val url = if (season == null) {
-            "$wyzieAPI/search?id=$tmdbId"
+            "${Adicinemax21.wyzieAPI}/search?id=$tmdbId"
         } else {
-            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode"
+            "${Adicinemax21.wyzieAPI}/search?id=$tmdbId&season=$season&episode=$episode"
         }
 
         val res = app.get(url).text
@@ -990,9 +958,9 @@ object Adicinemax21Extractor : Adicinemax21() {
         val proxy = "https://proxy.heistotron.uk"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vixsrcAPI/$type/$tmdbId"
+            "${Adicinemax21.vixsrcAPI}/$type/$tmdbId"
         } else {
-            "$vixsrcAPI/$type/$tmdbId/$season/$episode"
+            "${Adicinemax21.vixsrcAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val res =
@@ -1006,13 +974,12 @@ object Adicinemax21Extractor : Adicinemax21() {
                     "$path?token=$token&expires=$expires&h=1&lang=en"
                 } ?: return
 
-        // FIXED: base64Encode import used here
         val video2 =
             "$proxy/p/${base64Encode("$proxy/api/proxy/m3u8?url=${encode(video1)}&source=sakura|ananananananananaBatman!".toByteArray())}"
 
         listOf(
             VixsrcSource("Vixsrc [Alpha]", video1, url),
-            VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/"),
+            VixsrcSource("Vixsrc [Beta]", video2, "${Adicinemax21.mappleAPI}/"),
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -1031,37 +998,6 @@ object Adicinemax21Extractor : Adicinemax21() {
 
     }
 
-    // ================== VIDSRCCX SOURCE ==================
-    suspend fun invokeVidsrccx(
-        tmdbId: Int?,
-        season: Int?,
-        episode: Int?,
-        callback: (ExtractorLink) -> Unit,
-    ) {
-        val filePath =
-            if (season == null) "/media/$tmdbId/master.m3u8" else "/media/$tmdbId-$season-$episode/master.m3u8"
-        val video = app.post(
-            "https://8ball.piracy.cloud/api/generate-secure-url", requestBody = mapOf(
-                "filePath" to filePath
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<VidsrccxSource>()?.secureUrl
-
-        callback.invoke(
-            newExtractorLink(
-                "VidsrcCx",
-                "VidsrcCx",
-                video ?: return,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = "$vidsrccxAPI/"
-                this.headers = mapOf(
-                    "Accept" to "*/*"
-                )
-            }
-        )
-
-    }
-
     // ================== SUPEREMBED SOURCE ==================
     suspend fun invokeSuperembed(
         tmdbId: Int?,
@@ -1072,7 +1008,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         api: String = "https://streamingnow.mov"
     ) {
         val path = if (season == null) "" else "&s=$season&e=$episode"
-        val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
+        val token = app.get("${Adicinemax21.superembedAPI}/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
             "?play="
         )
 
@@ -1131,13 +1067,13 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
 
         val type = if (season == null) "movie" else "tv"
-        val url = "$vidrockAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
+        val url = "${Adicinemax21.vidrockAPI}/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
         val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
 
-        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
+        app.get("${Adicinemax21.vidrockAPI}/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
             ?.map { source ->
                 if (source.key == "source2") {
-                    val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text
+                    val json = app.get(source.value["url"] ?: return@map, referer = "${Adicinemax21.vidrockAPI}/").text
                     tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{ it ->
                         callback.invoke(
                             newExtractorLink(
@@ -1149,7 +1085,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                                 this.quality = it.resolution ?: Qualities.Unknown.value
                                 this.headers = mapOf(
                                     "Range" to "bytes=0-",
-                                    "Referer" to "${vidrockAPI}/"
+                                    "Referer" to "${Adicinemax21.vidrockAPI}/"
                                 )
                             }
                         )
@@ -1162,9 +1098,9 @@ object Adicinemax21Extractor : Adicinemax21() {
                             source.value["url"] ?: return@map,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "${vidrockAPI}/"
+                            this.referer = "${Adicinemax21.vidrockAPI}/"
                             this.headers = mapOf(
-                                "Origin" to vidrockAPI
+                                "Origin" to Adicinemax21.vidrockAPI
                             )
                         }
                     )
@@ -1228,14 +1164,12 @@ object Adicinemax21Extractor : Adicinemax21() {
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
             
-            // SMART FILTER: 
             val blockedServers = listOf(
                 "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", 
                 "Apollo", "Kratos", "Flick", "Hollywood", 
                 "Flash", "Ophim", "Bollywood", "Apex", "Universe", 
                 "Hindi", "Bengali", "Tamil", "Telugu" 
             )
-            
             val finalBlocked = blockedServers.filter { !it.equals("Rizz", ignoreCase = true) }
 
             val sortedSources = json.filter {
@@ -1319,7 +1253,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                     }
 
                     val qualityMatch = Regex(
-                        """(\d{3,4}p|4K|CAM|HQ|HD|SD|WEBRip|DVDRIP|BluRay|HDRip|TVRip|HDTC|PREDVD)""",
+                        """(\d{3,4}p|4K|CAM|HQ|HD|SD|WEBRip|DVDRip|BluRay|HDRip|TVRip|HDTC|PREDVD)""",
                         RegexOption.IGNORE_CASE
                     ).find(displayName)?.value?.uppercase() ?: "UNKNOWN"
 
