@@ -54,6 +54,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
     companion object {
         private const val TMDB_API_URL = "https://api.themoviedb.org/3"
+        // Menggunakan API Key default (Sebaiknya diganti/dirotasi jika limit habis)
         private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         fun getApiBase(): String = TMDB_API_URL
@@ -140,6 +141,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         
         val genres = res.genres?.mapNotNull { it.name }
         
+        // Logika Deteksi Kategori (Anime/Asian/Bollywood)
         val isCartoon = genres?.contains("Animation") ?: false
         val isAnime = isCartoon && (res.originalLanguage == "ja" || res.originalLanguage == "jp" || (res.credits?.cast?.any { it.originalName?.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF]+")) == true } == true))
         val isAsian = !isAnime && (res.originalLanguage == "ko" || res.originalLanguage == "zh")
@@ -251,22 +253,24 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val res = parseJson<LinkData>(data)
         
         val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
+        // Mengambil daftar provider yang sudah diperbarui di ProvidersList.kt (termasuk Idlix baru)
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
         // Eksekusi semua provider secara paralel
         val tasks = mutableListOf<suspend () -> Unit>()
         
-        // 1. Subtitle API
+        // 1. Subtitle API Global
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         tasks.add { com.AdiManuLateri3.Lateri3PlayExtractor.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         
-        // 2. Movie/Series Providers
+        // 2. Movie/Series Providers Loop
         providersList.forEach { provider ->
             tasks.add { 
                 provider.invoke(res, subtitleCallback, callback)
             }
         }
 
+        // Jalankan semua tugas pencarian link secara bersamaan
         runAllAsync(*tasks.toTypedArray())
 
         return true
