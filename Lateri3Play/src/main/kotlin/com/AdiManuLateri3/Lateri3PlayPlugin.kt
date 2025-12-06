@@ -21,7 +21,7 @@ class Lateri3PlayPlugin : Plugin() {
     override fun load(context: Context) {
         val sharedPref = context.getSharedPreferences("Lateri3Play", Context.MODE_PRIVATE)
 
-        // 1. Mendaftarkan API Utama
+        // 1. Mendaftarkan API Utama (Otak dari ekstensi)
         registerMainAPI(Lateri3Play(sharedPref))
 
         // 2. Mendaftarkan Custom Extractors (LAMA - Lateri3Play)
@@ -34,7 +34,7 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(Ridoo())
 
         // 3. Mendaftarkan Custom Extractors (BARU - Adicinemax21)
-        registerExtractorAPI(Jeniusplay2()) // Untuk Idlix
+        registerExtractorAPI(Jeniusplay())  // Diganti dari Jeniusplay2 ke Jeniusplay (Source Baru)
         registerExtractorAPI(MegaUp())      // Untuk Yflix
         registerExtractorAPI(Fourspromax()) // Clone MegaUp
         registerExtractorAPI(Rapidairmax()) // Clone MegaUp
@@ -55,12 +55,11 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(FileMoon())
         registerExtractorAPI(VidHidePro6())
 
-        // 6. Konfigurasi Settings (DIAKTIFKAN KEMBALI)
+        // 6. Konfigurasi Settings (Aktif)
         openSettings = { ctx ->
             try {
                 val act = ctx as AppCompatActivity
-                // Memanggil Fragment Pengaturan
-                // Pastikan Anda menyalin file MainSettingsFragment.kt setelah ini
+                // Membuka fragment pengaturan (Pastikan file MainSettingsFragment ada di package settings)
                 val frag = com.AdiManuLateri3.settings.MainSettingsFragment(this, sharedPref)
                 frag.show(act.supportFragmentManager, "Settings")
             } catch (e: Exception) {
