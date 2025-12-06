@@ -48,7 +48,7 @@ data class MediaDetail(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("original_title") val originalTitle: String? = null,
     @JsonProperty("original_name") val originalName: String? = null,
-    @JsonProperty("original_language") val originalLanguage: String? = null, // DITAMBAHKAN
+    @JsonProperty("original_language") val originalLanguage: String? = null,
     @JsonProperty("poster_path") val posterPath: String? = null,
     @JsonProperty("backdrop_path") val backdropPath: String? = null,
     @JsonProperty("release_date") val releaseDate: String? = null,
@@ -163,6 +163,10 @@ data class ResponseHash(
     @JsonProperty("embed_url") val embed_url: String,
     @JsonProperty("key") val key: String? = null,
     @JsonProperty("type") val type: String? = null,
+)
+
+data class AesData(
+    @JsonProperty("m") val m: String,
 )
 
 data class SubtitlesAPI(
