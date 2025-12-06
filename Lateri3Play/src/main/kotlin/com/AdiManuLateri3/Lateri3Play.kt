@@ -54,7 +54,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
 
     companion object {
         private const val TMDB_API_URL = "https://api.themoviedb.org/3"
-        // Menggunakan API Key default (Sebaiknya diganti/dirotasi jika limit habis)
+        // Menggunakan API Key default
         private const val API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         fun getApiBase(): String = TMDB_API_URL
@@ -253,7 +253,7 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         val res = parseJson<LinkData>(data)
         
         val disabledProviderIds = sharedPref.getStringSet("disabled_providers", emptySet()) ?: emptySet()
-        // Mengambil daftar provider yang sudah diperbarui di ProvidersList.kt (termasuk Idlix baru)
+        // Mengambil daftar provider yang sudah diperbarui di ProvidersList.kt (tanpa Yflix)
         val providersList = buildProviders().filter { it.id !in disabledProviderIds }
 
         // Eksekusi semua provider secara paralel
