@@ -10,10 +10,8 @@ class Adicinemax21Plugin : Plugin() {
         // Register Main Provider
         registerMainAPI(Adicinemax21())
         
-        // Register New Extractor for Idlix
+        // Register Extractors
+        // Mendaftarkan Jeniusplay yang baru (dari IdlixProvider)
         registerExtractorAPI(Jeniusplay())
-        
-        // Removed: Jeniusplay2 (Old)
-        // Removed: MegaUp, Fourspromax, Rapidairmax, Rapidshare (Yflix)
     }
 }
