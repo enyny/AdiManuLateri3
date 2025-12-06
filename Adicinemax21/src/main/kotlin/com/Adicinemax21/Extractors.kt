@@ -11,6 +11,10 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
+// ==============================
+// NEW JENIUSPLAY EXTRACTOR (FROM IDLIXPROVIDER)
+// ==============================
+
 class Jeniusplay : ExtractorApi() {
     override var name = "Jeniusplay"
     override var mainUrl = "https://jeniusplay.com"
@@ -30,16 +34,18 @@ class Jeniusplay : ExtractorApi() {
             data = mapOf("hash" to hash, "r" to "$referer"),
             referer = referer,
             headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource
+        ).parsedSafe<ResponseSource>()?.videoSource
 
-        callback.invoke(
-            newExtractorLink(
-                name,
-                name,
-                url = m3uLink,
-                ExtractorLinkType.M3U8
+        if (m3uLink != null) {
+            callback.invoke(
+                newExtractorLink(
+                    name,
+                    name,
+                    url = m3uLink,
+                    ExtractorLinkType.M3U8
+                )
             )
-        )
+        }
 
         document.select("script").map { script ->
             if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
