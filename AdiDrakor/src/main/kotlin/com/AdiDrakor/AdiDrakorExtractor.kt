@@ -1,6 +1,7 @@
 package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.AdiDrakor.AdiDrakor.Companion.idlixAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.capitalize
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
@@ -9,17 +10,119 @@ import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.Session
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.net.URLEncoder
-import org.json.JSONObject // Penting: Import JSON
+import org.json.JSONObject 
 
 object AdiDrakorExtractor : AdiDrakor() {
+
+    // ================== IDLIX SOURCE (UPDATED) ==================
+    suspend fun invokeIdlix(
+        title: String? = null,
+        year: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val fixTitle = title?.createSlug()
+        val url = if (season == null) {
+            "$idlixAPI/movie/$fixTitle-$year"
+        } else {
+            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
+        }
+
+        try {
+            val response = app.get(url)
+            val document = response.document
+            val directUrl = getBaseUrl(response.url)
+
+            // 1. Extract Nonce and Time (New Logic)
+            val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
+            val script = document.select("script:containsData(window.idlix)").toString()
+            val match = scriptRegex.find(script)
+            val idlixNonce = match?.groups?.get(1)?.value ?: ""
+            val idlixTime = match?.groups?.get(2)?.value ?: ""
+
+            // 2. Iterate Servers
+            document.select("ul#playeroptionsul > li").map {
+                Triple(
+                    it.attr("data-post"),
+                    it.attr("data-nume"),
+                    it.attr("data-type")
+                )
+            }.amap { (id, nume, type) ->
+                // 3. POST Request
+                val json = app.post(
+                    url = "$directUrl/wp-admin/admin-ajax.php",
+                    data = mapOf(
+                        "action" to "doo_player_ajax",
+                        "post" to id,
+                        "nume" to nume,
+                        "type" to type,
+                        "_n" to idlixNonce,
+                        "_p" to id,
+                        "_t" to idlixTime
+                    ),
+                    referer = url,
+                    headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest")
+                ).parsedSafe<ResponseHash>() ?: return@amap
+
+                // 4. Decrypt Logic
+                val metrix = parseJson<AesData>(json.embed_url).m
+                val password = createIdlixKey(json.key, metrix)
+                val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
+                    ?.fixUrlBloat() ?: return@amap
+
+                // 5. Load Extractor
+                when {
+                    decrypted.contains("jeniusplay", true) -> {
+                        val finalUrl = if (decrypted.startsWith("//")) "https:$decrypted" else decrypted
+                        Jeniusplay().getUrl(finalUrl, "$directUrl/", subtitleCallback, callback)
+                    }
+                    !decrypted.contains("youtube") -> {
+                        loadExtractor(decrypted, directUrl, subtitleCallback, callback)
+                    }
+                    else -> return@amap
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun createIdlixKey(r: String, m: String): String {
+        val rList = r.split("\\x").filter { it.isNotEmpty() }.toTypedArray()
+        var n = ""
+        var reversedM = m.split("").reversed().joinToString("")
+        while (reversedM.length % 4 != 0) reversedM += "="
+        val decodedBytes = try {
+            base64Decode(reversedM)
+        } catch (_: Exception) {
+            return ""
+        }
+        val decodedM = String(decodedBytes.toCharArray())
+        for (s in decodedM.split("|")) {
+            try {
+                val index = Integer.parseInt(s)
+                if (index in rList.indices) {
+                    n += "\\x" + rList[index]
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return n
+    }
 
     // ================== ADIMOVIEBOX SOURCE ==================
     suspend fun invokeAdimoviebox(
@@ -226,87 +329,6 @@ object AdiDrakorExtractor : AdiDrakor() {
 
     }
 
-    suspend fun invokeIdlix(
-        title: String? = null,
-        year: Int? = null,
-        season: Int? = null,
-        episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val fixTitle = title?.createSlug()
-        val url = if (season == null) {
-            "$idlixAPI/movie/$fixTitle-$year"
-        } else {
-            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
-        }
-        invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
-    }
-
-    private suspend fun invokeWpmovies(
-        name: String? = null,
-        url: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        fixIframe: Boolean = false,
-        encrypt: Boolean = false,
-        hasCloudflare: Boolean = false,
-        interceptor: Interceptor? = null,
-    ) {
-
-        val res = app.get(url ?: return, interceptor = if (hasCloudflare) interceptor else null)
-        val referer = getBaseUrl(res.url)
-        val document = res.document
-        document.select("ul#playeroptionsul > li").map {
-            Triple(
-                it.attr("data-post"),
-                it.attr("data-nume"),
-                it.attr("data-type")
-            )
-        }.amap { (id, nume, type) ->
-            val json = app.post(
-                url = "$referer/wp-admin/admin-ajax.php",
-                data = mapOf(
-                    "action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type
-                ),
-                headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest"),
-                referer = url,
-                interceptor = if (hasCloudflare) interceptor else null
-            ).text
-            val source = tryParseJson<ResponseHash>(json)?.let {
-                when {
-                    encrypt -> {
-                        val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m")
-                            ?: return@amap
-                        val key = generateWpKey(it.key ?: return@amap, meta)
-                        AesHelper.cryptoAESHandler(
-                            it.embed_url,
-                            key.toByteArray(),
-                            false
-                        )?.fixUrlBloat()
-                    }
-
-                    fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
-                    else -> it.embed_url
-                }
-            } ?: return@amap
-            when {
-                source.startsWith("https://jeniusplay.com") -> {
-                    Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
-                }
-
-                !source.contains("youtube") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
-                }
-
-                else -> {
-                    return@amap
-                }
-            }
-
-        }
-    }
-
     suspend fun invokeVidsrccc(
         tmdbId: Int?,
         imdbId: String?,
@@ -317,9 +339,9 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
 
         val url = if (season == null) {
-            "$vidsrcccAPI/v2/embed/movie/$tmdbId"
+            "${AdiDrakor.vidsrcccAPI}/v2/embed/movie/$tmdbId"
         } else {
-            "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
+            "${AdiDrakor.vidsrcccAPI}/v2/embed/tv/$tmdbId/$season/$episode"
         }
 
         val script =
@@ -331,14 +353,14 @@ object AdiDrakorExtractor : AdiDrakor() {
         val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId")
 
         val serverUrl = if (season == null) {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
+            "${AdiDrakor.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
         } else {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
+            "${AdiDrakor.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
         }
 
         app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
             val sources =
-                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
+                app.get("${AdiDrakor.vidsrcccAPI}/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
                     ?: return@amap
 
             when {
@@ -351,7 +373,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                             sources.source ?: return@amap,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "$vidsrcccAPI/"
+                            this.referer = "${AdiDrakor.vidsrcccAPI}/"
                         }
                     )
 
@@ -368,7 +390,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                 it.name.equals("UpCloud") -> {
                     val scriptData = app.get(
                         sources.source ?: return@amap,
-                        referer = "$vidsrcccAPI/"
+                        referer = "${AdiDrakor.vidsrcccAPI}/"
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
                         scriptData ?: return@amap
@@ -394,7 +416,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                                 source.file ?: return@file,
                                 ExtractorLinkType.M3U8
                             ) {
-                                this.referer = "$vidsrcccAPI/"
+                                this.referer = "${AdiDrakor.vidsrcccAPI}/"
                             }
                         )
                     }
@@ -418,9 +440,9 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val api = "https://cloudnestra.com"
         val url = if (season == null) {
-            "$vidSrcAPI/embed/movie?imdb=$imdbId"
+            "${AdiDrakor.vidSrcAPI}/embed/movie?imdb=$imdbId"
         } else {
-            "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
+            "${AdiDrakor.vidSrcAPI}/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
         }
 
         app.get(url).document.select(".serversList .server").amap { server ->
@@ -473,9 +495,9 @@ object AdiDrakorExtractor : AdiDrakor() {
         runAllAsync(
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId"
+                    "${AdiDrakor.xprimeAPI}/${servers.first()}?id=$tmdbId"
                 } else {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
+                    "${AdiDrakor.xprimeAPI}/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
                 }
 
                 val source = app.get(url).parsedSafe<RageSources>()?.url
@@ -493,9 +515,9 @@ object AdiDrakorExtractor : AdiDrakor() {
             },
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year"
+                    "${AdiDrakor.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year"
                 } else {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
+                    "${AdiDrakor.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
                 }
 
                 val sources = app.get(url).parsedSafe<PrimeboxSources>()
@@ -535,7 +557,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
-            "${watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
+            "${AdiDrakor.watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
                 "index" to "0",
                 "mid" to "$id",
                 "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45",
@@ -553,16 +575,16 @@ object AdiDrakorExtractor : AdiDrakor() {
         val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
 
         val subUrl = if (season == null) {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
+            "${AdiDrakor.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
         } else {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
+            "${AdiDrakor.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
         }
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                    fixUrl(sub.url ?: return@map null, AdiDrakor.watchSomuchAPI)
                 )
             )
         }
@@ -578,9 +600,9 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val mediaType = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$mappleAPI/watch/$mediaType/$tmdbId"
+            "${AdiDrakor.mappleAPI}/watch/$mediaType/$tmdbId"
         } else {
-            "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId"
+            "${AdiDrakor.mappleAPI}/watch/$mediaType/$season-$episode/$tmdbId"
         }
 
         val data = if (season == null) {
@@ -608,7 +630,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$mappleAPI/"
+                this.referer = "${AdiDrakor.mappleAPI}/"
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -616,14 +638,14 @@ object AdiDrakorExtractor : AdiDrakor() {
         )
 
         val subRes = app.get(
-            "$mappleAPI/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
-            referer = "$mappleAPI/"
+            "${AdiDrakor.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
+            referer = "${AdiDrakor.mappleAPI}/"
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
+                    fixUrl(subtitle.url ?: return@map, AdiDrakor.mappleAPI)
                 )
             )
         }
@@ -638,14 +660,14 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidlinkAPI/$type/$tmdbId"
+            "${AdiDrakor.vidlinkAPI}/$type/$tmdbId"
         } else {
-            "$vidlinkAPI/$type/$tmdbId/$season/$episode"
+            "${AdiDrakor.vidlinkAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val videoLink = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidlinkAPI/api/b/$type/A{32}"""), timeout = 15_000L
+                Regex("""${AdiDrakor.vidlinkAPI}/api/b/$type/A{32}"""), timeout = 15_000L
             )
         ).parsedSafe<VidlinkSources>()?.stream?.playlist
 
@@ -656,7 +678,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidlinkAPI/"
+                this.referer = "${AdiDrakor.vidlinkAPI}/"
             }
         )
 
@@ -672,14 +694,14 @@ object AdiDrakorExtractor : AdiDrakor() {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidfastAPI/$type/$tmdbId"
+            "${AdiDrakor.vidfastAPI}/$type/$tmdbId"
         } else {
-            "$vidfastAPI/$type/$tmdbId/$season/$episode"
+            "${AdiDrakor.vidfastAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val res = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidfastAPI/$module/JEwECseLZdY"""),
+                Regex("""${AdiDrakor.vidfastAPI}/$module/JEwECseLZdY"""),
                 timeout = 15_000L
             )
         ).text
@@ -687,7 +709,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         tryParseJson<ArrayList<VidFastServers>>(res)?.filter { it.description?.contains("Original audio") == true }
             ?.amapIndexed { index, server ->
                 val source =
-                    app.get("$vidfastAPI/$module/Sdoi/${server.data}", referer = "$vidfastAPI/")
+                    app.get("${AdiDrakor.vidfastAPI}/$module/Sdoi/${server.data}", referer = "${AdiDrakor.vidfastAPI}/")
                         .parsedSafe<VidFastSources>()
 
                 callback.invoke(
@@ -721,9 +743,9 @@ object AdiDrakorExtractor : AdiDrakor() {
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val url = if (season == null) {
-            "$wyzieAPI/search?id=$tmdbId"
+            "${AdiDrakor.wyzieAPI}/search?id=$tmdbId"
         } else {
-            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode"
+            "${AdiDrakor.wyzieAPI}/search?id=$tmdbId&season=$season&episode=$episode"
         }
 
         val res = app.get(url).text
@@ -748,9 +770,9 @@ object AdiDrakorExtractor : AdiDrakor() {
         val proxy = "https://proxy.heistotron.uk"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vixsrcAPI/$type/$tmdbId"
+            "${AdiDrakor.vixsrcAPI}/$type/$tmdbId"
         } else {
-            "$vixsrcAPI/$type/$tmdbId/$season/$episode"
+            "${AdiDrakor.vixsrcAPI}/$type/$tmdbId/$season/$episode"
         }
 
         val res =
@@ -769,7 +791,7 @@ object AdiDrakorExtractor : AdiDrakor() {
 
         listOf(
             VixsrcSource("Vixsrc [Alpha]", video1, url),
-            VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/"),
+            VixsrcSource("Vixsrc [Beta]", video2, "${AdiDrakor.mappleAPI}/"),
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -809,7 +831,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                 video ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidsrccxAPI/"
+                this.referer = "${AdiDrakor.vidsrccxAPI}/"
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -827,7 +849,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         api: String = "https://streamingnow.mov"
     ) {
         val path = if (season == null) "" else "&s=$season&e=$episode"
-        val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
+        val token = app.get("${AdiDrakor.superembedAPI}/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
             "?play="
         )
 
@@ -885,13 +907,13 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
 
         val type = if (season == null) "movie" else "tv"
-        val url = "$vidrockAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
+        val url = "${AdiDrakor.vidrockAPI}/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
         val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
 
-        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
+        app.get("${AdiDrakor.vidrockAPI}/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
             ?.map { source ->
                 if (source.key == "source2") {
-                    val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text
+                    val json = app.get(source.value["url"] ?: return@map, referer = "${AdiDrakor.vidrockAPI}/").text
                     tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{ it ->
                         callback.invoke(
                             newExtractorLink(
@@ -903,7 +925,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                                 this.quality = it.resolution ?: Qualities.Unknown.value
                                 this.headers = mapOf(
                                     "Range" to "bytes=0-",
-                                    "Referer" to "${vidrockAPI}/"
+                                    "Referer" to "${AdiDrakor.vidrockAPI}/"
                                 )
                             }
                         )
@@ -916,9 +938,9 @@ object AdiDrakorExtractor : AdiDrakor() {
                             source.value["url"] ?: return@map,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "${vidrockAPI}/"
+                            this.referer = "${AdiDrakor.vidrockAPI}/"
                             this.headers = mapOf(
-                                "Origin" to vidrockAPI
+                                "Origin" to AdiDrakor.vidrockAPI
                             )
                         }
                     )
