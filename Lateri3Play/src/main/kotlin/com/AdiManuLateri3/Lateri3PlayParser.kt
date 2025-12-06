@@ -165,6 +165,7 @@ data class ResponseHash(
     @JsonProperty("type") val type: String? = null,
 )
 
+// Data class untuk dekripsi Idlix
 data class AesData(
     @JsonProperty("m") val m: String,
 )
