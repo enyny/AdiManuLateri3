@@ -60,8 +60,9 @@ class Lateri3PlayPlugin : Plugin() {
             try {
                 val act = ctx as AppCompatActivity
                 // Membuka fragment pengaturan (Pastikan file MainSettingsFragment ada di package settings)
-                val frag = com.AdiManuLateri3.settings.MainSettingsFragment(this, sharedPref)
-                frag.show(act.supportFragmentManager, "Settings")
+                // Jika Anda belum memiliki file settings, baris ini bisa di-comment dulu
+                // val frag = com.AdiManuLateri3.settings.MainSettingsFragment(this, sharedPref)
+                // frag.show(act.supportFragmentManager, "Settings")
             } catch (e: Exception) {
                 Log.e("Lateri3Play", "Error opening settings: ${e.message}")
             }
