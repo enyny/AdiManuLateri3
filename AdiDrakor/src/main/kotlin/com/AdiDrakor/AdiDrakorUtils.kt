@@ -28,7 +28,7 @@ val mimeType = arrayOf(
     "video/x-msvideo"
 )
 
-// ================= ADIDEWASA HELPER (NEW) =================
+// ================= ADIDEWASA HELPER =================
 object AdiDewasaHelper {
     // Header statis agar terlihat seperti browser asli (Chrome Windows)
     val headers = mapOf(
@@ -40,8 +40,6 @@ object AdiDewasaHelper {
     )
 
     // Fungsi untuk membersihkan judul agar mudah dicari
-    // Contoh: "Goblin: The Lonely and Great God" -> "Goblin"
-    // Contoh: "Pasilip Ni Azi (2025)" -> "Pasilip Ni Azi"
     fun normalizeQuery(title: String): String {
         return title
             .replace(Regex("\\(\\d{4}\\)"), "") // Hapus tahun (2025)
@@ -138,16 +136,6 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
     return AniIds(res?.id, res?.idMal)
 
-}
-
-fun generateWpKey(r: String, m: String): String {
-    val rList = r.split("\\x").toTypedArray()
-    var n = ""
-    val decodedM = safeBase64Decode(m.reversed())
-    for (s in decodedM.split("|")) {
-        n += "\\x" + rList[Integer.parseInt(s) + 1]
-    }
-    return n
 }
 
 fun safeBase64Decode(input: String): String {
