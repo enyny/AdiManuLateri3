@@ -1,27 +1,48 @@
 package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.APIHolder.capitalize
-import com.lagradost.cloudstream3.APIHolder.unixTimeMS
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.cloudstream3.network.WebViewResolver
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.RequestBodyTypes
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
-import org.json.JSONObject 
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
 import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
+import com.Adicinemax21.Adicinemax21.Companion.idlixAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidsrcccAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidSrcAPI
+import com.Adicinemax21.Adicinemax21.Companion.xprimeAPI
+import com.Adicinemax21.Adicinemax21.Companion.watchSomuchAPI
+import com.Adicinemax21.Adicinemax21.Companion.mappleAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidlinkAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidfastAPI
+import com.Adicinemax21.Adicinemax21.Companion.wyzieAPI
+import com.Adicinemax21.Adicinemax21.Companion.vixsrcAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidsrccxAPI
+import com.Adicinemax21.Adicinemax21.Companion.superembedAPI
+import com.Adicinemax21.Adicinemax21.Companion.vidrockAPI
+import com.Adicinemax21.Adicinemax21.Companion.gomoviesAPI
 
 object Adicinemax21Extractor : Adicinemax21() {
 
@@ -126,9 +147,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
     }
 
-    // ================== KISSKH SOURCE (INTEGRATED) ==================
-    // Menggunakan API Rahasia dari Google Script (classes.dex)
-    
+    // ================== KISSKH SOURCE ==================
     suspend fun invokeKisskh(
         title: String,
         year: Int?,
@@ -138,44 +157,32 @@ object Adicinemax21Extractor : Adicinemax21() {
         callback: (ExtractorLink) -> Unit
     ) {
         val mainUrl = "https://kisskh.ovh"
-        // Kunci API Rahasia yang ditemukan di classes.dex (Source 294 & 332)
         val KISSKH_API = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
         val KISSKH_SUB_API = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
 
         try {
-            // 1. SEARCH
             val searchRes = app.get("$mainUrl/api/DramaList/Search?q=$title&type=0").text
             val searchList = tryParseJson<ArrayList<KisskhMedia>>(searchRes) ?: return
 
-            // 2. MATCHING
             val matched = searchList.find { 
                 it.title.equals(title, true) 
             } ?: searchList.firstOrNull { it.title?.contains(title, true) == true } ?: return
 
             val dramaId = matched.id ?: return
             
-            // 3. GET EPISODE LIST
             val detailRes = app.get("$mainUrl/api/DramaList/Drama/$dramaId?isq=false").parsedSafe<KisskhDetail>() ?: return
             val episodes = detailRes.episodes ?: return
 
-            // 4. FIND TARGET EPISODE
             val targetEp = if (season == null) {
-                // Movie: Ambil episode terakhir/satu-satunya
                 episodes.lastOrNull()
             } else {
-                // Series: Hitung berdasarkan season & episode
-                // Kisskh biasanya list flat, jadi kita coba cari berdasarkan urutan atau asumsi
-                // Logika sederhana: Episode request user harus match dengan 'number' di API
                 episodes.find { it.number?.toInt() == episode }
             } ?: return
 
             val epsId = targetEp.id ?: return
 
-            // 5. GET KKEY (Video Token)
             val kkeyVideo = app.get("$KISSKH_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
 
-            // 6. GET VIDEO SOURCES
-            // Endpoint disamarkan sebagai .png (Source 15 di KisskhProvider.kt)
             val videoUrl = "$mainUrl/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkeyVideo"
             val sources = app.get(videoUrl).parsedSafe<KisskhSources>()
 
@@ -204,8 +211,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
             }
 
-            // 7. GET SUBTITLES
-            // Perlu Key Subtitle khusus dari API Rahasia kedua
             val kkeySub = app.get("$KISSKH_SUB_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
             val subJson = app.get("$mainUrl/api/Sub/$epsId?kkey=$kkeySub").text
             
@@ -223,7 +228,6 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
     }
 
-    // Data Classes Khusus Kisskh (Private agar tidak konflik)
     private data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
     private data class KisskhDetail(@JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>?)
     private data class KisskhEpisode(@JsonProperty("id") val id: Int?, @JsonProperty("number") val number: Double?)
@@ -437,7 +441,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
     }
 
-    // ================== IDLIX SOURCE ==================
+    // ================== IDLIX SOURCE (REFACTORED NEW LOGIC) ==================
     suspend fun invokeIdlix(
         title: String? = null,
         year: Int? = null,
@@ -452,72 +456,81 @@ object Adicinemax21Extractor : Adicinemax21() {
         } else {
             "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
         }
-        invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
-    }
 
-    private suspend fun invokeWpmovies(
-        name: String? = null,
-        url: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        fixIframe: Boolean = false,
-        encrypt: Boolean = false,
-        hasCloudflare: Boolean = false,
-        interceptor: Interceptor? = null,
-    ) {
+        try {
+            val response = app.get(url)
+            val document = response.document
+            
+            // Extract Nonce and Time from script
+            val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
+            val script = document.select("script:containsData(window.idlix)").toString()
+            val match = scriptRegex.find(script)
+            val idlixNonce = match?.groups?.get(1)?.value ?: ""
+            val idlixTime = match?.groups?.get(2)?.value ?: ""
 
-        val res = app.get(url ?: return, interceptor = if (hasCloudflare) interceptor else null)
-        val referer = getBaseUrl(res.url)
-        val document = res.document
-        document.select("ul#playeroptionsul > li").map {
-            Triple(
-                it.attr("data-post"),
-                it.attr("data-nume"),
-                it.attr("data-type")
-            )
-        }.amap { (id, nume, type) ->
-            val json = app.post(
-                url = "$referer/wp-admin/admin-ajax.php",
-                data = mapOf(
-                    "action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type
-                ),
-                headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest"),
-                referer = url,
-                interceptor = if (hasCloudflare) interceptor else null
-            ).text
-            val source = tryParseJson<ResponseHash>(json)?.let {
-                when {
-                    encrypt -> {
-                        val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m")
-                            ?: return@amap
-                        val key = generateWpKey(it.key ?: return@amap, meta)
-                        AesHelper.cryptoAESHandler(
-                            it.embed_url,
-                            key.toByteArray(),
-                            false
-                        )?.fixUrlBloat()
-                    }
+            document.select("ul#playeroptionsul > li").amap { li ->
+                val id = li.attr("data-post")
+                val nume = li.attr("data-nume")
+                val type = li.attr("data-type")
 
-                    fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
-                    else -> it.embed_url
-                }
-            } ?: return@amap
-            when {
-                source.startsWith("https://jeniusplay.com") -> {
-                    Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
-                }
+                val jsonResponse = app.post(
+                    url = "$idlixAPI/wp-admin/admin-ajax.php",
+                    data = mapOf(
+                        "action" to "doo_player_ajax",
+                        "post" to id,
+                        "nume" to nume,
+                        "type" to type,
+                        "_n" to idlixNonce,
+                        "_p" to id,
+                        "_t" to idlixTime
+                    ),
+                    referer = url,
+                    headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest")
+                ).parsedSafe<ResponseHash>() ?: return@amap
 
-                !source.contains("youtube") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
-                }
+                val metrix = parseJson<AesData>(jsonResponse.embed_url).m
+                val password = createKey(jsonResponse.key ?: return@amap, metrix)
+                val decrypted = AesHelper.cryptoAESHandler(
+                    jsonResponse.embed_url, 
+                    password.toByteArray(), 
+                    false
+                )?.fixUrlBloat() ?: return@amap
 
-                else -> {
-                    return@amap
+                if (!decrypted.contains("youtube")) {
+                    loadExtractor(decrypted, idlixAPI, subtitleCallback, callback)
                 }
             }
-
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
+
+    // Helper: Create Key for Idlix AES
+    private fun createKey(r: String, m: String): String {
+        val rList = r.split("\\x").filter { it.isNotEmpty() }.toTypedArray()
+        var n = ""
+        var reversedM = m.split("").reversed().joinToString("")
+        while (reversedM.length % 4 != 0) reversedM += "="
+        val decodedBytes = try {
+            base64Decode(reversedM)
+        } catch (_: Exception) {
+            return ""
+        }
+        val decodedM = String(decodedBytes.toCharArray())
+        for (s in decodedM.split("|")) {
+            try {
+                val index = Integer.parseInt(s)
+                if (index in rList.indices) {
+                    n += "\\x" + rList[index]
+                }
+            } catch (_: Exception) { }
+        }
+        return n
+    }
+
+    // Data class for AES Data
+    private data class AesData(@JsonProperty("m") val m: String)
+
 
     // ================== VIDSRCCC SOURCE ==================
     suspend fun invokeVidsrccc(
@@ -654,14 +667,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                             ExtractorLinkType.M3U8
                         )
                     )
-                }
-
-                server.text().equals("2Embed", ignoreCase = true) -> {
-                    return@amap
-                }
-
-                server.text().equals("Superembed", ignoreCase = true) -> {
-                    return@amap
                 }
 
                 else -> {
@@ -1207,26 +1212,20 @@ object Adicinemax21Extractor : Adicinemax21() {
             val json = parseCinemaOSSources(decryptedJson.toString())
             
             // SMART FILTER: 
-            // 1. BLOKIR SERVER JELEK
             val blockedServers = listOf(
                 "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", 
                 "Apollo", "Kratos", "Flick", "Hollywood", 
                 "Flash", "Ophim", "Bollywood", "Apex", "Universe", 
-                // "Rizz",  <-- RIZZ KITA IZINKAN (WHITELIST)
                 "Hindi", "Bengali", "Tamil", "Telugu" 
             )
             
-            // Hapus "Rizz" dari daftar blokir (jaga-jaga)
             val finalBlocked = blockedServers.filter { !it.equals("Rizz", ignoreCase = true) }
 
-            // 2. PRIORITASKAN RIZZ DI ATAS
             val sortedSources = json.filter {
                 val serverName = it["server"] ?: ""
-                // Cek apakah server ada di daftar blokir
                 val isBlocked = finalBlocked.any { blocked -> serverName.contains(blocked, ignoreCase = true) }
                 !isBlocked
             }.sortedByDescending { 
-                // Jika nama server mengandung "Rizz", taruh di paling atas (index 0)
                 (it["server"] ?: "").contains("Rizz", ignoreCase = true)
             }
 
@@ -1341,131 +1340,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                     Player4uLinkData(name = titleText, url = element.attr("onclick"))
                 } else null
             }
-        }
-    }
-
-    // ================== YFLIX SOURCE (INTEGRATED) ==================
-    // Requires: MegaUp Extractor in Extractors.kt
-    
-    suspend fun invokeYflix(
-        title: String,
-        year: Int?,
-        season: Int?,
-        episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val mainUrl = "https://yflix.to"
-        
-        // --- API KEYS RAHASIA (DARI CLASSES.DEX) ---
-        // Digunakan untuk mengenkripsi query search & decode ID
-        val YFX_ENC_API = "https://enc-dec.app/api/enc-movies-flix" 
-        // Digunakan untuk decrypt iframe final
-        val YFX_DEC_API = "https://enc-dec.app/api/dec-movies-flix" 
-
-        try {
-            // 1. HELPER: Fungsi Decode/Encode sesuai logika Yflix.kt
-            suspend fun yflixDecode(text: String): String? {
-                return try {
-                    // Yflix.kt menggunakan GET ke endpoint ENC untuk decode ID (aneh tapi begitu kodenya)
-                    val res = app.get("$YFX_ENC_API?text=$text").text
-                    JSONObject(res).getString("result")
-                } catch (e: Exception) { null }
-            }
-
-            suspend fun yflixDecodeReverse(text: String): String? {
-                return try {
-                    val jsonBody = """{"text":"$text"}""".toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-                    val res = app.post(YFX_DEC_API, requestBody = jsonBody).text
-                    JSONObject(res).getString("result")
-                } catch (e: Exception) { null }
-            }
-
-            // 2. SEARCHING
-            // Yflix butuh delay agar terlihat seperti manusia
-            // delay(1000) 
-
-            val searchHeaders = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                "Referer" to "$mainUrl/"
-            )
-
-            val searchUrl = "$mainUrl/browser?keyword=$title"
-            val searchDoc = app.get(searchUrl, headers = searchHeaders).document
-            
-            // Cari item yang cocok (Title & Year)
-            val targetItem = searchDoc.select("div.film-section.md div.item").find { 
-                val iTitle = it.select("a.title").text().trim()
-                val iLink = it.select("a.poster").attr("href")
-                // Logika pencocokan sederhana
-                iTitle.equals(title, true) || iTitle.contains(title, true)
-            }
-
-            val itemPath = targetItem?.select("a.poster")?.attr("href") ?: return
-            val keyword = itemPath.substringAfter("/watch/").substringBefore(".")
-            
-            // 3. LOAD PAGE & DATA ID
-            val pageUrl = fixUrl(itemPath, mainUrl)
-            val pageDoc = app.get(pageUrl, headers = searchHeaders).document
-            
-            val dataId = pageDoc.select("#movie-rating").attr("data-id")
-            val decodedDataId = yflixDecode(dataId) ?: return
-
-            // 4. GET EPISODES / LINKS
-            val ajaxUrl = "$mainUrl/ajax/episodes/list?keyword=$keyword&id=$dataId&_=$decodedDataId"
-            val ajaxDoc = Jsoup.parse(app.get(ajaxUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()?.getDocument()?.outerHtml() ?: return)
-
-            val targetEid = if (season != null && episode != null) {
-                // Logic TV Series
-                val seasonBlock = ajaxDoc.select("ul.episodes[data-season=$season]")
-                seasonBlock.select("a[num=$episode]").attr("eid")
-            } else {
-                // Logic Movie
-                ajaxDoc.select("ul.episodes a").firstOrNull()?.attr("eid")
-            } ?: return
-
-            if (targetEid.isEmpty()) return
-
-            // 5. GET SERVER LIST
-            val decodedEid = yflixDecode(targetEid)
-            val linksUrl = "$mainUrl/ajax/links/list?eid=$targetEid&_=$decodedEid"
-            val linksDoc = Jsoup.parse(app.get(linksUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()?.getDocument()?.outerHtml() ?: return)
-
-            // 6. PROCESS SERVERS
-            linksDoc.select("li.server").forEach { server ->
-                val lid = server.attr("data-lid")
-                if (lid.isNotBlank()) {
-                    val decodedLid = yflixDecode(lid)
-                    val viewUrl = "$mainUrl/ajax/links/view?id=$lid&_=$decodedLid"
-                    
-                    val viewJson = app.get(viewUrl, headers = searchHeaders).parsedSafe<YflixAjaxResponse>()
-                    val resultEncrypted = viewJson?.result
-                    
-                    if (!resultEncrypted.isNullOrBlank()) {
-                        val finalJson = yflixDecodeReverse(resultEncrypted)
-                        if (finalJson != null) {
-                            val iframeUrl = JSONObject(finalJson).optString("url")
-                            if (iframeUrl.isNotEmpty()) {
-                                // PANGGIL EXTRACTOR MEGAUP YANG SUDAH KITA SIAPKAN
-                                loadExtractor(iframeUrl, "Yflix", subtitleCallback, callback)
-                            }
-                        }
-                    }
-                }
-            }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // Class helper untuk parsing JSON respon Yflix
-    data class YflixAjaxResponse(
-        @JsonProperty("status") val status: Boolean,
-        @JsonProperty("result") val result: String
-    ) {
-        fun getDocument(): Document {
-            return Jsoup.parse(result)
         }
     }
 
