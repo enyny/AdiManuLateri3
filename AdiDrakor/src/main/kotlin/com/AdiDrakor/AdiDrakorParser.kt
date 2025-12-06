@@ -4,6 +4,18 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
+// ================== IDLIX DATA CLASSES ==================
+data class AesData(
+    @JsonProperty("m") val m: String,
+)
+
+data class ResponseHash(
+    @JsonProperty("embed_url") val embed_url: String,
+    @JsonProperty("key") val key: String,
+)
+
+// ================== EXISTING DATA CLASSES ==================
+
 data class AniIds(var id: Int? = null, var idMal: Int? = null)
 
 data class TmdbDate(
@@ -138,12 +150,6 @@ data class GpressSources(
     @JsonProperty("file") val file: String? = null,
     @JsonProperty("label") val label: Int? = null,
     @JsonProperty("max") val max: String,
-)
-
-data class ResponseHash(
-    @JsonProperty("embed_url") val embed_url: String,
-    @JsonProperty("key") val key: String? = null,
-    @JsonProperty("type") val type: String? = null,
 )
 
 data class KisskhEpisodes(
@@ -436,7 +442,7 @@ data class NepuSearch(
     )
 }
 
-// --- ADIDEWASA / DRAMAFULL MODELS (ADDED) ---
+// --- ADIDEWASA / DRAMAFULL MODELS ---
 data class AdiDewasaSearchResponse(
     @JsonProperty("data") val data: ArrayList<AdiDewasaItem>? = arrayListOf(),
     @JsonProperty("success") val success: Boolean? = null
@@ -447,5 +453,5 @@ data class AdiDewasaItem(
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("slug") val slug: String? = null,
     @JsonProperty("image") val image: String? = null,
-    @JsonProperty("year") val year: String? = null // JSON kadang return string/int
+    @JsonProperty("year") val year: String? = null 
 )
