@@ -33,6 +33,7 @@ import kotlin.math.roundToInt
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
     override val hasMainPage = true
+    override var lang = "id"
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
