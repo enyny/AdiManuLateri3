@@ -9,6 +9,9 @@ import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+// ADDED IMPORT FOR parseJson HERE
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
+
 import com.lagradost.nicehttp.RequestBodyTypes
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -22,7 +25,7 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import org.json.JSONObject 
 
-// MISSING IMPORTS ADDED HERE
+// ADDED CONCURRENCY/UTILITY IMPORTS THAT WERE MISSING IN PREVIOUS ITERATION
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.amapIndexed
 import com.lagradost.cloudstream3.base64Encode
@@ -415,7 +418,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         val script = getAndUnpack(serverRes.text)
         val key = """key\s*="\s*(\d+)"""".toRegex().find(script)?.groupValues?.get(1) ?: return
         
-        // FIXED: Use amap with Element type inference
+        // FIXED: amap import usage with explicit Element
         serverRes.document.select("ul li").amap { el: Element ->
             val server = el.attr("data-value")
             val encryptedData = app.get(
@@ -459,7 +462,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         } else {
             "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
         }
-        
+
         try {
             val response = app.get(url)
             val document = response.document
@@ -470,7 +473,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             val idlixNonce = match?.groups?.get(1)?.value ?: ""
             val idlixTime = match?.groups?.get(2)?.value ?: ""
 
-            // FIXED: amap syntax
+            // FIXED: amap import usage with explicit Element
             document.select("ul#playeroptionsul > li").amap { li: Element ->
                 val id = li.attr("data-post")
                 val nume = li.attr("data-nume")
@@ -532,6 +535,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
     private data class AesData(@JsonProperty("m") val m: String)
 
+
     // ================== VIDSRCCC SOURCE ==================
     suspend fun invokeVidsrccc(
         tmdbId: Int?,
@@ -562,7 +566,6 @@ object Adicinemax21Extractor : Adicinemax21() {
             "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
         }
 
-        // FIXED: amap import usage
         app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
             val sources =
                 app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
@@ -691,7 +694,7 @@ object Adicinemax21Extractor : Adicinemax21() {
     suspend fun invokeXprime(
         tmdbId: Int?,
         title: String? = null,
-        year: Int? = null,
+        year: Int?,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
@@ -1316,7 +1319,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                     }
 
                     val qualityMatch = Regex(
-                        """(\d{3,4}p|4K|CAM|HQ|HD|SD|WEBRip|DVDRip|BluRay|HDRip|TVRip|HDTC|PREDVD)""",
+                        """(\d{3,4}p|4K|CAM|HQ|HD|SD|WEBRip|DVDRIP|BluRay|HDRip|TVRip|HDTC|PREDVD)""",
                         RegexOption.IGNORE_CASE
                     ).find(displayName)?.value?.uppercase() ?: "UNKNOWN"
 
