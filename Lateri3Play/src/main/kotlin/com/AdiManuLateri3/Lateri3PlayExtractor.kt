@@ -1,6 +1,6 @@
 package com.AdiManuLateri3
 
-import com.fasterxml.jackson.annotation.JsonProperty // Added this import
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
@@ -615,74 +615,6 @@ object Lateri3PlayExtractor {
     }
 
     private data class AesData(@JsonProperty("m") val m: String)
-
-    // ================== YFLIX SOURCE ==================
-    suspend fun invokeYflix(title: String, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val mainUrl = "https://yflix.to"
-        val YFX_ENC_API = "https://enc-dec.app/api/enc-movies-flix" 
-        val YFX_DEC_API = "https://enc-dec.app/api/dec-movies-flix" 
-
-        suspend fun yflixDecode(text: String): String? {
-            return try { JSONObject(app.get("$YFX_ENC_API?text=$text").text).getString("result") } catch (e: Exception) { null }
-        }
-        suspend fun yflixDecodeReverse(text: String): String? {
-            return try { 
-                val body = """{"text":"$text"}""".toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-                JSONObject(app.post(YFX_DEC_API, requestBody = body).text).getString("result") 
-            } catch (e: Exception) { null }
-        }
-
-        try {
-            val searchHeaders = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36", "Referer" to "$mainUrl/")
-            val searchUrl = "$mainUrl/browser?keyword=$title"
-            val searchDoc = app.get(searchUrl, headers = searchHeaders).document
-            
-            val targetItem = searchDoc.select("div.film-section.md div.item").find { 
-                val iTitle = it.select("a.title").text().trim()
-                iTitle.equals(title, true) || iTitle.contains(title, true)
-            }
-            val itemPath = targetItem?.select("a.poster")?.attr("href") ?: return
-            val keyword = itemPath.substringAfter("/watch/").substringBefore(".")
-            val pageUrl = fixUrl(itemPath, mainUrl)
-            
-            val pageDoc = app.get(pageUrl, headers = searchHeaders).document
-            val dataId = pageDoc.select("#movie-rating").attr("data-id")
-            val decodedDataId = yflixDecode(dataId) ?: return
-
-            val ajaxUrl = "$mainUrl/ajax/episodes/list?keyword=$keyword&id=$dataId&_=$decodedDataId"
-            val ajaxJson = app.get(ajaxUrl, headers = searchHeaders).text
-            val ajaxDoc = Jsoup.parse(JSONObject(ajaxJson).getString("result"))
-
-            val targetEid = if (season != null && episode != null) {
-                ajaxDoc.select("ul.episodes[data-season=$season] a[num=$episode]").attr("eid")
-            } else {
-                ajaxDoc.select("ul.episodes a").firstOrNull()?.attr("eid")
-            } ?: return
-
-            if (targetEid.isEmpty()) return
-            val decodedEid = yflixDecode(targetEid)
-            val linksUrl = "$mainUrl/ajax/links/list?eid=$targetEid&_=$decodedEid"
-            val linksJson = app.get(linksUrl, headers = searchHeaders).text
-            val linksDoc = Jsoup.parse(JSONObject(linksJson).getString("result"))
-
-            linksDoc.select("li.server").forEach { server ->
-                val lid = server.attr("data-lid")
-                if (lid.isNotBlank()) {
-                    val decodedLid = yflixDecode(lid)
-                    val viewUrl = "$mainUrl/ajax/links/view?id=$lid&_=$decodedLid"
-                    val resultEncrypted = JSONObject(app.get(viewUrl, headers = searchHeaders).text).getString("result")
-                    
-                    if (!resultEncrypted.isNullOrBlank()) {
-                        val finalJson = yflixDecodeReverse(resultEncrypted)
-                        if (finalJson != null) {
-                            val iframeUrl = JSONObject(finalJson).optString("url")
-                            if (iframeUrl.isNotEmpty()) loadExtractor(iframeUrl, "Yflix", subtitleCallback, callback)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) { e.printStackTrace() }
-    }
 
     // ================== VIDSRCCC SOURCE ==================
     suspend fun invokeVidsrccc(tmdbId: Int?, imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
