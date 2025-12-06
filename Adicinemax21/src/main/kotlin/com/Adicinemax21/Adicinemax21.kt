@@ -2,8 +2,8 @@ package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
-import com.Adicinemax21.Adicinemax21Extractor.invokeYflix // Integrasi Yflix
-import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh // Integrasi Kisskh
+// Removed: invokeYflix
+import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
@@ -88,30 +88,19 @@ open class Adicinemax21 : TmdbProvider() {
 
     }
 
-    // CATATAN: Semua URL di bawah ini sudah difilter 'gte=2020-01-01' (2020 ke atas)
     override val mainPage = mainPageOf(
-        // 1. Trending & Popular (Fresh 2020+)
         "$tmdbAPI/trending/movie/day?api_key=$apiKey&region=US&without_genres=16" to "Trending Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "Popular Movies (2020+)",
         "$tmdbAPI/discover/tv?api_key=$apiKey&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "Popular TV Shows (2020+)",
-
-        // 2. Streaming Giants (Netflix & HBO) - 2020+
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "Netflix Originals (New)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "Netflix Movies (New)",
-        
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "HBO Originals (New)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=384|1899&watch_region=US&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "HBO Movies (New)",
-
-        // 3. Indonesian Content (2020+)
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc&first_air_date.gte=2020-01-01" to "Indonesian Series (2020+)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16,27&sort_by=popularity.desc&primary_release_date.gte=2020-01-01" to "Indonesian Movies (2020+)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&with_genres=27&without_genres=16&sort_by=popularity.desc&primary_release_date.gte=2020-01-01" to "Indonesian Horror (2020+)",
-
-        // 4. Asian Dramas (2020+)
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_genres=16&first_air_date.gte=2020-01-01" to "Korean Dramas (2020+)",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_genres=16&first_air_date.gte=2020-01-01" to "Chinese Dramas (2020+)",
-
-        // 5. International Genres (2020+)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Action Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Sci-Fi Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Horror Movies",
@@ -358,18 +347,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. YFLIX (NEW! General Movies)
-            {
-                invokeYflix(
-                    res.title ?: return@runAllAsync,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 3. Adimoviebox (Direct Source)
+            // 2. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -380,7 +358,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 4. JeniusPlay (via Idlix)
+            // 3. JeniusPlay (via Idlix Baru)
             {
                 invokeIdlix(
                     res.title,
@@ -391,11 +369,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 5. Vidlink
+            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 6. Vidplay (via Vidsrccc)
+            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -406,11 +384,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 7. Vixsrc (Alpha)
+            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 8. CinemaOS (Smart Filtered)
+            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -423,7 +401,7 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 9. Player4U
+            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
