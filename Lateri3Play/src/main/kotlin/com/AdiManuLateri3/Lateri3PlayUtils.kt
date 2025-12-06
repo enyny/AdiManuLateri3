@@ -47,7 +47,7 @@ fun safeBase64Decode(input: String): String {
 fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
-    // Perubahan di sini: menggunakan m.reversed() langsung, bukan split/join
+    // Perubahan di sini: menggunakan m.reversed() langsung
     val decodedM = safeBase64Decode(m.reversed())
     for (s in decodedM.split("|")) {
         if (s.isNotEmpty()) {
@@ -326,6 +326,26 @@ object CryptoJS {
     }
 }
 
+// ================= PERBAIKAN: MENAMBAHKAN CryptoAES =================
+object CryptoAES {
+    private const val KEY_SIZE = 32
+    private const val IV_SIZE = 16
+    private const val HASH_CIPHER = "AES/CBC/PKCS7Padding"
+    private const val AES = "AES"
+
+    fun decrypt(cipherText: String, keyBytes: ByteArray, ivBytes: ByteArray): String {
+        return try {
+            val cipherTextBytes = base64DecodeArray(cipherText)
+            val cipher = Cipher.getInstance(HASH_CIPHER)
+            val keyS = SecretKeySpec(keyBytes, AES)
+            cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(ivBytes))
+            cipher.doFinal(cipherTextBytes).toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+}
+
 fun String.decodeHex(): ByteArray {
     check(length % 2 == 0) { "Must have an even length" }
     return chunked(2)
@@ -345,8 +365,6 @@ fun getLanguage(code: String): String {
     val lower = code.lowercase()
     return languageMap.entries.firstOrNull { lower in it.value }?.key ?: "UnKnown"
 }
-
-// ... (Helper lain tetap)
 
 suspend fun getPlayer4uUrl(
     name: String,
