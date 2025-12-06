@@ -2,8 +2,7 @@ package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
-// Removed: invokeYflix
-import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh
+import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
@@ -33,7 +32,6 @@ import kotlin.math.roundToInt
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
     override val hasMainPage = true
-    override var lang = "id"
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
@@ -57,7 +55,7 @@ open class Adicinemax21 : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv6.idlixku.com"
+        const val idlixAPI = "https://tv10.idlixku.com" // Update ke domain terbaru jika perlu
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -326,7 +324,18 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. AdiDewasa (Priority)
+            // 0. IDLIX / JENIUSPLAY (PRIORITAS UTAMA)
+            {
+                invokeIdlix(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 1. AdiDewasa (Asian Drama Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -337,7 +346,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 1. KISSKH (NEW! Asian Drama/Anime)
+            // 2. KISSKH (Asian Drama/Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -348,21 +357,10 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. Adimoviebox (Direct Source)
+            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 3. JeniusPlay (via Idlix Baru)
-            {
-                invokeIdlix(
-                    res.title,
                     res.year,
                     res.season,
                     res.episode,
