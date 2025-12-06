@@ -34,11 +34,7 @@ class Lateri3PlayPlugin : Plugin() {
         registerExtractorAPI(Ridoo())
 
         // 3. Mendaftarkan Custom Extractors (BARU - Adicinemax21)
-        registerExtractorAPI(Jeniusplay())  // Diganti dari Jeniusplay2 ke Jeniusplay (Source Baru)
-        registerExtractorAPI(MegaUp())      // Untuk Yflix
-        registerExtractorAPI(Fourspromax()) // Clone MegaUp
-        registerExtractorAPI(Rapidairmax()) // Clone MegaUp
-        registerExtractorAPI(Rapidshare())  // Clone MegaUp
+        registerExtractorAPI(Jeniusplay())  // Untuk Idlix
 
         // 4. Register Aliases
         registerExtractorAPI(Driveleech())
