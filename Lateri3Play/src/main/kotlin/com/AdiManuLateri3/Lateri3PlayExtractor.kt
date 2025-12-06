@@ -83,7 +83,7 @@ object Lateri3PlayExtractor {
     }
 
     // =========================================================================
-    // BAGIAN 1: EXTRACTOR LAMA (DARI LATERI3PLAY) - TETAP DIPERTAHANKAN
+    // BAGIAN 1: EXTRACTOR LAMA (DARI LATERI3PLAY)
     // =========================================================================
 
     suspend fun invokeUhdmovies(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, callback: (ExtractorLink) -> Unit, subtitleCallback: (SubtitleFile) -> Unit) {
@@ -383,10 +383,9 @@ object Lateri3PlayExtractor {
     }
 
     // =========================================================================
-    // BAGIAN 2: SOURCE BARU (DARI ADICINEMAX21) - DITAMBAHKAN SESUAI PERMINTAAN
+    // BAGIAN 2: SOURCE BARU (DARI ADICINEMAX21)
     // =========================================================================
 
-    // ================== ADIDEWASA SOURCE ==================
     @Suppress("UNCHECKED_CAST")
     suspend fun invokeAdiDewasa(
         title: String,
@@ -458,7 +457,6 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== KISSKH SOURCE ==================
     suspend fun invokeKisskh(
         title: String,
         year: Int?,
@@ -502,7 +500,6 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== ADIMOVIEBOX SOURCE ==================
     suspend fun invokeAdimoviebox(title: String, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val searchUrl = "https://moviebox.ph/wefeed-h5-bff/web/subject/search"
         val streamApi = "https://fmoviesunblocked.net"
@@ -544,14 +541,13 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== IDLIX SOURCE (DIPERBAIKI) ==================
     suspend fun invokeIdlix(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // Helper khusus Idlix (WPMovies) - DENGAN FIX URL
+    // ========== PERBAIKAN PADA LOGIKA IDLIX ==========
     private suspend fun invokeWpmovies(name: String? = null, url: String? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, fixIframe: Boolean = false, encrypt: Boolean = false) {
         val res = app.get(url ?: return)
         val referer = getBaseUrl(res.url)
@@ -563,8 +559,13 @@ object Lateri3PlayExtractor {
                     encrypt -> {
                         val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m") ?: return@forEach
                         val key = generateWpKey(it.key ?: return@forEach, meta)
-                        // === PERBAIKAN DI SINI: Menambahkan replace untuk membersihkan URL ===
-                        com.lagradost.cloudstream3.extractors.helper.AesHelper.cryptoAESHandler(it.embed_url, key.toByteArray(), false)?.replace("\\", "")?.replace("\"", "")
+                        
+                        // MENGGUNAKAN CryptoAES.decrypt DARI Utils KITA (BUKAN BAWAAN CLOUDSTREAM)
+                        // KARENA BAWAAN CLOUDSTREAM KADANG BERBEDA IMPLEMENTASI PADDING-NYA
+                        val decrypted = CryptoAES.decrypt(it.embed_url, key.toByteArray(), ByteArray(16))
+                        
+                        // MEMBERSIHKAN URL HASIL DEKRIPSI
+                        decrypted.replace("\\", "").replace("\"", "")
                     }
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
                     else -> it.embed_url
@@ -579,7 +580,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== YFLIX SOURCE ==================
     suspend fun invokeYflix(title: String, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val mainUrl = "https://yflix.to"
         val YFX_ENC_API = "https://enc-dec.app/api/enc-movies-flix" 
@@ -647,7 +647,6 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== VIDSRCCC SOURCE ==================
     suspend fun invokeVidsrccc(tmdbId: Int?, imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val url = if (season == null) "$vidsrcccAPI/v2/embed/movie/$tmdbId" else "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
         val script = app.get(url).document.selectFirst("script:containsData(userId)")?.data() ?: return
@@ -674,7 +673,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== VIDSRC SOURCE ==================
     suspend fun invokeVidsrc(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val api = "https://cloudnestra.com"
         val url = if (season == null) "$vidSrcAPI/embed/movie?imdb=$imdbId" else "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
@@ -688,7 +686,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== MAPPLE SOURCE ==================
     suspend fun invokeMapple(tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val mediaType = if (season == null) "movie" else "tv"
         val url = if (season == null) "$mappleAPI/watch/$mediaType/$tmdbId" else "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId"
@@ -699,7 +696,6 @@ object Lateri3PlayExtractor {
         if (videoLink != null) callback.invoke(newExtractorLink("Mapple", "Mapple", videoLink, ExtractorLinkType.M3U8) { this.referer = "$mappleAPI/" })
     }
 
-    // ================== VIDLINK SOURCE ==================
     suspend fun invokeVidlink(tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) "$vidlinkAPI/$type/$tmdbId" else "$vidlinkAPI/$type/$tmdbId/$season/$episode"
@@ -707,7 +703,6 @@ object Lateri3PlayExtractor {
         if (videoLink != null) callback.invoke(newExtractorLink("Vidlink", "Vidlink", videoLink, ExtractorLinkType.M3U8) { this.referer = "$vidlinkAPI/" })
     }
 
-    // ================== VIDFAST SOURCE ==================
     suspend fun invokeVidfast(tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
         val type = if (season == null) "movie" else "tv"
@@ -723,7 +718,6 @@ object Lateri3PlayExtractor {
             }
     }
 
-    // ================== VIXSRC SOURCE ==================
     suspend fun invokeVixsrc(tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val proxy = "https://proxy.heistotron.uk"
         val type = if (season == null) "movie" else "tv"
@@ -739,7 +733,6 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== SUPEREMBED SOURCE ==================
     suspend fun invokeSuperembed(tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val api = "https://streamingnow.mov"
         val path = if (season == null) "" else "&s=$season&e=$episode"
@@ -760,14 +753,12 @@ object Lateri3PlayExtractor {
         }
     }
 
-    // ================== PLAYER4U SOURCE ==================
     suspend fun invokePlayer4U(title: String?, season: Int?, episode: Int?, year: Int?, callback: (ExtractorLink) -> Unit) {
         if (title == null) return
         val queryWithEpisode = season?.let { "$title S${"%02d".format(it)}E${"%02d".format(episode)}" }
         val baseQuery = queryWithEpisode ?: title
         val encodedQuery = baseQuery.replace(" ", "+")
         
-        // Parallel fetch for pages 0-4
         try {
              (0..4).map { page ->
                 val url = "$Player4uApi/embed?key=$encodedQuery" + if (page > 0) "&page=$page" else ""
