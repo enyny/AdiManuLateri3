@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
-// MENGHAPUS IMPORT base64UrlEncode YANG ERROR
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -30,7 +29,7 @@ import kotlin.math.min
 
 // ================= UTILITIES UMUM =================
 
-// FUNGSI BARU MANUAL UNTUK MENGGANTIKAN YANG HILANG
+// FUNGSI MANUAL PENGGANTI base64UrlEncode YANG ERROR
 fun base64UrlEncode(input: ByteArray): String {
     return android.util.Base64.encodeToString(input, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
 }
@@ -82,7 +81,7 @@ suspend fun <T> retryIO(
             delay(delayTime)
         }
     }
-    return block() // percobaan terakhir, biarkan error jika gagal
+    return block()
 }
 
 // Helper untuk memuat Extractor dengan nama custom
@@ -503,7 +502,7 @@ object VidsrcHelper {
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
 
         val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
-        // MENGGUNAKAN FUNGSI MANUAL YANG KITA BUAT DI ATAS
+        // MENGGUNAKAN FUNGSI MANUAL YANG SUDAH KITA BUAT DI BAGIAN ATAS FILE INI
         return base64UrlEncode(encrypted)
     }
 }
