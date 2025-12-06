@@ -19,7 +19,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 // ==============================
-// UPDATED EXTRACTOR (JENIUSPLAY)
+// 1. JENIUSPLAY (DIPERBAIKI & ANTI-ERROR)
 // ==============================
 
 open class Jeniusplay2 : ExtractorApi() {
@@ -33,17 +33,16 @@ open class Jeniusplay2 : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Ambil source page
+        // Ambil halaman embed
         val res = app.get(url, referer = referer)
         val document = res.document
         
-        // Ambil hash dari parameter URL
+        // Perbaikan pengambilan Hash: lebih aman dari parameter tambahan (&)
         val hash = url.substringAfter("data=").substringBefore("&")
 
         var videoUrl: String? = null
 
-        // METODE 1: Coba API Lama (POST)
-        // Kadang masih bekerja untuk beberapa server lama
+        // METODE 1: Coba Request API (Cara Lama)
         try {
             val json = app.post(
                 url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
@@ -59,7 +58,7 @@ open class Jeniusplay2 : ExtractorApi() {
         }
 
         // METODE 2: JS Unpack (Fallback Kuat)
-        // Jika API gagal, kita bongkar kode JavaScript yang di-obfuscate
+        // Jika API gagal, bongkar kode JavaScript yang di-obfuscate
         if (videoUrl.isNullOrEmpty()) {
             document.select("script").forEach { script ->
                 val data = script.data()
@@ -85,7 +84,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     ExtractorLinkType.M3U8
                 ) {
                     this.referer = url
-                    // Header penting untuk menghindari error 403 Forbidden
+                    // Header penting agar tidak error 403 Forbidden
                     this.headers = mapOf(
                         "Origin" to mainUrl,
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
@@ -134,7 +133,7 @@ open class Jeniusplay2 : ExtractorApi() {
 }
 
 // ==============================
-// NEW YFLIX EXTRACTORS (MEGAUP & CLONES)
+// 2. YFLIX EXTRACTORS (TETAP ADA / TIDAK DIHAPUS)
 // ==============================
 
 class Fourspromax : MegaUp() {
