@@ -3,16 +3,17 @@ package com.AdiDrakor
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
-open class Jeniusplay2 : ExtractorApi() {
-    override val name = "Jeniusplay"
-    override val mainUrl = "https://jeniusplay.com"
+class Jeniusplay : ExtractorApi() {
+    override var name = "Jeniusplay"
+    override var mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -21,36 +22,34 @@ open class Jeniusplay2 : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val document = app.get(url, referer = "$mainUrl/").document
+        val document = app.get(url, referer = referer).document
         val hash = url.split("/").last().substringAfter("data=")
 
         val m3uLink = app.post(
             url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
             data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = url,
+            referer = referer,
             headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource
+        ).parsedSafe<ResponseSource>()?.videoSource
 
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                this.name,
-                m3uLink,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = url
-            }
-        )
+        if (m3uLink != null) {
+            callback.invoke(
+                newExtractorLink(
+                    name,
+                    name,
+                    url = m3uLink,
+                    ExtractorLinkType.M3U8
+                )
+            )
+        }
 
         document.select("script").map { script ->
             if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
                 val subData =
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
-                tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    // Menambahkan suppress agar tidak muncul peringatan (warning) saat kompilasi
-                    @Suppress("DEPRECATION")
+                AppUtils.tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        SubtitleFile(
+                        newSubtitleFile(
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
                         )
