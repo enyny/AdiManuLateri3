@@ -140,8 +140,6 @@ open class Lateri3Play(val sharedPref: SharedPreferences) : TmdbProvider() {
         
         val genres = res.genres?.mapNotNull { it.name }
         
-        // --- PERBAIKAN LOGIKA BAHASA ---
-        // Menggunakan properti baru 'originalLanguage' dan variabel camelCase
         val isCartoon = genres?.contains("Animation") ?: false
         val isAnime = isCartoon && (res.originalLanguage == "ja" || res.originalLanguage == "jp" || (res.credits?.cast?.any { it.originalName?.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF]+")) == true } == true))
         val isAsian = !isAnime && (res.originalLanguage == "ko" || res.originalLanguage == "zh")
