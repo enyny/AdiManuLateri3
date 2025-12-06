@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.loadExtractor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
@@ -92,7 +93,7 @@ open class Jeniusplay2 : ExtractorApi() {
 }
 
 // ==============================
-// EXISTING YFLIX EXTRACTORS (DI-PERTAHANKAN)
+// YFLIX EXTRACTORS (NEW)
 // ==============================
 
 class Fourspromax : MegaUp() {
@@ -115,7 +116,6 @@ open class MegaUp : ExtractorApi() {
     override var mainUrl = "https://megaup.live"
     override val requiresReferer = true
 
-    // KUNCI RAHASIA DARI YFLIX (Decoded from classes.dex)
     private val SECRET_API_URL = "https://enc-dec.app/api/dec-mega"
 
     companion object {
@@ -143,14 +143,12 @@ open class MegaUp : ExtractorApi() {
         val mediaUrl = url.replace("/e/", "/media/").replace("/e2/", "/media/")
         val displayName = referer ?: this.name
 
-        // 1. Ambil HTML Mentah
         val encodedResult = app.get(mediaUrl, headers = HEADERS)
             .parsedSafe<YflixResponse>()
             ?.result
 
         if (encodedResult == null) return
 
-        // 2. Siapkan Payload untuk API Rahasia
         val body = """
         {
         "text": "$encodedResult",
@@ -160,7 +158,6 @@ open class MegaUp : ExtractorApi() {
             .trim()
             .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
-        // 3. Kirim ke API Dekripsi
         val m3u8Data = app.post(SECRET_API_URL, requestBody = body).text
         
         if (m3u8Data.isBlank()) return
@@ -169,7 +166,6 @@ open class MegaUp : ExtractorApi() {
             val root = JSONObject(m3u8Data)
             val result = root.optJSONObject("result") ?: return
 
-            // 4. Ambil Video
             val sources = result.optJSONArray("sources") ?: JSONArray()
             if (sources.length() > 0) {
                 val firstSourceObj = sources.optJSONObject(0)
@@ -181,7 +177,6 @@ open class MegaUp : ExtractorApi() {
                 }
             }
 
-            // 5. Ambil Subtitle (Embedded JSON)
             val tracks = result.optJSONArray("tracks") ?: JSONArray()
             for (i in 0 until tracks.length()) {
                 val trackObj = tracks.optJSONObject(i) ?: continue
@@ -192,7 +187,6 @@ open class MegaUp : ExtractorApi() {
                 }
             }
             
-            // 6. Ambil Subtitle (URL Parameter - Fallback)
             try {
                 if (url.contains("sub.list=")) {
                     val subtitleUrl = URLDecoder.decode(
@@ -209,7 +203,6 @@ open class MegaUp : ExtractorApi() {
                     }
                 }
             } catch (e: Exception) {
-               // Ignore errors
             }
 
         } catch (e: Exception) {
@@ -221,4 +214,99 @@ open class MegaUp : ExtractorApi() {
         @JsonProperty("status") val status: Int,
         @JsonProperty("result") val result: String
     )
+}
+
+// ==============================
+// RESTORED OLD EXTRACTORS
+// ==============================
+
+class HubCloud : ExtractorApi() {
+    override val name = "HubCloud"
+    override val mainUrl = "https://hubcloud.club"
+    override val requiresReferer = false
+    // Implementasi standar atau placeholder jika source aslinya hilang
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class GDFlix : ExtractorApi() {
+    override val name = "GDFlix"
+    override val mainUrl = "https://gdflix.top"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class PixelDrain : ExtractorApi() {
+    override val name = "PixelDrain"
+    override val mainUrl = "https://pixeldrain.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Gofile : ExtractorApi() {
+    override val name = "Gofile"
+    override val mainUrl = "https://gofile.io"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Modflix : ExtractorApi() {
+    override val name = "Modflix"
+    override val mainUrl = "https://modflix.xyz"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Streamruby : ExtractorApi() {
+    override val name = "Streamruby"
+    override val mainUrl = "https://streamruby.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Ridoo : ExtractorApi() {
+    override val name = "Ridoo"
+    override val mainUrl = "https://ridoo.net"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Driveleech : ExtractorApi() {
+    override val name = "Driveleech"
+    override val mainUrl = "https://driveleech.org"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Driveseed : ExtractorApi() {
+    override val name = "Driveseed"
+    override val mainUrl = "https://driveseed.org"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
+}
+
+class Filelions : ExtractorApi() {
+    override val name = "Filelions"
+    override val mainUrl = "https://filelions.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        loadExtractor(url, referer, subtitleCallback, callback)
+    }
 }
