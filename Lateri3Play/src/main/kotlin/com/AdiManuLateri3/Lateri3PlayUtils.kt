@@ -33,7 +33,7 @@ fun base64UrlEncode(input: ByteArray): String {
     return android.util.Base64.encodeToString(input, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
 }
 
-// FUNGSI BARU: Safe Base64 Decode (Penting untuk Idlix)
+// PERBAIKAN: Fungsi Safe Base64 Decode (Wajib untuk Idlix)
 fun safeBase64Decode(input: String): String {
     var paddedInput = input
     val remainder = input.length % 4
@@ -43,10 +43,11 @@ fun safeBase64Decode(input: String): String {
     return base64Decode(paddedInput)
 }
 
-// PERBAIKAN TOTAL: Generate WP Key (Persis Adicinemax)
+// PERBAIKAN TOTAL: Logika Key Generator disamakan persis dengan Adicinemax
 fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
+    // Perubahan di sini: menggunakan m.reversed() langsung, bukan split/join
     val decodedM = safeBase64Decode(m.reversed())
     for (s in decodedM.split("|")) {
         if (s.isNotEmpty()) {
@@ -71,7 +72,7 @@ fun fixUrl(url: String, domain: String): String {
     return if (url.startsWith('/')) "$domain$url" else "$domain/$url"
 }
 
-// PEMBERSIH URL IDLIX
+// EXTENSION WAJIB: Membersihkan URL hasil dekripsi (Menghapus backslash)
 fun String.fixUrlBloat(): String {
     return this.replace("\"", "").replace("\\", "")
 }
@@ -253,7 +254,7 @@ suspend fun extractMdrive(url: String): List<String> {
     }
 }
 
-// ================= CRYPTO ENGINES (AES & Standard) =================
+// ================= CRYPTO ENGINES =================
 
 object CryptoJS {
     private const val KEY_SIZE = 256
@@ -332,32 +333,12 @@ fun String.decodeHex(): ByteArray {
         .toByteArray()
 }
 
-object CryptoAES {
-    private const val KEY_SIZE = 32
-    private const val IV_SIZE = 16
-    private const val HASH_CIPHER = "AES/CBC/PKCS7PADDING"
-    private const val AES = "AES"
-
-    fun decrypt(cipherText: String, keyBytes: ByteArray, ivBytes: ByteArray): String {
-        return try {
-            val cipherTextBytes = base64DecodeArray(cipherText)
-            val cipher = Cipher.getInstance(HASH_CIPHER)
-            val keyS = SecretKeySpec(keyBytes, AES)
-            cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(ivBytes))
-            cipher.doFinal(cipherTextBytes).toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            ""
-        }
-    }
-}
-
 val languageMap: Map<String, Set<String>> = mapOf(
     "Indonesian"  to setOf("id", "ind"),
     "English"     to setOf("en", "eng"),
-    // ... (Sisa bahasa sama, disingkat agar muat)
     "Japanese"    to setOf("ja", "jpn"),
-    "Korean"      to setOf("ko", "kor")
+    "Korean"      to setOf("ko", "kor"),
+    "Chinese"     to setOf("zh", "chi")
 )
 
 fun getLanguage(code: String): String {
@@ -365,7 +346,7 @@ fun getLanguage(code: String): String {
     return languageMap.entries.firstOrNull { lower in it.value }?.key ?: "UnKnown"
 }
 
-// ... (Helpers lain seperti getPlayer4uUrl, AdiDewasaHelper, VidsrcHelper tetap sama)
+// ... (Helper lain tetap)
 
 suspend fun getPlayer4uUrl(
     name: String,
