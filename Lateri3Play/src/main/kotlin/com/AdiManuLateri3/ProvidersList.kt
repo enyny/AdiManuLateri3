@@ -46,10 +46,20 @@ data class Provider(
 @RequiresApi(Build.VERSION_CODES.O)
 fun buildProviders(): List<Provider> {
     return listOf(
-        // ================== PRIORITAS TINGGI (ADICINEMAX21) ==================
+        // ================== PRIORITAS TINGGI (ADICINEMAX21 + IDLIX UPDATE) ==================
         Provider("adidewasa", "AdiDewasa (DramaFull)") { res, sub, cb ->
             invokeAdiDewasa(
                 title = res.title ?: return@Provider,
+                year = res.year,
+                season = res.season,
+                episode = res.episode,
+                subtitleCallback = sub,
+                callback = cb
+            )
+        },
+        Provider("idlix", "Idlix (Indo)") { res, sub, cb ->
+            invokeIdlix(
+                title = res.title,
                 year = res.year,
                 season = res.season,
                 episode = res.episode,
@@ -80,16 +90,6 @@ fun buildProviders(): List<Provider> {
         Provider("adimoviebox", "AdiMovieBox") { res, sub, cb ->
             invokeAdimoviebox(
                 title = res.title ?: return@Provider,
-                year = res.year,
-                season = res.season,
-                episode = res.episode,
-                subtitleCallback = sub,
-                callback = cb
-            )
-        },
-        Provider("idlix", "Idlix (Indo)") { res, sub, cb ->
-            invokeIdlix(
-                title = res.title,
                 year = res.year,
                 season = res.season,
                 episode = res.episode,
