@@ -1,8 +1,18 @@
 package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
+
+// ================== IDLIX DATA CLASSES ==================
+data class AesData(
+    @JsonProperty("m") val m: String,
+)
+
+data class ResponseHash(
+    @JsonProperty("embed_url") val embed_url: String,
+    @JsonProperty("key") val key: String,
+)
+
+// ================== EXISTING DATA CLASSES ==================
 
 data class AniIds(var id: Int? = null, var idMal: Int? = null)
 
@@ -138,12 +148,6 @@ data class GpressSources(
     @JsonProperty("file") val file: String? = null,
     @JsonProperty("label") val label: Int? = null,
     @JsonProperty("max") val max: String,
-)
-
-data class ResponseHash(
-    @JsonProperty("embed_url") val embed_url: String,
-    @JsonProperty("key") val key: String? = null,
-    @JsonProperty("type") val type: String? = null,
 )
 
 data class KisskhEpisodes(
@@ -459,7 +463,6 @@ data class Player4uLinkData(
     val url: String,
 )
 
-// ================== ADIDEWASA MODEL (NEW) ==================
 data class AdiDewasaSearchResponse(
     @JsonProperty("data") val data: ArrayList<AdiDewasaItem>? = arrayListOf(),
     @JsonProperty("success") val success: Boolean? = null
