@@ -18,8 +18,6 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-// Import baru untuk Idlix
-import com.lagradost.cloudstream3.extractors.helper.AesHelper 
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -248,7 +246,7 @@ object Lateri3PlayExtractor {
     private suspend fun processDriveLink(url: String, source: String, sub: (SubtitleFile)->Unit, cb: (ExtractorLink)->Unit) {
         when {
             url.contains("hubcloud") -> HubCloud().getUrl(url, source, sub, cb)
-            url.contains("gdflix") -> GDFlix().getUrl(url, source, sub, cb)
+            url.contains("gdlink") -> GDFlix().getUrl(url, source, sub, cb)
             else -> loadSourceNameExtractor(source, url, "", sub, cb)
         }
     }
@@ -546,85 +544,36 @@ object Lateri3PlayExtractor {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ================== IDLIX SOURCE (DIPERBAIKI) ==================
-    suspend fun invokeIdlix(
-        title: String? = null,
-        year: Int? = null,
-        season: Int? = null,
-        episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
+    // ================== IDLIX SOURCE ==================
+    suspend fun invokeIdlix(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
-        val url = if (season == null) {
-            "$idlixAPI/movie/$fixTitle-$year"
-        } else {
-            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
-        }
+        val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // ================== WPMOVIES (DIPERBAIKI) ==================
-    // Menggunakan logika enkripsi AES dari Adicinemax21 dan support Jeniusplay2
-    private suspend fun invokeWpmovies(
-        name: String? = null,
-        url: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        fixIframe: Boolean = false,
-        encrypt: Boolean = false,
-        hasCloudflare: Boolean = false,
-    ) {
-        val interceptor = if (hasCloudflare) CloudflareKiller() else null
-        val res = app.get(url ?: return, interceptor = interceptor)
+    // Helper khusus Idlix (WPMovies)
+    private suspend fun invokeWpmovies(name: String? = null, url: String? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, fixIframe: Boolean = false, encrypt: Boolean = false) {
+        val res = app.get(url ?: return)
         val referer = getBaseUrl(res.url)
         val document = res.document
-        
-        document.select("ul#playeroptionsul > li").map {
-            Triple(
-                it.attr("data-post"),
-                it.attr("data-nume"),
-                it.attr("data-type")
-            )
-        }.forEach { (id, nume, type) ->
-            val json = app.post(
-                url = "$referer/wp-admin/admin-ajax.php",
-                data = mapOf(
-                    "action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type
-                ),
-                headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest"),
-                referer = url,
-                interceptor = interceptor
-            ).text
-            
+        document.select("ul#playeroptionsul > li").map { Triple(it.attr("data-post"), it.attr("data-nume"), it.attr("data-type")) }.forEach { (id, nume, type) ->
+            val json = app.post(url = "$referer/wp-admin/admin-ajax.php", data = mapOf("action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type), headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest"), referer = url).text
             val source = tryParseJson<ResponseHash>(json)?.let {
                 when {
                     encrypt -> {
-                        val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m")
-                            ?: return@forEach
+                        val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m") ?: return@forEach
                         val key = generateWpKey(it.key ?: return@forEach, meta)
-                        // Menggunakan AES Helper standar Cloudstream (sama seperti Adicinemax21)
-                        AesHelper.cryptoAESHandler(
-                            it.embed_url,
-                            key.toByteArray(),
-                            false
-                        )?.replace("\"", "")?.replace("\\", "")
+                        com.lagradost.cloudstream3.extractors.helper.AesHelper.cryptoAESHandler(it.embed_url, key.toByteArray(), false)
                     }
-
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
                     else -> it.embed_url
                 }
             } ?: return@forEach
             
-            when {
-                source.startsWith("https://jeniusplay.com") -> {
-                    // Jeniusplay2 akan diupdate di file Extractors.kt
-                    Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
-                }
-
-                !source.contains("youtube") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
-                }
+            if (source.startsWith("https://jeniusplay.com")) {
+                Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
+            } else if (!source.contains("youtube")) {
+                loadExtractor(source, "$referer/", subtitleCallback, callback)
             }
         }
     }
@@ -817,6 +766,7 @@ object Lateri3PlayExtractor {
         val baseQuery = queryWithEpisode ?: title
         val encodedQuery = baseQuery.replace(" ", "+")
         
+        // Parallel fetch for pages 0-4
         try {
              (0..4).map { page ->
                 val url = "$Player4uApi/embed?key=$encodedQuery" + if (page > 0) "&page=$page" else ""
