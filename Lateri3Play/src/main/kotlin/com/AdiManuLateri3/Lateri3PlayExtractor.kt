@@ -547,7 +547,9 @@ object Lateri3PlayExtractor {
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // ========== PERBAIKAN PADA LOGIKA IDLIX ==========
+    // =========================================================================
+    // INI ADALAH FUNGSI KUNCI YANG DIPERBAIKI (IDLIX)
+    // =========================================================================
     private suspend fun invokeWpmovies(name: String? = null, url: String? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, fixIframe: Boolean = false, encrypt: Boolean = false) {
         val res = app.get(url ?: return)
         val referer = getBaseUrl(res.url)
@@ -560,11 +562,10 @@ object Lateri3PlayExtractor {
                         val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m") ?: return@forEach
                         val key = generateWpKey(it.key ?: return@forEach, meta)
                         
-                        // MENGGUNAKAN CryptoAES.decrypt DARI Utils KITA (BUKAN BAWAAN CLOUDSTREAM)
-                        // KARENA BAWAAN CLOUDSTREAM KADANG BERBEDA IMPLEMENTASI PADDING-NYA
+                        // MENGGUNAKAN CryptoAES.decrypt YANG SUDAH TERUJI DI Utils
                         val decrypted = CryptoAES.decrypt(it.embed_url, key.toByteArray(), ByteArray(16))
                         
-                        // MEMBERSIHKAN URL HASIL DEKRIPSI
+                        // FIX WAJIB: MEMBERSIHKAN URL (Menghapus Escape Character)
                         decrypted.replace("\\", "").replace("\"", "")
                     }
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
