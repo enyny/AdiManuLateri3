@@ -3,7 +3,7 @@ package com.AdiDrakor
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
-import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh // <-- NEW: Import Kisskh
+import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
@@ -57,7 +57,7 @@ open class AdiDrakor : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv6.idlixku.com"
+        const val idlixAPI = "https://tv10.idlixku.com" // Updated domain
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -308,7 +308,18 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. AdiDewasa (Priority)
+            // 0. IDLIX / JENIUSPLAY (PRIORITAS UTAMA)
+            {
+                invokeIdlix(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 1. AdiDewasa (Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -319,7 +330,7 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 1. KISSKH (New Integrated Source - Priority for Asian Drama)
+            // 2. KISSKH (New Integrated Source - Priority for Asian Drama)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -330,21 +341,10 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 2. Adimoviebox (Direct Source)
+            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 3. JeniusPlay (via Idlix)
-            {
-                invokeIdlix(
-                    res.title,
                     res.year,
                     res.season,
                     res.episode,
