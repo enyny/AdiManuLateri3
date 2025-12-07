@@ -109,16 +109,6 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
 
 }
 
-fun generateWpKey(r: String, m: String): String {
-    val rList = r.split("\\x").toTypedArray()
-    var n = ""
-    val decodedM = safeBase64Decode(m.reversed())
-    for (s in decodedM.split("|")) {
-        n += "\\x" + rList[Integer.parseInt(s) + 1]
-    }
-    return n
-}
-
 fun safeBase64Decode(input: String): String {
     var paddedInput = input
     val remainder = input.length % 4
@@ -665,7 +655,7 @@ fun getPlayer4UQuality(quality: String): Int {
     }
 }
 
-// ================= ADIDEWASA HELPER (NEW) =================
+// ================= ADIDEWASA HELPER =================
 object AdiDewasaHelper {
     // Header statis agar terlihat seperti browser asli (Chrome Windows)
     val headers = mapOf(
