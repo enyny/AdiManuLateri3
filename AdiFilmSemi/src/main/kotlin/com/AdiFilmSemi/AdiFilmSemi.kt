@@ -30,6 +30,7 @@ import kotlin.math.roundToInt
 
 open class AdiFilmSemi : TmdbProvider() {
     override var name = "AdiFilmSemi"
+    override var lang = "id"
     override val hasMainPage = true
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
