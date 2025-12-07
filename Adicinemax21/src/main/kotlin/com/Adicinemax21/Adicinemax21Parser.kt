@@ -475,3 +475,23 @@ data class AdiDewasaItem(
     @JsonProperty("image") val image: String? = null,
     @JsonProperty("year") val year: String? = null 
 )
+
+// ================== RIVESTREAM DATA CLASSES ==================
+data class RiveStreamSource(
+    val data: List<String>
+)
+
+data class RiveStreamResponse(
+    val data: RiveStreamData,
+)
+
+data class RiveStreamData(
+    val sources: List<RiveStreamSourceData>,
+)
+
+data class RiveStreamSourceData(
+    val quality: String,
+    val url: String,
+    val source: String,
+    val format: String,
+)
