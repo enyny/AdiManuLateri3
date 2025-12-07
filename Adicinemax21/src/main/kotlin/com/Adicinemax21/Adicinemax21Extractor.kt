@@ -20,9 +20,11 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
 import org.json.JSONObject 
+import java.net.URLDecoder
 import com.Adicinemax21.Adicinemax21.Companion.cinemaOSApi
 import com.Adicinemax21.Adicinemax21.Companion.Player4uApi
 import com.Adicinemax21.Adicinemax21.Companion.idlixAPI
+import com.Adicinemax21.Adicinemax21.Companion.RiveStreamAPI
 
 object Adicinemax21Extractor : Adicinemax21() {
 
@@ -610,7 +612,6 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
 
     }
-
     // ================== VIDSRC SOURCE ==================
     suspend fun invokeVidsrc(
         imdbId: String?,
@@ -644,21 +645,9 @@ object Adicinemax21Extractor : Adicinemax21() {
                         )
                     )
                 }
-
-                server.text().equals("2Embed", ignoreCase = true) -> {
-                    return@amap
-                }
-
-                server.text().equals("Superembed", ignoreCase = true) -> {
-                    return@amap
-                }
-
-                else -> {
-                    return@amap
-                }
+                else -> return@amap
             }
         }
-
     }
 
     // ================== XPRIME SOURCE ==================
@@ -726,7 +715,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                         )
                     )
                 }
-
             }
         )
     }
@@ -771,7 +759,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             )
         }
-
     }
 
     // ================== MAPPLE SOURCE ==================
@@ -833,7 +820,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             )
         }
-
     }
 
     // ================== VIDLINK SOURCE ==================
@@ -866,7 +852,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 this.referer = "${Adicinemax21.vidlinkAPI}/"
             }
         )
-
     }
 
     // ================== VIDFAST SOURCE ==================
@@ -917,9 +902,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                         )
                     }
                 }
-
             }
-
     }
 
     // ================== WYZIE SOURCE ==================
@@ -945,7 +928,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             )
         }
-
     }
 
     // ================== VIXSRC SOURCE ==================
@@ -995,7 +977,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
             )
         }
-
     }
 
     // ================== SUPEREMBED SOURCE ==================
@@ -1053,7 +1034,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             )
         }
-
     }
 
     // ================== VIDROCK SOURCE ==================
@@ -1065,7 +1045,6 @@ object Adicinemax21Extractor : Adicinemax21() {
         callback: (ExtractorLink) -> Unit,
         subAPI: String = "https://sub.vdrk.site"
     ) {
-
         val type = if (season == null) "movie" else "tv"
         val url = "${Adicinemax21.vidrockAPI}/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
         val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
@@ -1118,10 +1097,9 @@ object Adicinemax21Extractor : Adicinemax21() {
                 )
             )
         }
-
     }
 
-    // ================== CINEMAOS SOURCE (SMART FILTERED) ==================
+    // ================== CINEMAOS SOURCE ==================
     suspend fun invokeCinemaOS(
         imdbId: String? = null,
         tmdbId: Int? = null,
@@ -1290,6 +1268,140 @@ object Adicinemax21Extractor : Adicinemax21() {
                     titleText.startsWith("$title S${"%02d".format(season)}E${"%02d".format(episode)}", ignoreCase = true)) {
                     Player4uLinkData(name = titleText, url = element.attr("onclick"))
                 } else null
+            }
+        }
+    }
+
+    // ================== RIVESTREAM SOURCE (NEW) ==================
+    suspend fun invokeRiveStream(
+        id: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val headers = mapOf("User-Agent" to USER_AGENT)
+
+        suspend fun <T> retry(times: Int = 3, block: suspend () -> T): T? {
+            repeat(times - 1) {
+                try {
+                    return block()
+                } catch (_: Exception) {
+                }
+            }
+            return try {
+                block()
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        val sourceApiUrl =
+            "$RiveStreamAPI/api/backendfetch?requestID=VideoProviderServices&secretKey=rive"
+        val sourceList = retry { app.get(sourceApiUrl, headers).parsedSafe<RiveStreamSource>() }
+
+        val document = retry { app.get(RiveStreamAPI, headers, timeout = 20).document } ?: return
+        val appScript = document.select("script")
+            .firstOrNull { it.attr("src").contains("_app") }?.attr("src") ?: return
+
+        val js = retry { app.get("$RiveStreamAPI$appScript").text } ?: return
+        val keyList = Regex("""let\s+c\s*=\s*(\[[^]]*])""")
+            .findAll(js).firstOrNull { it.groupValues[1].length > 2 }?.groupValues?.get(1)
+            ?.let { array ->
+                Regex("\"([^\"]+)\"").findAll(array).map { it.groupValues[1] }.toList()
+            } ?: emptyList()
+
+        val secretKey = retry {
+            app.get(
+                "https://rivestream.supe2372.workers.dev/?input=$id&cList=${keyList.joinToString(",")}"
+            ).text
+        } ?: return
+
+        sourceList?.data?.forEach { source ->
+            try {
+                val streamUrl = if (season == null) {
+                    "$RiveStreamAPI/api/backendfetch?requestID=movieVideoProvider&id=$id&service=$source&secretKey=$secretKey"
+                } else {
+                    "$RiveStreamAPI/api/backendfetch?requestID=tvVideoProvider&id=$id&season=$season&episode=$episode&service=$source&secretKey=$secretKey"
+                }
+
+                val responseString = retry {
+                    app.get(streamUrl, headers, timeout = 10).text
+                } ?: return@forEach
+
+                try {
+                    val json = JSONObject(responseString)
+                    val sourcesArray =
+                        json.optJSONObject("data")?.optJSONArray("sources") ?: return@forEach
+
+                    for (i in 0 until sourcesArray.length()) {
+                        val src = sourcesArray.getJSONObject(i)
+                        val label = if(src.optString("source").contains("AsiaCloud",ignoreCase = true)) "RiveStream ${src.optString("source")}[${src.optString("quality")}]" else "RiveStream ${src.optString("source")}"
+                        val quality = Qualities.P1080.value
+                        val url = src.optString("url")
+
+                        try {
+                            if (url.contains("proxy?url=")) {
+                                try {
+                                    val fullyDecoded = URLDecoder.decode(url, "UTF-8")
+
+                                    val encodedUrl = fullyDecoded.substringAfter("proxy?url=")
+                                        .substringBefore("&headers=")
+                                    val decodedUrl = URLDecoder.decode(
+                                        encodedUrl,
+                                        "UTF-8"
+                                    ) 
+
+                                    val encodedHeaders = fullyDecoded.substringAfter("&headers=")
+                                    val headersMap = try {
+                                        val jsonStr = URLDecoder.decode(encodedHeaders, "UTF-8")
+                                        JSONObject(jsonStr).let { json ->
+                                            json.keys().asSequence()
+                                                .associateWith { json.getString(it) }
+                                        }
+                                    } catch (e: Exception) {
+                                        emptyMap()
+                                    }
+
+                                    val referer = headersMap["Referer"] ?: ""
+                                    val origin = headersMap["Origin"] ?: ""
+                                    val videoHeaders =
+                                        mapOf("Referer" to referer, "Origin" to origin)
+
+                                    val type = if (decodedUrl.contains(".m3u8", ignoreCase = true))
+                                        ExtractorLinkType.M3U8 else INFER_TYPE
+
+                                    callback.invoke(newExtractorLink(label, label, decodedUrl, type) {
+                                        this.quality = quality
+                                        this.referer = referer
+                                        this.headers = videoHeaders
+                                    })
+                                } catch (e: Exception) {
+                                    // Log error decoding proxy
+                                }
+                            } else {
+                                val type = if (url.contains(".m3u8", ignoreCase = true))
+                                    ExtractorLinkType.M3U8 else INFER_TYPE
+
+                                callback.invoke(
+                                    newExtractorLink(
+                                        "$label (VLC)",
+                                        "$label (VLC)",
+                                        url,
+                                        type
+                                    ) {
+                                        this.referer = ""
+                                        this.quality = quality
+                                    })
+                            }
+                        } catch (e: Exception) {
+                            // Log error processing source
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Log error parsing JSON
+                }
+            } catch (e: Exception) {
+                // Log error general
             }
         }
     }
