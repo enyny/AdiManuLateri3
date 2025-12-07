@@ -18,6 +18,7 @@ import com.Adicinemax21.Adicinemax21Extractor.invokeWyzie
 import com.Adicinemax21.Adicinemax21Extractor.invokeXprime
 import com.Adicinemax21.Adicinemax21Extractor.invokeCinemaOS
 import com.Adicinemax21.Adicinemax21Extractor.invokePlayer4U
+import com.Adicinemax21.Adicinemax21Extractor.invokeRiveStream
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -71,6 +72,7 @@ open class Adicinemax21 : TmdbProvider() {
         const val vidrockAPI = "https://vidrock.net"
         const val cinemaOSApi = "https://cinemaos.tech"
         const val Player4uApi = "https://player4u.xyz"
+        const val RiveStreamAPI = "https://rivestream.org"
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -410,6 +412,10 @@ open class Adicinemax21 : TmdbProvider() {
                     res.year,
                     callback
                 )
+            },
+            // 9. RiveStream
+            {
+                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
             },
             // Sumber-sumber lain
             {
