@@ -2,8 +2,6 @@ package com.AdiFilmSemi
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdiDewasa
-import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeYflix // YFLIX
-import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeKisskh // KISSKH (Sudah ditambahkan)
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeGomovies
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeIdlix
@@ -36,7 +34,6 @@ open class AdiFilmSemi : TmdbProvider() {
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
-    override var lang = "id"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
@@ -57,7 +54,8 @@ open class AdiFilmSemi : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv6.idlixku.com"
+        // UPDATED: Menggunakan URL terbaru dari IdlixProvider yang kamu berikan
+        const val idlixAPI = "https://tv10.idlixku.com" 
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -89,10 +87,6 @@ open class AdiFilmSemi : TmdbProvider() {
 
     }
 
-    // UPDATE SESUAI REQUEST KHUSUS:
-    // 3 Kat Sexual Obsession (459), 3 Kat Erotic Thriller (207767), 
-    // 3 Kat Infidelity (1326), 3 Kat Eroticism (1664), Vivamax Movie & Series
-    
     override val mainPage = mainPageOf(
         // GROUP 1: Sexual Obsession (Keyword 459)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=primary_release_date.desc&include_adult=true" to "Sexual Obsession (New)",
@@ -329,31 +323,20 @@ open class AdiFilmSemi : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. AdiDewasa (NEW from AdiDrakor - High Priority)
+            // 1. JeniusPlay (via Idlix) - PRIORITAS UTAMA
+            {
+                invokeIdlix(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 2. AdiDewasa (High Priority)
             {
                 invokeAdiDewasa(
-                    res.title ?: return@runAllAsync,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 1. KISSKH (NEW! - Asian & Anime)
-            {
-                invokeKisskh(
-                    res.title ?: return@runAllAsync,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 2. YFLIX (NEW! - MegaUp/Rapidshare)
-            {
-                invokeYflix(
                     res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
@@ -373,22 +356,11 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 4. JeniusPlay (via Idlix)
-            {
-                invokeIdlix(
-                    res.title,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            // 5. Vidlink
+            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 6. Vidplay (via Vidsrccc)
+            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -399,11 +371,11 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 7. Vixsrc (Alpha)
+            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 8. CinemaOS (Smart Filtered)
+            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -416,7 +388,7 @@ open class AdiFilmSemi : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 9. Player4U
+            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
