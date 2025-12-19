@@ -13,7 +13,7 @@
 **Suka dengan repo ini?**
 Kalau repo ini bermanfaat buat nemenin gabutmu, boleh dong lempar receh buat beli kopi biar admin makin semangat update server & benerin bug! 🔥
 
-<a href="https://saweria.co/aldry84" target="_blank">
+<a href="https://saweria.co/michat88" target="_blank">
   <img src="https://img.shields.io/badge/Saweria-Traktir_Saya-orange?style=for-the-badge&logo=saweria&logoColor=white" alt="Saweria"/>
 </a>
 
