@@ -1,13 +1,11 @@
 package com.AdiManu
 
-import com.lagradost.api.Log // Import logging
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
-import com.lagradost.cloudstream3.extractors.VidHidePro6
-import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.extractors.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -180,32 +178,30 @@ class Lk21 : MainAPI() {
     ): Boolean {
         val document = app.get(data).documentLarge
         
-        // Logika pencarian semua link player yang ada di halaman
-        val links = document.select("ul#player-list li a, div.embed-container iframe")
+        // PERBAIKAN: Cari SEMUA link yang ada di tombol, script, atau iframe
+        val links = document.select("a[href*='/v/'], a[href*='/f/'], a[href*='/e/'], ul#player-list li a, iframe[src]")
             .mapNotNull { 
                 val href = it.attr("href").ifBlank { it.attr("src") }
                 if (href.isNullOrBlank()) null else fixUrl(href)
             }.distinct()
 
-        Log.d("Lk21Log", "Total link ditemukan: ${links.size}") // Log jumlah link
+        Log.d("Lk21Log", "Total link ditemukan: ${links.size}")
 
         links.amap { link ->
-            Log.d("Lk21Log", "Memproses link: $link") // Log link yang sedang diproses
+            Log.d("Lk21Log", "Memproses: $link")
             
-            val iframeUrl = if (link.contains("iframe") || link.contains("google.com")) {
+            // Jika sudah berupa link video/iframe langsung, load tanpa getIframe lagi
+            val iframeUrl = if (link.contains("google.com") || link.contains("emturbovid") || link.contains("vidhide")) {
                 link
             } else {
                 link.getIframe()
             }
             
             if (iframeUrl.isNotEmpty()) {
-                Log.d("Lk21Log", "Iframe ditemukan: $iframeUrl") // Log Iframe final
-                
-                // Mengirim referer variasi untuk menembus proteksi 3001
+                Log.d("Lk21Log", "Final Iframe: $iframeUrl")
+                // Variasi referer untuk menembus proteksi 3001
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
-            } else {
-                Log.d("Lk21Log", "Gagal mendapatkan iframe untuk: $link") // Log kegagalan
             }
         }
         return true
@@ -213,14 +209,9 @@ class Lk21 : MainAPI() {
 
     private suspend fun String.getIframe(): String {
         return try {
-            Log.d("Lk21Log", "Fetching iframe dari: $this")
             val res = app.get(this, referer = "$mainUrl/", timeout = 25).documentLarge
-            val iframe = res.select("div.embed-container iframe, iframe#movie-player").attr("src")
-            iframe
-        } catch (e: Exception) { 
-            Log.e("Lk21Log", "Error saat fetch iframe: ${e.message}")
-            "" 
-        }
+            res.select("div.embed-container iframe, iframe#movie-player, iframe[src*='v/']").attr("src")
+        } catch (e: Exception) { "" }
     }
 
     private suspend fun fetchURL(url: String): String {
