@@ -6,6 +6,8 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
+// PERBAIKAN: Import khusus untuk addTrailer agar tidak Unresolved Reference
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -13,7 +15,6 @@ import java.net.URI
 @CloudstreamPlugin
 class Lk21Plugin: BasePlugin() {
     override fun load() {
-        // Mendaftarkan API utama dan semua extractor dengan paket baru com.AdiManu
         registerMainAPI(Lk21())
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(Furher())
@@ -36,7 +37,6 @@ class Lk21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // Menampilkan daftar genre lengkap termasuk Horor dan Drama
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Film Terpopuler",
         "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
@@ -158,6 +158,7 @@ class Lk21 : MainAPI() {
                 this.tags = tags
                 this.score = Score.from10(rating)
                 this.recommendations = recommendations
+                // PERBAIKAN: Memanggil addTrailer yang sudah di-import
                 addTrailer(trailer)
             }
         } else {
@@ -169,6 +170,7 @@ class Lk21 : MainAPI() {
                 this.tags = tags
                 this.score = Score.from10(rating)
                 this.recommendations = recommendations
+                // PERBAIKAN: Memanggil addTrailer yang sudah di-import
                 addTrailer(trailer)
             }
         }
@@ -185,7 +187,6 @@ class Lk21 : MainAPI() {
             fixUrl(it.select("a").attr("href"))
         }.amap { link ->
             val iframeUrl = link.getIframe()
-            // Perbaikan: Referer menggunakan URL lengkap link untuk bypass Error 3001
             if (iframeUrl.isNotEmpty()) {
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
             }
