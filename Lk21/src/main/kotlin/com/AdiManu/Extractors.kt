@@ -1,4 +1,4 @@
-package com.AdiManu
+package com.AdiMan
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
