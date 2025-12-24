@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-// PERBAIKAN: Import khusus untuk addTrailer agar tidak error
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -22,7 +21,6 @@ class Lk21Plugin: BasePlugin() {
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(StreamWishExtractor())
-        // Filemoon dihapus karena menyebabkan 'Unresolved reference' pada build
     }
 }
 
@@ -180,12 +178,19 @@ class Lk21 : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).documentLarge
-        document.select("ul#player-list > li").map {
-            fixUrl(it.select("a").attr("href"))
-        }.amap { link ->
-            val iframeUrl = link.getIframe()
+        
+        // PERBAIKAN: Mencari link di semua kemungkinan tempat (tab player, daftar list, dll)
+        val links = document.select("ul#player-list li a, div.embed-container iframe, a[href*='/v/'], a[href*='/f/']")
+            .mapNotNull { 
+                val href = it.attr("href").ifBlank { it.attr("src") }
+                if (href.isNullOrBlank()) null else fixUrl(href)
+            }.distinct()
+
+        links.amap { link ->
+            val iframeUrl = if (link.contains("iframe") || link.contains("google.com")) link else link.getIframe()
+            
             if (iframeUrl.isNotEmpty()) {
-                // Logika Fallback: Mencoba dua referer berbeda untuk bypass error 3001
+                // Memberikan variasi referer untuk menembus proteksi 3001
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
             }
@@ -194,8 +199,10 @@ class Lk21 : MainAPI() {
     }
 
     private suspend fun String.getIframe(): String {
-        return app.get(this, referer = "$mainUrl/", timeout = 25).documentLarge
-            .select("div.embed-container iframe").attr("src")
+        return try {
+            val res = app.get(this, referer = "$mainUrl/", timeout = 25).documentLarge
+            res.select("div.embed-container iframe, iframe#movie-player").attr("src")
+        } catch (e: Exception) { "" }
     }
 
     private suspend fun fetchURL(url: String): String {
