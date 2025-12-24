@@ -6,6 +6,8 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
+// PERBAIKAN: Import helper baru untuk membuat link extractor
+import com.lagradost.cloudstream3.utils.newExtractorLink 
 import org.json.JSONObject
 
 open class Hownetwork : ExtractorApi() {
@@ -29,7 +31,7 @@ open class Hownetwork : ExtractorApi() {
         val json = JSONObject(response)
         val file = json.optString("file")
         
-        // Menggunakan url iframe sebagai referer agar playlist M3U8 valid
+        // Menggunakan url asli sebagai referer agar M3U8 valid
         M3u8Helper.generateM3u8(this.name, file, url).forEach(callback)
     }
 }
@@ -43,7 +45,6 @@ class VidHideClone : ExtractorApi() {
     override val mainUrl = "https://f16px.com"
     override val requiresReferer = true
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        // Mengarahkan ke extractor library VidHidePro6
         com.lagradost.cloudstream3.extractors.VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
     }
 }
@@ -53,11 +54,11 @@ class HydraxMirror : ExtractorApi() {
     override val mainUrl = "https://short.icu"
     override val requiresReferer = true
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        // PERBAIKAN: Menggunakan Named Arguments agar tidak terjadi 'Argument type mismatch'
+        // PERBAIKAN: Menggunakan newExtractorLink agar build sukses
         callback.invoke(
-            ExtractorLink(
-                source = this.name,
+            newExtractorLink(
                 name = this.name,
+                source = this.name,
                 url = url,
                 referer = referer ?: "",
                 quality = Qualities.Unknown.value
