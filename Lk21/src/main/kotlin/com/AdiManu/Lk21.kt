@@ -6,9 +6,8 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
-// Tambahan extractor baru dari library
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.extractors.Filemoon
+// PERBAIKAN: Import khusus untuk addTrailer agar tidak error
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -22,9 +21,8 @@ class Lk21Plugin: BasePlugin() {
         registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
-        // Registrasi extractor baru
         registerExtractorAPI(StreamWishExtractor())
-        registerExtractorAPI(Filemoon())
+        // Filemoon dihapus karena menyebabkan 'Unresolved reference' pada build
     }
 }
 
@@ -187,7 +185,7 @@ class Lk21 : MainAPI() {
         }.amap { link ->
             val iframeUrl = link.getIframe()
             if (iframeUrl.isNotEmpty()) {
-                // Mengirimkan referer variasi untuk stabilitas bypass 3001
+                // Logika Fallback: Mencoba dua referer berbeda untuk bypass error 3001
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
             }
