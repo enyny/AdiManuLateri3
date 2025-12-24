@@ -20,6 +20,7 @@ class Lk21Plugin: BasePlugin() {
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(StreamWishExtractor())
+        registerExtractorAPI(VidHideClone()) // Daftarkan mirror baru
     }
 }
 
@@ -178,7 +179,7 @@ class Lk21 : MainAPI() {
     ): Boolean {
         val document = app.get(data).documentLarge
         
-        // PERBAIKAN: Cari SEMUA link yang ada di tombol, script, atau iframe
+        // Selector lebih agresif untuk menangkap mirror tersembunyi
         val links = document.select("a[href*='/v/'], a[href*='/f/'], a[href*='/e/'], ul#player-list li a, iframe[src]")
             .mapNotNull { 
                 val href = it.attr("href").ifBlank { it.attr("src") }
@@ -190,7 +191,6 @@ class Lk21 : MainAPI() {
         links.amap { link ->
             Log.d("Lk21Log", "Memproses: $link")
             
-            // Jika sudah berupa link video/iframe langsung, load tanpa getIframe lagi
             val iframeUrl = if (link.contains("google.com") || link.contains("emturbovid") || link.contains("vidhide")) {
                 link
             } else {
@@ -199,9 +199,9 @@ class Lk21 : MainAPI() {
             
             if (iframeUrl.isNotEmpty()) {
                 Log.d("Lk21Log", "Final Iframe: $iframeUrl")
-                // Variasi referer untuk menembus proteksi 3001
-                loadExtractor(iframeUrl, link, subtitleCallback, callback)
-                loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
+                // PERBAIKAN: Gunakan referer kosong atau domain mirror untuk bypass 3001
+                loadExtractor(iframeUrl, null, subtitleCallback, callback)
+                loadExtractor(iframeUrl, getBaseUrl(iframeUrl), subtitleCallback, callback)
             }
         }
         return true
