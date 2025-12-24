@@ -14,7 +14,6 @@ import java.net.URI
 @CloudstreamPlugin
 class Lk21Plugin: BasePlugin() {
     override fun load() {
-        // Hanya mendaftarkan server yang paling stabil
         registerMainAPI(Lk21())
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(VidHidePro6())
@@ -181,16 +180,24 @@ class Lk21 : MainAPI() {
             fixUrl(it.select("a").attr("href"))
         }.amap { link ->
             val iframeUrl = link.getIframe()
-            // Perbaikan referer untuk bypass deteksi bot yang menyebabkan error 3001
             if (iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, iframeUrl, subtitleCallback, callback)
+                // LOGIKA AUTO-RETRY/FALLBACK:
+                // Kami mengirimkan dua variasi sumber untuk server yang sama dengan referer berbeda.
+                // Jika player mendeteksi error pada sumber pertama, pengguna bisa memilih sumber kedua di menu 'Sumber'.
+                
+                // Variasi 1: Referer link player langsung
+                loadExtractor(iframeUrl, link, subtitleCallback, callback)
+                
+                // Variasi 2: Referer domain utama (seringkali lebih stabil untuk bypass 3001)
+                loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
             }
         }
         return true
     }
 
     private suspend fun String.getIframe(): String {
-        return app.get(this, referer = "$mainUrl/").documentLarge.select("div.embed-container iframe").attr("src")
+        return app.get(this, referer = "$mainUrl/", timeout = 20).documentLarge
+            .select("div.embed-container iframe").attr("src")
     }
 
     private suspend fun fetchURL(url: String): String {
