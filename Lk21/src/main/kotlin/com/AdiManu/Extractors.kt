@@ -10,7 +10,7 @@ import org.json.JSONObject
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
-    override val requiresReferer = true // Sudah ada
+    override val requiresReferer = true
 
     override suspend fun getUrl(
             url: String,
@@ -28,7 +28,7 @@ open class Hownetwork : ExtractorApi() {
         val json = JSONObject(response)
         val file = json.optString("file")
         
-        // Menggunakan url asli sebagai referer untuk validasi M3U8
+        // PERBAIKAN: Masukkan URL iframe asli sebagai referer ke helper agar M3U8 tidak dianggap invalid
         M3u8Helper.generateM3u8(this.name, file, url).forEach(callback)
     }
 }
@@ -37,19 +37,22 @@ class Cloudhownetwork : Hownetwork() {
     override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
-// PERBAIKAN: Menambahkan 'requiresReferer' agar tidak error kompilasi
 class VidHideClone : ExtractorApi() {
     override val name = "VidHide Mirror"
     override val mainUrl = "https://f16px.com"
-    override val requiresReferer = true // WAJIB ADA AGAR BUILD BERHASIL
-
-    override suspend fun getUrl(
-        url: String, 
-        referer: String?, 
-        subtitleCallback: (SubtitleFile) -> Unit, 
-        callback: (ExtractorLink) -> Unit
-    ) {
-        // Mengarahkan ke extractor library VidHidePro6
+    override val requiresReferer = true
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         com.lagradost.cloudstream3.extractors.VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
+    }
+}
+
+// Tambahan Hydrax karena muncul di Logcat kamu
+class HydraxMirror : ExtractorApi() {
+    override val name = "Hydrax"
+    override val mainUrl = "https://short.icu"
+    override val requiresReferer = true
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        // Hydrax biasanya diproses otomatis oleh library jika diarahkan dengan benar
+        callback.invoke(ExtractorLink(this.name, url, referer ?: "", true))
     }
 }
