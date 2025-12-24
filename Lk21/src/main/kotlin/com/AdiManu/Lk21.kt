@@ -21,7 +21,7 @@ class Lk21Plugin: BasePlugin() {
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(StreamWishExtractor())
         registerExtractorAPI(VidHideClone())
-        registerExtractorAPI(HydraxMirror()) // Registrasi Hydrax
+        registerExtractorAPI(HydraxMirror())
     }
 }
 
@@ -29,7 +29,6 @@ class Lk21 : MainAPI() {
     override var mainUrl = "https://lk21.de"
     private var seriesUrl = "https://series.lk21.de"
     private var searchurl = "https://search.lk21.party"
-    // User-Agent Chrome Desktop untuk menipu sistem anti-bot
     private val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     override var name = "Lk21" 
@@ -182,7 +181,6 @@ class Lk21 : MainAPI() {
     ): Boolean {
         val document = app.get(data).documentLarge
         
-        // Memindai semua link mirror agar lebih banyak sumber muncul
         val links = document.select("a[href*='/v/'], a[href*='/f/'], a[href*='/e/'], ul#player-list li a, iframe[src]")
             .mapNotNull { 
                 val href = it.attr("href").ifBlank { it.attr("src") }
@@ -200,9 +198,7 @@ class Lk21 : MainAPI() {
             
             if (iframeUrl.isNotEmpty()) {
                 Log.d("Lk21Log", "Loading Iframe: $iframeUrl")
-                // PERBAIKAN: Kirim Referer yang sangat spesifik (domain lk21) untuk bypass Error 3001
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
-                // Percobaan kedua dengan referer kosong (beberapa mirror lebih suka ini)
                 loadExtractor(iframeUrl, null, subtitleCallback, callback)
             }
         }
@@ -211,7 +207,6 @@ class Lk21 : MainAPI() {
 
     private suspend fun String.getIframe(): String {
         return try {
-            // Gunakan User-Agent asli agar tidak dideteksi bot
             val res = app.get(this, referer = "$mainUrl/", headers = mapOf("User-Agent" to USER_AGENT), timeout = 25).documentLarge
             res.select("div.embed-container iframe, iframe#movie-player, iframe[src*='v/']").attr("src")
         } catch (e: Exception) { "" }
