@@ -1,5 +1,6 @@
 package com.AdiManu
 
+import com.lagradost.api.Log // Import logging
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.BasePlugin
@@ -179,20 +180,32 @@ class Lk21 : MainAPI() {
     ): Boolean {
         val document = app.get(data).documentLarge
         
-        // PERBAIKAN: Mencari link di semua kemungkinan tempat (tab player, daftar list, dll)
-        val links = document.select("ul#player-list li a, div.embed-container iframe, a[href*='/v/'], a[href*='/f/']")
+        // Logika pencarian semua link player yang ada di halaman
+        val links = document.select("ul#player-list li a, div.embed-container iframe")
             .mapNotNull { 
                 val href = it.attr("href").ifBlank { it.attr("src") }
                 if (href.isNullOrBlank()) null else fixUrl(href)
             }.distinct()
 
+        Log.d("Lk21Log", "Total link ditemukan: ${links.size}") // Log jumlah link
+
         links.amap { link ->
-            val iframeUrl = if (link.contains("iframe") || link.contains("google.com")) link else link.getIframe()
+            Log.d("Lk21Log", "Memproses link: $link") // Log link yang sedang diproses
+            
+            val iframeUrl = if (link.contains("iframe") || link.contains("google.com")) {
+                link
+            } else {
+                link.getIframe()
+            }
             
             if (iframeUrl.isNotEmpty()) {
-                // Memberikan variasi referer untuk menembus proteksi 3001
+                Log.d("Lk21Log", "Iframe ditemukan: $iframeUrl") // Log Iframe final
+                
+                // Mengirim referer variasi untuk menembus proteksi 3001
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
+            } else {
+                Log.d("Lk21Log", "Gagal mendapatkan iframe untuk: $link") // Log kegagalan
             }
         }
         return true
@@ -200,9 +213,14 @@ class Lk21 : MainAPI() {
 
     private suspend fun String.getIframe(): String {
         return try {
+            Log.d("Lk21Log", "Fetching iframe dari: $this")
             val res = app.get(this, referer = "$mainUrl/", timeout = 25).documentLarge
-            res.select("div.embed-container iframe, iframe#movie-player").attr("src")
-        } catch (e: Exception) { "" }
+            val iframe = res.select("div.embed-container iframe, iframe#movie-player").attr("src")
+            iframe
+        } catch (e: Exception) { 
+            Log.e("Lk21Log", "Error saat fetch iframe: ${e.message}")
+            "" 
+        }
     }
 
     private suspend fun fetchURL(url: String): String {
