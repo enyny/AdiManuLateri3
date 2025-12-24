@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
-// PERBAIKAN: Import khusus untuk addTrailer agar tidak Unresolved Reference
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -15,15 +14,12 @@ import java.net.URI
 @CloudstreamPlugin
 class Lk21Plugin: BasePlugin() {
     override fun load() {
+        // Hanya mendaftarkan server yang paling stabil
         registerMainAPI(Lk21())
         registerExtractorAPI(EmturbovidExtractor())
-        registerExtractorAPI(Furher())
-        registerExtractorAPI(Hownetwork())
         registerExtractorAPI(VidHidePro6())
-        registerExtractorAPI(Furher2())
-        registerExtractorAPI(Turbovidhls())
+        registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
-        registerExtractorAPI(Co4nxtrl())
     }
 }
 
@@ -158,7 +154,6 @@ class Lk21 : MainAPI() {
                 this.tags = tags
                 this.score = Score.from10(rating)
                 this.recommendations = recommendations
-                // PERBAIKAN: Memanggil addTrailer yang sudah di-import
                 addTrailer(trailer)
             }
         } else {
@@ -170,7 +165,6 @@ class Lk21 : MainAPI() {
                 this.tags = tags
                 this.score = Score.from10(rating)
                 this.recommendations = recommendations
-                // PERBAIKAN: Memanggil addTrailer yang sudah di-import
                 addTrailer(trailer)
             }
         }
@@ -187,15 +181,16 @@ class Lk21 : MainAPI() {
             fixUrl(it.select("a").attr("href"))
         }.amap { link ->
             val iframeUrl = link.getIframe()
+            // Perbaikan referer untuk bypass deteksi bot yang menyebabkan error 3001
             if (iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, link, subtitleCallback, callback)
+                loadExtractor(iframeUrl, iframeUrl, subtitleCallback, callback)
             }
         }
         return true
     }
 
     private suspend fun String.getIframe(): String {
-        return app.get(this, referer = "$seriesUrl/").documentLarge.select("div.embed-container iframe").attr("src")
+        return app.get(this, referer = "$mainUrl/").documentLarge.select("div.embed-container iframe").attr("src")
     }
 
     private suspend fun fetchURL(url: String): String {
