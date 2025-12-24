@@ -6,6 +6,9 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
+// Tambahan extractor baru dari library
+import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.extractors.Filemoon
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -19,6 +22,9 @@ class Lk21Plugin: BasePlugin() {
         registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
+        // Registrasi extractor baru
+        registerExtractorAPI(StreamWishExtractor())
+        registerExtractorAPI(Filemoon())
     }
 }
 
@@ -181,14 +187,8 @@ class Lk21 : MainAPI() {
         }.amap { link ->
             val iframeUrl = link.getIframe()
             if (iframeUrl.isNotEmpty()) {
-                // LOGIKA AUTO-RETRY/FALLBACK:
-                // Kami mengirimkan dua variasi sumber untuk server yang sama dengan referer berbeda.
-                // Jika player mendeteksi error pada sumber pertama, pengguna bisa memilih sumber kedua di menu 'Sumber'.
-                
-                // Variasi 1: Referer link player langsung
+                // Mengirimkan referer variasi untuk stabilitas bypass 3001
                 loadExtractor(iframeUrl, link, subtitleCallback, callback)
-                
-                // Variasi 2: Referer domain utama (seringkali lebih stabil untuk bypass 3001)
                 loadExtractor(iframeUrl, "$mainUrl/", subtitleCallback, callback)
             }
         }
@@ -196,7 +196,7 @@ class Lk21 : MainAPI() {
     }
 
     private suspend fun String.getIframe(): String {
-        return app.get(this, referer = "$mainUrl/", timeout = 20).documentLarge
+        return app.get(this, referer = "$mainUrl/", timeout = 25).documentLarge
             .select("div.embed-container iframe").attr("src")
     }
 
