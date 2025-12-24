@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
 import org.json.JSONObject
 
 open class Hownetwork : ExtractorApi() {
@@ -28,7 +29,7 @@ open class Hownetwork : ExtractorApi() {
         val json = JSONObject(response)
         val file = json.optString("file")
         
-        // PERBAIKAN: Masukkan URL iframe asli sebagai referer ke helper agar M3U8 tidak dianggap invalid
+        // Menggunakan url iframe sebagai referer agar playlist M3U8 valid
         M3u8Helper.generateM3u8(this.name, file, url).forEach(callback)
     }
 }
@@ -42,17 +43,25 @@ class VidHideClone : ExtractorApi() {
     override val mainUrl = "https://f16px.com"
     override val requiresReferer = true
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        // Mengarahkan ke extractor library VidHidePro6
         com.lagradost.cloudstream3.extractors.VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
     }
 }
 
-// Tambahan Hydrax karena muncul di Logcat kamu
 class HydraxMirror : ExtractorApi() {
     override val name = "Hydrax"
     override val mainUrl = "https://short.icu"
     override val requiresReferer = true
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        // Hydrax biasanya diproses otomatis oleh library jika diarahkan dengan benar
-        callback.invoke(ExtractorLink(this.name, url, referer ?: "", true))
+        // PERBAIKAN: Menggunakan Named Arguments agar tidak terjadi 'Argument type mismatch'
+        callback.invoke(
+            ExtractorLink(
+                source = this.name,
+                name = this.name,
+                url = url,
+                referer = referer ?: "",
+                quality = Qualities.Unknown.value
+            )
+        )
     }
 }
