@@ -13,8 +13,7 @@ class Co4nxtrl : Filesim() {
     override val requiresReferer = true
 }
 
-// --- PERBAIKAN: F16px & ShortIcu menggunakan 'GenericM3u8Extractor' ---
-// Kita buat kelas helper agar bisa dipakai berulang
+// Extractor Generik untuk mencari m3u8 di dalam source code halaman
 open class GenericM3u8Extractor(override val name: String, override val mainUrl: String) : ExtractorApi() {
     override val requiresReferer = true
 
@@ -25,23 +24,18 @@ open class GenericM3u8Extractor(override val name: String, override val mainUrl:
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Ambil Source Code Halaman
             val doc = app.get(url, referer = referer).text
-            
-            // 2. Cari link .m3u8 atau .mp4 menggunakan Regex
-            // Mencari pola: "file": "..." atau src: "..."
+            // Regex mencari file m3u8 atau mp4 dalam script
             val regex = Regex("""(?i)(file|src|source)\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']""")
             val match = regex.find(doc)
             
             if (match != null) {
                 val foundLink = match.groupValues[2].replace("\\/", "/")
                 Log.d("LayarKaca", "$name Found file: $foundLink")
-                
-                // 3. Generate Link
                 M3u8Helper.generateM3u8(
                     this.name,
                     foundLink,
-                    referer = url // Referer penting!
+                    referer = url
                 ).forEach(callback)
             } else {
                 Log.e("LayarKaca", "$name: No file found in source.")
@@ -55,7 +49,6 @@ open class GenericM3u8Extractor(override val name: String, override val mainUrl:
 class F16px : GenericM3u8Extractor("F16px", "https://f16px.com")
 class ShortIcu : GenericM3u8Extractor("ShortIcu", "https://short.icu")
 
-// --- PERBAIKAN: Hownetwork ---
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
@@ -68,7 +61,6 @@ open class Hownetwork : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=")
-        // Request API
         val response = app.post(
                 "$mainUrl/api.php?id=$id",
                 data = mapOf(
@@ -88,14 +80,12 @@ open class Hownetwork : ExtractorApi() {
             Log.d("LayarKaca", "Hownetwork File: $file")
             
             if (file.isNotBlank() && !file.contains("404")) {
-                // Perbaikan: Manual ExtractorLink jika M3u8Helper gagal
-                // atau gunakan M3u8Helper dengan headers yang lengkap
-                
+                // PERBAIKAN DI SINI: Menggunakan newExtractorLink, bukan ExtractorLink
                 callback.invoke(
-                    ExtractorLink(
-                        this.name,
-                        this.name,
-                        file,
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = file,
                         referer = "$mainUrl/",
                         quality = Qualities.Unknown.value,
                         isM3u8 = true
