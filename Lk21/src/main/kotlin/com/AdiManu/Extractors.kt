@@ -4,9 +4,7 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
-import com.lagradost.cloudstream3.utils.ExtractorApi
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 
 class Co4nxtrl : Filesim() {
@@ -15,20 +13,49 @@ class Co4nxtrl : Filesim() {
     override val requiresReferer = true
 }
 
-// Menambahkan support untuk F16px (Server yang muncul di log)
-class F16px : Filesim() {
-    override val mainUrl = "https://f16px.com"
-    override val name = "F16px"
+// --- PERBAIKAN: F16px & ShortIcu menggunakan 'GenericM3u8Extractor' ---
+// Kita buat kelas helper agar bisa dipakai berulang
+open class GenericM3u8Extractor(override val name: String, override val mainUrl: String) : ExtractorApi() {
     override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // 1. Ambil Source Code Halaman
+            val doc = app.get(url, referer = referer).text
+            
+            // 2. Cari link .m3u8 atau .mp4 menggunakan Regex
+            // Mencari pola: "file": "..." atau src: "..."
+            val regex = Regex("""(?i)(file|src|source)\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']""")
+            val match = regex.find(doc)
+            
+            if (match != null) {
+                val foundLink = match.groupValues[2].replace("\\/", "/")
+                Log.d("LayarKaca", "$name Found file: $foundLink")
+                
+                // 3. Generate Link
+                M3u8Helper.generateM3u8(
+                    this.name,
+                    foundLink,
+                    referer = url // Referer penting!
+                ).forEach(callback)
+            } else {
+                Log.e("LayarKaca", "$name: No file found in source.")
+            }
+        } catch (e: Exception) {
+            Log.e("LayarKaca", "$name Error: ${e.message}")
+        }
+    }
 }
 
-// Menambahkan support untuk Short.icu (Server yang muncul di log)
-class ShortIcu : Filesim() {
-    override val mainUrl = "https://short.icu"
-    override val name = "ShortIcu"
-    override val requiresReferer = true
-}
+class F16px : GenericM3u8Extractor("F16px", "https://f16px.com")
+class ShortIcu : GenericM3u8Extractor("ShortIcu", "https://short.icu")
 
+// --- PERBAIKAN: Hownetwork ---
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
@@ -41,7 +68,7 @@ open class Hownetwork : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=")
-        // Perbaikan: Menambahkan User-Agent agar tidak diblokir
+        // Request API
         val response = app.post(
                 "$mainUrl/api.php?id=$id",
                 data = mapOf(
@@ -61,11 +88,19 @@ open class Hownetwork : ExtractorApi() {
             Log.d("LayarKaca", "Hownetwork File: $file")
             
             if (file.isNotBlank() && !file.contains("404")) {
-                M3u8Helper.generateM3u8(
-                    this.name,
-                    file,
-                    referer = "$mainUrl/" // Memastikan referer m3u8 benar
-                ).forEach(callback)
+                // Perbaikan: Manual ExtractorLink jika M3u8Helper gagal
+                // atau gunakan M3u8Helper dengan headers yang lengkap
+                
+                callback.invoke(
+                    ExtractorLink(
+                        this.name,
+                        this.name,
+                        file,
+                        referer = "$mainUrl/",
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true
+                    )
+                )
             }
         } catch (e: Exception) {
             Log.e("LayarKaca", "Error parsing Hownetwork: ${e.message}")
