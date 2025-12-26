@@ -80,17 +80,17 @@ open class Hownetwork : ExtractorApi() {
             Log.d("LayarKaca", "Hownetwork File: $file")
             
             if (file.isNotBlank() && !file.contains("404")) {
-                // PERBAIKAN: Menggunakan argumen posisional (tanpa nama)
-                // Urutan: source, name, url, referer, quality, isM3u8
+                // PERBAIKAN: Menggunakan Syntax DSL yang benar untuk Cloudstream terbaru
                 callback.invoke(
                     newExtractorLink(
-                        this.name,
-                        this.name,
-                        file,
-                        "$mainUrl/",
-                        Qualities.Unknown.value,
-                        true
-                    )
+                        source = this.name,
+                        name = this.name,
+                        url = file,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "$mainUrl/"
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
             }
         } catch (e: Exception) {
