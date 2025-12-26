@@ -80,15 +80,16 @@ open class Hownetwork : ExtractorApi() {
             Log.d("LayarKaca", "Hownetwork File: $file")
             
             if (file.isNotBlank() && !file.contains("404")) {
-                // PERBAIKAN DI SINI: Menggunakan newExtractorLink, bukan ExtractorLink
+                // PERBAIKAN: Menggunakan argumen posisional (tanpa nama)
+                // Urutan: source, name, url, referer, quality, isM3u8
                 callback.invoke(
                     newExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = file,
-                        referer = "$mainUrl/",
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true
+                        this.name,
+                        this.name,
+                        file,
+                        "$mainUrl/",
+                        Qualities.Unknown.value,
+                        true
                     )
                 )
             }
