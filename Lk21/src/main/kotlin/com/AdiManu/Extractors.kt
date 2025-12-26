@@ -13,7 +13,7 @@ class Co4nxtrl : Filesim() {
     override val requiresReferer = true
 }
 
-// Extractor Generik untuk mencari m3u8 di dalam source code halaman
+// Extractor Generik yang lebih fleksibel
 open class GenericM3u8Extractor(override val name: String, override val mainUrl: String) : ExtractorApi() {
     override val requiresReferer = true
 
@@ -24,14 +24,16 @@ open class GenericM3u8Extractor(override val name: String, override val mainUrl:
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val doc = app.get(url, referer = referer).text
-            // Regex mencari file m3u8 atau mp4 dalam script
-            val regex = Regex("""(?i)(file|src|source)\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']""")
-            val match = regex.find(doc)
+            val response = app.get(url, referer = referer).text
+            // Regex yang lebih luas untuk menangkap berbagai variasi link player
+            val regex = Regex("""(?i)(file|src|source|video)\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']""")
+            val match = regex.find(response)
             
             if (match != null) {
                 val foundLink = match.groupValues[2].replace("\\/", "/")
                 Log.d("LayarKaca", "$name Found file: $foundLink")
+                
+                // Gunakan Helper standar jika link valid
                 M3u8Helper.generateM3u8(
                     this.name,
                     foundLink,
@@ -80,17 +82,16 @@ open class Hownetwork : ExtractorApi() {
             Log.d("LayarKaca", "Hownetwork File: $file")
             
             if (file.isNotBlank() && !file.contains("404")) {
-                // PERBAIKAN: Menggunakan Syntax DSL yang benar untuk Cloudstream terbaru
+                // FIXED: Menggunakan syntax DSL yang benar dan aman
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         source = this.name,
                         name = this.name,
                         url = file,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "$mainUrl/"
-                        this.quality = Qualities.Unknown.value
-                    }
+                        referer = "$mainUrl/",
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true
+                    )
                 )
             }
         } catch (e: Exception) {
