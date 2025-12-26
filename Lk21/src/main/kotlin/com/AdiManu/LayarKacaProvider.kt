@@ -55,13 +55,13 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
-        val posterheaders= mapOf("Referer" to getBaseUrl(posterUrl))
+        val posterheaders = mapOf("Referer" to getBaseUrl(posterUrl))
+        
         return if (type == TvType.TvSeries) {
             val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }
                 ?.toIntOrNull()
@@ -92,7 +92,9 @@ class LayarKacaProvider : MainAPI() {
             val title = item.getString("title")
             val slug = item.getString("slug")
             val type = item.getString("type")
-            val posterUrl = "https://poster.lk21.party/wp-content/uploads/"+item.optString("poster")
+            // Perbaikan String Concatenation di sini
+            val posterUrl = "https://poster.lk21.party/wp-content/uploads/${item.optString("poster")}"
+            
             when (type) {
                 "series" -> results.add(
                     newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
@@ -113,15 +115,149 @@ class LayarKacaProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val fixUrl = getProperLink(url)
         val document = app.get(fixUrl).documentLarge
-        val baseurl=fetchURL(fixUrl)
+        val baseurl = fetchURL(fixUrl)
         val title = document.selectFirst("div.movie-info h1")?.text()?.trim().toString()
         val poster = document.select("meta[property=og:image]").attr("content")
         val tags = document.select("div.tag-list span").map { it.text() }
-        val posterheaders= mapOf("Referer" to getBaseUrl(poster))
+        val posterheaders = mapOf("Referer" to getBaseUrl(poster))
 
         val year = Regex("\\d, (\\d+)").find(
             document.select("div.movie-info h1").text().trim()
         )?.groupValues?.get(1).toString().toIntOrNull()
         val tvType = if (document.selectFirst("#season-data") != null) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div.meta-info")?.text()?.trim()
-        val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a
+        val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
+        val rating = document.selectFirst("div.info-tag strong")?.text()
+
+        val recommendations = document.select("li.slider article").map {
+            val recName = it.selectFirst("h3")?.text()?.trim().toString()
+            val recHref = baseurl + it.selectFirst("a")!!.attr("href")
+            val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
+            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
+                this.posterUrl = recPosterUrl
+                this.posterHeaders = posterheaders
+            }
+        }
+
+        return if (tvType == TvType.TvSeries) {
+            val json = document.selectFirst("script#season-data")?.data()
+            val episodes = mutableListOf<Episode>()
+            if (json != null) {
+                val root = JSONObject(json)
+                root.keys().forEach { seasonKey ->
+                    val seasonArr = root.getJSONArray(seasonKey)
+                    for (i in 0 until seasonArr.length()) {
+                        val ep = seasonArr.getJSONObject(i)
+                        // PERBAIKAN UTAMA: Syntax error string interpolation diperbaiki di sini
+                        val epSlug = ep.getString("slug")
+                        val href = fixUrl("$baseurl/$epSlug")
+                        
+                        val episodeNo = ep.optInt("episode_no")
+                        val seasonNo = ep.optInt("s")
+                        episodes.add(
+                            newEpisode(href) {
+                                this.name = "Episode $episodeNo"
+                                this.season = seasonNo
+                                this.episode = episodeNo
+                            }
+                        )
+                    }
+                }
+            }
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.posterHeaders = posterheaders
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = Score.from10(rating)
+                this.recommendations = recommendations
+                addTrailer(trailer)
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.posterHeaders = posterheaders
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = Score.from10(rating)
+                this.recommendations = recommendations
+                addTrailer(trailer)
+            }
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        Log.d("LayarKaca", "Processing Link: $data")
+        val document = app.get(data).documentLarge
+        
+        val serverLinks = document.select("ul#player-list > li a")
+        
+        if (serverLinks.isEmpty()) {
+            val directIframe = document.select("div.embed-container iframe").attr("src")
+            if (directIframe.isNotBlank()) {
+                 loadExtractor(fixUrl(directIframe), data, subtitleCallback, callback)
+                 return true
+            }
+            return false
+        }
+
+        serverLinks.map {
+                fixUrl(it.attr("href"))
+            }.amap { url ->
+            val iframeUrl = url.getIframe(data)
+            Log.d("LayarKaca", "Found iframe: $iframeUrl")
+            if(iframeUrl.isNotBlank()) {
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
+            }
+        }
+        return true
+    }
+
+    // Helper Functions
+    private suspend fun String.getIframe(refererUrl: String): String {
+        return try {
+            val doc = app.get(this, referer = refererUrl).documentLarge
+            doc.select("div.embed-container iframe").attr("src")
+                .ifEmpty { doc.select("iframe").attr("src") }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private suspend fun fetchURL(url: String): String {
+        val res = app.get(url, allowRedirects = false)
+        val href = res.headers["location"]
+
+        return if (href != null) {
+            val it = URI(href)
+            "${it.scheme}://${it.host}"
+        } else {
+            url
+        }
+    }
+
+    private fun Element.getImageAttr(): String {
+        return when {
+            this.hasAttr("src") -> this.attr("src")
+            this.hasAttr("data-src") -> this.attr("data-src")
+            else -> this.attr("src")
+        }
+    }
+
+    fun getBaseUrl(url: String?): String {
+        if (url.isNullOrEmpty()) return ""
+        return try {
+            URI(url).let { "${it.scheme}://${it.host}" }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+}
