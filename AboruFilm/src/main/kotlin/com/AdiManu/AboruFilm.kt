@@ -22,7 +22,6 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.getQualityFromString
@@ -76,7 +75,6 @@ open class AboruFilm : MainAPI() {
         TvType.AnimeMovie,
     )
     
-    // PERBAIKAN: Memindahkan const val ke dalam companion object
     companion object {
         // Token Sakti (UID & Token)
         private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
@@ -219,7 +217,7 @@ open class AboruFilm : MainAPI() {
         }
     }
 
-    // ================== CERTIFICATES (HARDCODED) ==================
+    // ================== CERTIFICATES ==================
     
     private val CLIENT_CERT_PEM = """
 -----BEGIN CERTIFICATE-----
@@ -337,7 +335,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             "platform" to "android",
             "version" to appVersionCode,
             "medium" to "Website",
-            "token" to REAL_TOKEN // MENGGUNAKAN REAL_TOKEN
+            "token" to REAL_TOKEN 
         )
 
         val url = if (useAlternativeApi) secondAPI else firstAPI
@@ -412,34 +410,39 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val hideNsfw = 0 
         
-        // QUERY UTAMA DIPERBARUI:
-        // Menambahkan: oss, uid, open_udid, token, dan app_version 11.5
         val queryStr = """{"childmode":"$hideNsfw","app_version":"$appVersion","appid":"$appIdSecond","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
         
         val data = queryApiParsed<DataJSON>(queryStr)
         
-        // Cut off the first row (featured)
-        val pages = data.data.let { it.subList(minOf(it.size, 1), it.size) }
-            .mapNotNull {
-                var name = it.name
-                if (name.isNullOrEmpty()) name = "Featured"
-                val postList = it.list.mapNotNull second@{ post ->
-                    val type = if (post.boxType == 1) TvType.Movie else TvType.TvSeries
-                    val normalizedQuality = post.qualityTag?.let { if (it.contains("blu-ray", ignoreCase = true)) "Blueray" else it } ?: ""
-                    newMovieSearchResponse(
-                        name = post.title ?: return@second null,
-                        url = LoadData(post.id ?: return@mapNotNull null, post.boxType).toJson(),
-                        type = type,
-                        fix = false
-                    ) {
-                        posterUrl = post.poster ?: post.poster2
-                        quality = getQualityFromString(normalizedQuality)
-                        this.score= Score.from10(post.imdbRating)
-                    }
+        // PERBAIKAN 1: Hapus logika 'subList' yang menyembunyikan kategori.
+        // Tampilkan SEMUA kategori yang didapat dari API.
+        val pages = data.data.mapNotNull {
+            var name = it.name
+            if (name.isNullOrEmpty()) name = "Featured"
+            
+            val postList = it.list.mapNotNull second@{ post ->
+                val type = if (post.boxType == 1) TvType.Movie else TvType.TvSeries
+                val normalizedQuality = post.qualityTag?.let { if (it.contains("blu-ray", ignoreCase = true)) "Blueray" else it } ?: ""
+                
+                // PERBAIKAN 2: Pastikan URL poster tidak null. Jika null, item dilewati.
+                val posterUrlFix = post.poster ?: post.poster2 ?: return@second null
+
+                newMovieSearchResponse(
+                    name = post.title ?: return@second null,
+                    url = LoadData(post.id ?: return@mapNotNull null, post.boxType).toJson(),
+                    type = type,
+                    fix = false
+                ) {
+                    this.posterUrl = posterUrlFix
+                    this.quality = getQualityFromString(normalizedQuality)
+                    this.score= Score.from10(post.imdbRating)
                 }
-                if (postList.isEmpty()) return@mapNotNull null
-                HomePageList(name, postList)
             }
+            
+            if (postList.isEmpty()) return@mapNotNull null
+            HomePageList(name, postList)
+        }
+        
         return newHomePageResponse(pages, hasNext = !pages.any { it.list.isEmpty() })
     }
     private data class Data(
@@ -465,7 +468,8 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 ResponseTypes.getResponseType(actualBoxType).toTvType(),
                 false
             ) {
-                posterUrl = if (!this@Data.posterOrg.isNullOrEmpty()) this@Data.posterOrg else this@Data.poster
+                // PERBAIKAN: Penanganan poster null juga di Search
+                this.posterUrl = if (!this@Data.posterOrg.isNullOrEmpty()) this@Data.posterOrg else (this@Data.poster ?: "")
                 year = this@Data.year ?: 0
                 quality = getQualityFromString(this@Data.qualityTag?.replace("-", "") ?: "")
             }
@@ -482,8 +486,6 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
     override suspend fun search(query: String): List<SearchResponse> {
         val hideNsfw = 0 
         
-        // QUERY SEARCH DIPERBARUI:
-        // Menambahkan REAL_TOKEN dan versi 11.5
         val apiQuery =
             """{"childmode":"$hideNsfw","app_version":"$appVersion","module":"Search3","channel":"Website","page":"1","lang":"en","type":"all","keyword":"$query","pagelimit":"15","expired_date":"${getExpiryDate()}","platform":"android","appid":"$appId","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
             
@@ -653,9 +655,6 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         val isMovie = loadData.box_type == ResponseTypes.Movies.value
         val hideNsfw = 0 
         
-        // QUERY LOAD (DETAIL) DIPERBARUI:
-        // Menambahkan REAL_TOKEN dan versi 11.5
-        
         if (isMovie) { // 1 = Movie
             val apiQuery =
                 """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"Movie_detail","channel":"Website","mid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
@@ -687,9 +686,10 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 ),
             ) {
                 this.recommendations = data.recommend.mapNotNull { it.toSearchResponse(this@AboruFilm) }
-                this.posterUrl = data.posterOrg ?: data.poster
+                // Fix poster
+                this.posterUrl = data.posterOrg ?: data.poster ?: ""
                 this.backgroundPosterUrl = background ?: data.posterOrg ?: data.poster
-                        this.year = data.year
+                this.year = data.year
                 addActors(cast)
                 this.plot = data.description
                 this.tags = genre ?: data.cats?.split(",")?.map { it.capitalize() }
@@ -698,7 +698,6 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 this.addImdbId(data.imdbId)
             }
         } else { // 2 Series
-            // Query detail series (oss, token, version)
             val apiQuery =
                 """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_detail_1","display_all":"1","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
                 
@@ -716,7 +715,6 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             val genre: List<String>? = responseData?.meta?.genre
             val allEpisodes = mutableListOf<Episode>()
             data.season.forEach { seasonNumber ->
-                // Query per season (oss, token, version)
                 val seasonApiQuery =
                     """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_episode","display_all":"1","season":"$seasonNumber","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
 
@@ -755,7 +753,8 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 year = data.year
                 plot = data.description
                 addActors(cast)
-                this.posterUrl = data.posterOrg ?: data.poster
+                // Fix poster
+                this.posterUrl = data.posterOrg ?: data.poster ?: ""
                 backgroundPosterUrl = background ?: data.posterOrg ?: data.poster
                 score = Score.from10(data.imdbRating)
                 tags = genre ?: data.cats?.split(",")?.map { it.capitalize() }
