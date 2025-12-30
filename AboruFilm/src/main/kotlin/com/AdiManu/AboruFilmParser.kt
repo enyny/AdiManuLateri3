@@ -1,55 +1,15 @@
 package com.AdiManu
-
 import com.fasterxml.jackson.annotation.JsonProperty
 
-data class Meta(
-    val id: String?,
-    val imdb_id: String?,
-    val type: String?,
-    val poster: String?,
-    val logo: String?,
-    val background: String?,
-    val moviedb_id: Int?,
-    val name: String?,
-    val description: String?,
-    val genre: List<String>?,
-    val releaseInfo: String?,
-    val status: String?,
-    val runtime: String?,
-    val cast: List<String>?,
-    val language: String?,
-    val country: String?,
-    val imdbRating: String?,
-    val slug: String?,
-    val year: String?,
-    val videos: List<EpisodeDetails>?
-)
+data class Meta(val id: String?, val imdb_id: String?, val type: String?, val poster: String?, val name: String?, val description: String?, val cast: List<String>?, val genre: List<String>?, val year: String?)
+data class ResponseData(val meta: Meta?)
+data class ExternalSourcesWrapper(@JsonProperty("sources") val sources: List<ExternalSources>? = null)
+data class ExternalSources(val source: String?, val file: String?, val label: String?, val type: String?, val size: String?)
 
-data class EpisodeDetails(
-    val id: String?,
-    val name: String?,
-    val title: String?,
-    val season: Int?,
-    val episode: Int?,
-    val released: String?,
-    val overview: String?,
-    val thumbnail: String?,
-    val moviedb_id: Int?
-)
-
-data class ResponseData(
-    val meta: Meta?
-)
-
-
-data class ExternalSourcesWrapper(
-    @JsonProperty("sources") val sources: List<ExternalSources>? = null
-)
-
-data class ExternalSources(
-    @JsonProperty("source") val source: String? = null,
-    @JsonProperty("file") val file: String? = null,
-    @JsonProperty("label") val label: String? = null,
-    @JsonProperty("type") val type: String? = null,
-    @JsonProperty("size") val size: String? = null,
-)
+// Tambahan untuk detail API
+data class MovieDataProp(val data: MovieData? = null)
+data class MovieData(val id: Int?, val title: String?, val poster: String?, val description: String?, val year: Int?, val imdb_id: String?, val imdb_rating: String?)
+data class SeriesDataProp(val data: SeriesData? = null)
+data class SeriesData(val id: Int?, val title: String?, val poster: String?, val description: String?, val imdb_id: String?, val season: List<Int> = emptyList())
+data class SeriesSeasonProp(val data: List<SeriesEpisode>? = null)
+data class SeriesEpisode(val id: Int?, val tid: Int?, val season: Int?, val episode: Int?, val title: String?)
