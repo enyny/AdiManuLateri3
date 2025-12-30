@@ -10,26 +10,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import java.util.UUID
 
 object AboruFilmExtractor : AboruFilm() {
 
-    // =========================================================================
-    // PERBAIKAN UTAMA: GENERATE TOKEN DINAMIS
-    // =========================================================================
-    // Kita membuat token acak 32 karakter hex. Ini akan membuat server mengira
-    // kita adalah pengguna baru (Guest) yang valid, bukan pengguna yang diblokir.
-    private val DYNAMIC_ID: String by lazy {
-        (0..31).joinToString("") {
-            (('0'..'9') + ('a'..'f')).random().toString()
-        }
-    }
+    // TOKEN ASLI DARI HASIL DECOMPILE (Superstream.java)
+    private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
     
-    // Cookie "ui" harus cocok dengan token yang kita generate
-    private val DYNAMIC_COOKIE: String
-        get() = "ui=$DYNAMIC_ID"
-
-    // Header standar untuk menyamar sebagai browser/aplikasi resmi
+    // Header standar SuperStream
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Accept" to "*/*",
@@ -46,11 +33,7 @@ object AboruFilmExtractor : AboruFilm() {
     ) {
         val videoheaders = commonHeaders + mapOf(
             "Connection" to "keep-alive",
-            "Range" to "bytes=0-",
-            "Referer" to thirdAPI,
-            "Sec-Fetch-Dest" to "video",
-            "Sec-Fetch-Mode" to "no-cors",
-            "Sec-Fetch-Site" to "cross-site",
+            "Referer" to thirdAPI, 
         )
 
         suspend fun LinkList.toExtractorLink(): ExtractorLink? {
@@ -68,13 +51,12 @@ object AboruFilmExtractor : AboruFilm() {
             }
         }
         
-        // PERBAIKAN QUERY: Gunakan DYNAMIC_ID untuk 'uid' DAN 'open_udid'
-        // Kita juga menghapus "oss":"1" pada Movie agar lebih aman, 
-        // tapi menambahkannya pada Series sesuai pola asli.
+        // MENGGUNAKAN REAL_TOKEN UNTUK UID DAN TOKEN
+        // "oss":"1" penting untuk memberi tahu server ini adalah request dari aplikasi
         val query = if (type == ResponseTypes.Movies.value) {
-            """{"childmode":"0","uid":"$DYNAMIC_ID","app_version":"11.5","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"","expired_date":"${getExpiryDate()}","platform":"android","open_udid":"$DYNAMIC_ID","group":""}"""
+            """{"childmode":"0","uid":"$REAL_TOKEN","app_version":"11.5","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
         } else {
-            """{"childmode":"0","app_version":"11.5","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","oss":"1","uid":"$DYNAMIC_ID","open_udid":"$DYNAMIC_ID","appid":"$appId","season":"$season","lang":"en","group":""}"""
+            """{"childmode":"0","app_version":"11.5","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","appid":"$appId","season":"$season","lang":"en","group":""}"""
         }
 
         val linkData = queryApiParsed<LinkDataProp>(query)
@@ -86,11 +68,11 @@ object AboruFilmExtractor : AboruFilm() {
 
         val fid = linkData.data?.list?.firstOrNull { it.fid != null }?.fid
 
-        // Request Subtitle juga harus menggunakan ID yang sama
+        // Subtitle juga menggunakan token yang sama
         val subtitleQuery = if (type == ResponseTypes.Movies.value) {
-            """{"childmode":"0","fid":"$fid","uid":"$DYNAMIC_ID","app_version":"11.5","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","open_udid":"$DYNAMIC_ID","expired_date":"${getExpiryDate()}","platform":"android"}"""
+            """{"childmode":"0","fid":"$fid","uid":"$REAL_TOKEN","app_version":"11.5","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","open_udid":"$REAL_TOKEN","expired_date":"${getExpiryDate()}","platform":"android"}"""
         } else {
-            """{"childmode":"0","fid":"$fid","app_version":"11.5","module":"TV_srt_list_v2","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","uid":"$DYNAMIC_ID","open_udid":"$DYNAMIC_ID","appid":"$appId","season":"$season","lang":"en"}"""
+            """{"childmode":"0","fid":"$fid","app_version":"11.5","module":"TV_srt_list_v2","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
         }
 
         val subtitles = queryApiParsed<SubtitleDataProp>(subtitleQuery).data
@@ -112,17 +94,12 @@ object AboruFilmExtractor : AboruFilm() {
         episode: Int? = null,
         callback: (ExtractorLink) -> Unit,
     ) {
-        // Ambil Share Link
         val shareResKey = app.get("$thirdAPI/mbp/to_share_page?box_type=${type}&mid=$mediaId&json=1").parsedSafe<ExternalResponse>()
-        val shareLink = shareResKey?.data?.link ?: shareResKey?.data?.shareLink
-        
-        if (shareLink == null) return 
-
+        val shareLink = shareResKey?.data?.link ?: shareResKey?.data?.shareLink ?: return
         val shareKey = shareLink.substringAfterLast("/")
         
         val headers = mapOf("Accept-Language" to "en")
         
-        // Ambil daftar file
         val shareRes = app.get("$thirdAPI/file/file_share_list?share_key=$shareKey", headers = headers)
             .parsedSafe<ExternalResponse>()?.data ?: return
 
@@ -141,11 +118,12 @@ object AboruFilmExtractor : AboruFilm() {
         } ?: return
 
         fids.amapIndexed { index, fileList ->
-            // PERBAIKAN: Gunakan Cookie Dinamis saat request ke console/video_quality_list
-            // Febbox butuh cookie "ui" yang valid.
+            // CRITICAL: Cookie harus diset ui=TOKEN
+            val cookieHeader = "ui=$REAL_TOKEN"
+            
             val player = app.get(
                 "$thirdAPI/console/video_quality_list?fid=${fileList.fid}&share_key=$shareKey",
-                headers = mapOf("Cookie" to DYNAMIC_COOKIE) 
+                headers = mapOf("Cookie" to cookieHeader) 
             ).text
             
             val json = try { JSONObject(player) } catch (e: Exception) { return@amapIndexed }
@@ -159,14 +137,12 @@ object AboruFilmExtractor : AboruFilm() {
                 val qualityAttr = element.attr("data-quality")
                 val size = element.selectFirst(".size")?.text() ?: ""
                 
-                // Normalisasi kualitas (misal: ORG -> 2160p/4K)
                 val quality = if (qualityAttr.equals("ORG", ignoreCase = true)) {
                     Regex("""(\d{3,4}p)""", RegexOption.IGNORE_CASE).find(url)?.groupValues?.get(1) ?: "4K"
                 } else {
                     qualityAttr
                 }
 
-                // Tambahkan sebagai ExtractorLink
                 callback.invoke(
                     newExtractorLink(
                         "⌜ AboruFilm ⌟ External",
@@ -212,7 +188,7 @@ object AboruFilmExtractor : AboruFilm() {
         } ?: return
 
         fids.amapIndexed { index, fileList ->
-            // PERBAIKAN: Gunakan Cookie Dinamis dan Content-Type yang benar
+            val cookieHeader = "ui=$REAL_TOKEN"
             val mediaType = "application/x-www-form-urlencoded; charset=UTF-8".toMediaType()
             val body = """fid=${fileList.fid}&share_key=$shareKey""".trimIndent().toRequestBody(mediaType)
             
@@ -220,13 +196,12 @@ object AboruFilmExtractor : AboruFilm() {
                 "$thirdAPI/file/player",
                 requestBody = body,
                 headers = mapOf(
-                    "Cookie" to DYNAMIC_COOKIE,
+                    "Cookie" to cookieHeader,
                     "content-type" to "application/x-www-form-urlencoded; charset=UTF-8",
                     "User-Agent" to commonHeaders["User-Agent"]!!
                 )
             ).text
 
-            // Parsing manual JavaScript variable "sources"
             val sourcesJson = Regex("""var\s+sources\s*=\s*(\[[\s\S]*?]);""").find(player)?.groupValues?.get(1) ?: return@amapIndexed
 
             val jsonArray = JSONArray(sourcesJson)
@@ -244,11 +219,25 @@ object AboruFilmExtractor : AboruFilm() {
         }
     }
 
-    // --- Fungsi Helper (Tetap sama seperti sebelumnya) ---
+    // --- Fungsi Helper ---
 
     suspend fun invokeWatchsomuch(imdbId: String? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit) {
-        // ... (Kode watchsomuch lama bisa dipakai di sini, tidak berubah)
-        // Jika perlu kode lengkapnya kabari saja
+        val id = imdbId?.removePrefix("tt")
+        val epsId = app.post(
+            "$watchSomuchAPI/Watch/ajMovieTorrents.aspx",
+            data = mapOf(
+                "index" to "0", "mid" to "$id", "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45", "lid" to "", "liu" to ""
+            ), headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+        ).parsedSafe<WatchsomuchResponses>()?.movie?.torrents?.let { eps ->
+            if (season == null) eps.firstOrNull()?.id else eps.find { it.episode == episode && it.season == season }?.id
+        } ?: return
+
+        val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
+        val subUrl = if (season == null) "$watchSomuchAPI/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=" else "$watchSomuchAPI/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
+
+        app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
+            subtitleCallback.invoke(newSubtitleFile(sub.label ?: "", fixUrl(sub.url ?: return@map null, watchSomuchAPI)))
+        }
     }
 
     suspend fun invokeOpenSubs(imdbId: String? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit) {
