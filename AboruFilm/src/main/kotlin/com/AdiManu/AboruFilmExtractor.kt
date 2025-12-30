@@ -15,19 +15,22 @@ object AboruFilmExtractor : AboruFilm() {
         
         try {
             val res = queryApiParsed<LinkDataProp>(q)
-            res.data?.list?.forEach { link ->
-                callback.invoke(newExtractorLink("Aboru Internal", "Internal ${link.quality ?: ""}", link.path ?: return@forEach, INFER_TYPE) { this.headers = vHeaders })
+            // Gunakan for loop biasa untuk menghindari suspension error
+            val list = res.data?.list ?: return
+            for (link in list) {
+                callback.invoke(newExtractorLink("Aboru Internal", "Internal ${link.quality ?: ""}", link.path ?: continue, INFER_TYPE) { this.headers = vHeaders })
             }
         } catch (err: Exception) { }
     }
 
     suspend fun invokeExternalSource(mid: Int?, type: Int?, s: Int?, e: Int?, callback: (ExtractorLink) -> Unit) {
         try {
-            val share = app.get("$thirdAPI/mbp/to_share_page?box_type=$type&mid=$mid&json=1").parsedSafe<ExternalResponse>()?.data?.link ?: return
-            val files = app.get("$thirdAPI/file/file_share_list?share_key=$share").parsedSafe<ExternalResponse>()?.data?.file_list ?: return
+            val shareText = app.get("https://www.febbox.com/mbp/to_share_page?box_type=$type&mid=$mid&json=1").parsedSafe<ExternalResponse>()?.data?.link ?: return
+            val fileRes = app.get("https://www.febbox.com/file/file_share_list?share_key=$shareText").parsedSafe<ExternalResponse>()?.data?.file_list ?: return
             
-            files.amap { file ->
-                val p = app.get("$thirdAPI/console/video_quality_list?fid=${file.fid}&share_key=$share", headers = mapOf("Cookie" to "ui=$HARDCODED_TOKEN")).text
+            // amap adalah Cloudstream utility yang mendukung suspend function
+            fileRes.amap { file ->
+                val p = app.get("https://www.febbox.com/console/video_quality_list?fid=${file.fid}&share_key=$shareText", headers = mapOf("Cookie" to "ui=$HARDCODED_TOKEN")).text
                 val html = JSONObject(p).optString("html")
                 Jsoup.parse(html).select("div.file_quality").forEach { el ->
                     val url = el.attr("data-url")
@@ -39,11 +42,13 @@ object AboruFilmExtractor : AboruFilm() {
 
     suspend fun invokeWatchsomuch(imdb: String?, s: Int?, e: Int?, subCallback: (SubtitleFile) -> Unit) {
         try {
-            val id = imdb?.removePrefix("tt")
-            val res = app.post("$watchSomuchAPI/Watch/ajMovieTorrents.aspx", data = mapOf("mid" to "$id", "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45")).parsedSafe<WatchsomuchResponses>()
-            val tid = res?.movie?.torrents?.find { if (s == null) true else it.season == s && it.episode == e }?.id ?: return
-            val subUrl = "$watchSomuchAPI/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$tid"
-            app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.forEach { sub ->
+            val id = imdb?.removePrefix("tt") ?: return
+            val res = app.post("https://watchsomuch.tv/Watch/ajMovieTorrents.aspx", data = mapOf("mid" to id, "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45")).parsedSafe<WatchsomuchResponses>()
+            val torrents = res?.movie?.torrents ?: return
+            val tid = torrents.find { if (s == null) true else it.season == s && it.episode == e }?.id ?: return
+            
+            val subs = app.get("https://watchsomuch.tv/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$tid").parsedSafe<WatchsomuchSubResponses>()
+            subs?.subtitles?.forEach { sub ->
                 subCallback.invoke(newSubtitleFile(sub.label ?: "English", sub.url ?: return@forEach))
             }
         } catch (err: Exception) { }
@@ -51,8 +56,11 @@ object AboruFilmExtractor : AboruFilm() {
 
     suspend fun invokeOpenSubs(imdb: String?, s: Int?, e: Int?, subCallback: (SubtitleFile) -> Unit) {
         val slug = if (s == null) "movie/$imdb" else "series/$imdb:$s:$e"
-        app.get("$openSubAPI/subtitles/$slug.json").parsedSafe<OsResult>()?.subtitles?.forEach {
-            subCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
-        }
+        try {
+            val res = app.get("https://opensubtitles-v3.strem.io/subtitles/$slug.json").parsedSafe<OsResult>()
+            res?.subtitles?.forEach {
+                subCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
+            }
+        } catch (err: Exception) { }
     }
 }
