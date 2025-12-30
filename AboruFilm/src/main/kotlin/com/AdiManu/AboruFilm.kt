@@ -13,7 +13,6 @@ import okhttp3.FormBody
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -54,22 +53,21 @@ open class AboruFilm : MainAPI() {
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
     
-    // Tambahkan variabel API yang hilang agar tidak error di Extractor
+    // Variabel API untuk Extractor
     val openSubAPI = "https://opensubtitles-v3.strem.io"
     val watchSomuchAPI = "https://watchsomuch.tv"
     
     val appId = "com.tdo.showbox"
     private val appVersion = "11.7"
     private val appVersionCode = "131"
-    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
-    private val headers = mapOf(
+    private val globalHeaders = mapOf(
         "Platform" to "android",
         "Accept" to "charset=utf-8",
         "User-Agent" to "okhttp/3.12.1"
     )
 
-    // region Encryption Utils
+    // region Encryption
     object CipherUtils {
         fun encrypt(str: String, key: String, iv: String): String? {
             return try {
@@ -91,7 +89,8 @@ open class AboruFilm : MainAPI() {
     // endregion
 
     // region SSL Client
-    private val CLIENT_CERT_PEM = """MIIEFTCCAv2gAwIBAgIUCrILmXOevO03gUhhbEhG/wZb2uAwDQYJKoZIhvcNAQEL
+    private fun buildClient(): OkHttpClient {
+        val certPem = """MIIEFTCCAv2gAwIBAgIUCrILmXOevO03gUhhbEhG/wZb2uAwDQYJKoZIhvcNAQEL
 BQAwgagxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQH
 Ew1TYW4gRnJhbmNpc2NvMRkwFwYDVQQKExBDbG91ZGZsYXJlLCBJbmMuMRswGQYD
 VQQLExJ3d3cuY2xvdWRmbGFyZS5jb20xNDAyBgNVBAMTK01hbmFnZWQgQ0EgM2Q0
@@ -114,7 +113,7 @@ fzDiz27GP5ZSHHI6xwdUP+a87N/RnfI4UwGxyXvPpHfoAZWjoXDqLKKwEL36/Sqi
 nGcp970y0gnZ2zI2ehqivsF7BATMZqvU+LJKCH8NEE2bnbCJ6qlPHZWZFNKYWBOe
 I1Crf0gNAWD/q3HKGMVZiyxlhU6SsQS4/08tDXXQjWYfl6i3oviexSk="""
 
-    private val CLIENT_KEY_PEM = """MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCYaTJa//iGrbga
+        val keyPem = """MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCYaTJa//iGrbga
 qbmbgOkL6nSNkIhW9VDFbo2/8YmgQv76iTJTHpy0g8rJPMXeHy3gvhgvAMln9SDC
 SM+nfawYzoTeA/jMb4KYbn5HSFarOt0qinK6/2S9CWkaccRIP6Sqkox+eSJO9ZHg
 fLbdJpkO+litbMDMnTgKp+gyClQIu8BfWnFsl/+i8vnJsX7niw2b5C4oF5d4DB27
@@ -141,9 +140,8 @@ whOL5RGy5M2oXKfqNkzEt2k5og7xXY7ZoYTye5Byb3+wLpEJXW+V8FlfXk/u5ZI7
 oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 12XvK21e6GNOEaRRlTHz0qUB"""
 
-    private fun buildClientWithCert(): OkHttpClient {
-        val cert = CertificateFactory.getInstance("X.509").generateCertificate(Base64.decode(CLIENT_CERT_PEM, Base64.DEFAULT).inputStream()) as java.security.cert.X509Certificate
-        val privateKey = KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.decode(CLIENT_KEY_PEM, Base64.DEFAULT)))
+        val cert = CertificateFactory.getInstance("X.509").generateCertificate(Base64.decode(certPem, Base64.DEFAULT).inputStream()) as java.security.cert.X509Certificate
+        val privateKey = KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.decode(keyPem, Base64.DEFAULT)))
         val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null); setKeyEntry("client", privateKey, "".toCharArray(), arrayOf(cert)) }
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(ks, "".toCharArray()) }
         val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(null as KeyStore?) }
@@ -156,8 +154,8 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         val encrypted = CipherUtils.encrypt(query, key, iv)!!
         val body = Base64.encodeToString("""{"app_key":"${CipherUtils.md5("moviebox")}","verify":"${CipherUtils.getVerify(encrypted, "moviebox", key)}","encrypt_data":"$encrypted"}""".toByteArray(), Base64.NO_WRAP)
         val form = FormBody.Builder().add("data", body).add("appid", "27").add("platform", "android").add("version", appVersionCode).add("medium", "Website").add("token", HARDCODED_TOKEN).build()
-        val request = Request.Builder().url(if (useAlt) secondAPI else firstAPI).headers(headers.toHeaders()).post(form).build()
-        return buildClientWithCert().newCall(request).execute().body.string()
+        val request = Request.Builder().url(if (useAlt) secondAPI else firstAPI).headers(globalHeaders.toHeaders()).post(form).build()
+        return buildClient().newCall(request).execute().body.string()
     }
 
     inline fun <reified T : Any> queryApiParsed(query: String): T = try { Gson().fromJson(queryApi(query), T::class.java) } catch (e: Exception) { Gson().fromJson(queryApi(query, true), T::class.java) }
@@ -172,8 +170,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val apiQuery = """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android"}"""
-        val data = queryApiParsed<DataJSON>(apiQuery)
-        val sections = data.data.mapNotNull { section ->
+        val sections = queryApiParsed<DataJSON>(apiQuery).data.mapNotNull { section ->
             val items = section.list.mapNotNull { i ->
                 newMovieSearchResponse(i.title ?: "", LoadData(i.id ?: return@mapNotNull null, i.box_type).toJson(), if (i.box_type == 2) TvType.TvSeries else TvType.Movie) {
                     posterUrl = i.poster; this.score = Score.from10(i.imdb_rating)
@@ -200,7 +197,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         return if (isMovie) {
             val d = queryApiParsed<MovieDataProp>(apiQuery).data!!
             newMovieLoadResponse(d.title ?: "", url, TvType.Movie, LinkData(d.id!!, 1, null, null, d.id, d.imdb_id)) {
-                posterUrl = d.poster_org ?: d.poster; plot = d.description; year = d.year; addImdbId(d.imdb_id); this.score = Score.from10(d.imdb_rating)
+                posterUrl = d.poster_org ?: d.poster; this.plot = d.description; year = d.year; addImdbId(d.imdb_id); this.score = Score.from10(d.imdb_rating)
             }
         } else {
             val d = queryApiParsed<SeriesDataProp>(apiQuery).data!!
@@ -211,17 +208,15 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                     eps.add(newEpisode(LinkData(ep.id ?: ep.tid!!, 2, ep.season, ep.episode, d.id, d.imdb_id).toJson()) { name = ep.title; season = ep.season; episode = ep.episode; description = ep.synopsis })
                 }
             }
-            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { posterUrl = d.poster_org ?: d.poster; plot = d.description; addImdbId(d.imdb_id) }
+            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { posterUrl = d.poster_org ?: d.poster; this.plot = d.description; addImdbId(d.imdb_id) }
         }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val parsed = parseJson<LinkData>(data)
-        runAllAsync(
-            { AboruFilmExtractor.invokeInternalSource(parsed.id, parsed.type, parsed.season, parsed.episode, subtitleCallback, callback) },
-            { AboruFilmExtractor.invokeExternalSource(parsed.mediaId, parsed.type, parsed.season, parsed.episode, callback) },
-            { AboruFilmExtractor.invokeOpenSubs(parsed.imdbId, parsed.season, parsed.episode, subtitleCallback) }
-        )
+        AboruFilmExtractor.invokeInternalSource(parsed.id, parsed.type, parsed.season, parsed.episode, subtitleCallback, callback)
+        AboruFilmExtractor.invokeExternalSource(parsed.mediaId, parsed.type, parsed.season, parsed.episode, callback)
+        AboruFilmExtractor.invokeOpenSubs(parsed.imdbId, parsed.season, parsed.episode, subtitleCallback)
         return true
     }
 }
