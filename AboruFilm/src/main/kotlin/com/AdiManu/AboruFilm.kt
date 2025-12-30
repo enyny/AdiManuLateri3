@@ -10,8 +10,10 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import okhttp3.FormBody
+import okhttp3.Headers.Companion.toHeaders
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -30,19 +32,52 @@ open class AboruFilm : MainAPI() {
     override var name = "AboruFilm"
     override val hasMainPage = true
     override val hasChromecastSupport = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val instantLinkLoading = true
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     companion object {
         const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
-        fun getUnixTime() = System.currentTimeMillis() / 1000
     }
 
     private val iv = "wEiphTn!"
     private val key = "123d6cedf626dy54233aa1w6"
+    private val firstAPI = "https://showboxssl.shegu.net/api/api_client/"
+    val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
+    val thirdAPI = "https://www.febbox.com"
     val appId = "com.tdo.showbox"
+    private val appVersion = "11.7"
+    private val appVersionCode = "131"
+    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
-    private fun buildClient(): OkHttpClient {
-        val certPem = """MIIEFTCCAv2gAwIBAgIUCrILmXOevO03gUhhbEhG/wZb2uAwDQYJKoZIhvcNAQEL
+    private val headers = mapOf(
+        "Platform" to "android",
+        "Accept" to "charset=utf-8",
+        "User-Agent" to "okhttp/3.12.1"
+    )
+
+    // region Encryption Utils
+    object CipherUtils {
+        fun encrypt(str: String, key: String, iv: String): String? {
+            return try {
+                val cipher = Cipher.getInstance("DESede/CBC/PKCS5Padding")
+                val bArr = ByteArray(24)
+                val bytes = key.toByteArray()
+                System.arraycopy(bytes, 0, bArr, 0, minOf(bytes.size, 24))
+                cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(bArr, "DESede"), IvParameterSpec(iv.toByteArray()))
+                Base64.encodeToString(cipher.doFinal(str.toByteArray()), Base64.NO_WRAP)
+            } catch (e: Exception) { null }
+        }
+        fun md5(str: String): String? {
+            val digest = MessageDigest.getInstance("MD5")
+            digest.update(str.toByteArray())
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        fun getVerify(str: String?, str2: String, str3: String) = md5(md5(str2) + str3 + (str ?: ""))
+    }
+    // endregion
+
+    // region SSL Client
+    private val CLIENT_CERT_PEM = """MIIEFTCCAv2gAwIBAgIUCrILmXOevO03gUhhbEhG/wZb2uAwDQYJKoZIhvcNAQEL
 BQAwgagxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQH
 Ew1TYW4gRnJhbmNpc2NvMRkwFwYDVQQKExBDbG91ZGZsYXJlLCBJbmMuMRswGQYD
 VQQLExJ3d3cuY2xvdWRmbGFyZS5jb20xNDAyBgNVBAMTK01hbmFnZWQgQ0EgM2Q0
@@ -64,7 +99,8 @@ iRQwGD0MZiYNERWhmmBtjV1oxllz74fL4+aZTYAespIbOekmFn9NZJ+XSdyF9RqS
 fzDiz27GP5ZSHHI6xwdUP+a87N/RnfI4UwGxyXvPpHfoAZWjoXDqLKKwEL36/Sqi
 nGcp970y0gnZ2zI2ehqivsF7BATMZqvU+LJKCH8NEE2bnbCJ6qlPHZWZFNKYWBOe
 I1Crf0gNAWD/q3HKGMVZiyxlhU6SsQS4/08tDXXQjWYfl6i3oviexSk="""
-        val keyPem = """MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCYaTJa//iGrbga
+
+    private val CLIENT_KEY_PEM = """MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCYaTJa//iGrbga
 qbmbgOkL6nSNkIhW9VDFbo2/8YmgQv76iTJTHpy0g8rJPMXeHy3gvhgvAMln9SDC
 SM+nfawYzoTeA/jMb4KYbn5HSFarOt0qinK6/2S9CWkaccRIP6Sqkox+eSJO9ZHg
 fLbdJpkO+litbMDMnTgKp+gyClQIu8BfWnFsl/+i8vnJsX7niw2b5C4oF5d4DB27
@@ -90,90 +126,87 @@ KbjDrEykmt1bYDijAn1jeSYg/xeOq2+JqB6klms7XBfzgyuCdrWSTDkDV7uA84SI
 whOL5RGy5M2oXKfqNkzEt2k5og7xXY7ZoYTye5Byb3+wLpEJXW+V8FlfXk/u5ZI7
 oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 12XvK21e6GNOEaRRlTHz0qUB"""
-        val cert = CertificateFactory.getInstance("X.509").generateCertificate(Base64.decode(certPem, Base64.DEFAULT).inputStream()) as java.security.cert.X509Certificate
-        val privateKey = KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.decode(keyPem, Base64.DEFAULT)))
+
+    private fun buildClientWithCert(): OkHttpClient {
+        val cert = CertificateFactory.getInstance("X.509").generateCertificate(Base64.decode(CLIENT_CERT_PEM, Base64.DEFAULT).inputStream()) as java.security.cert.X509Certificate
+        val privateKey = KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(Base64.decode(CLIENT_KEY_PEM, Base64.DEFAULT)))
         val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null); setKeyEntry("client", privateKey, "".toCharArray(), arrayOf(cert)) }
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(ks, "".toCharArray()) }
         val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(null as KeyStore?) }
-        val ssl = SSLContext.getInstance("TLS").apply { init(kmf.keyManagers, tmf.trustManagers, SecureRandom()) }
-        return OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, tmf.trustManagers[0] as X509TrustManager).build()
+        val sslContext = SSLContext.getInstance("TLS").apply { init(kmf.keyManagers, tmf.trustManagers, SecureRandom()) }
+        return OkHttpClient.Builder().sslSocketFactory(sslContext.socketFactory, tmf.trustManagers[0] as X509TrustManager).build()
+    }
+    // endregion
+
+    fun queryApi(query: String, useAlt: Boolean = false): String {
+        val encrypted = CipherUtils.encrypt(query, key, iv)!!
+        val body = Base64.encodeToString("""{"app_key":"${CipherUtils.md5("moviebox")}","verify":"${CipherUtils.getVerify(encrypted, "moviebox", key)}","encrypt_data":"$encrypted"}""".toByteArray(), Base64.NO_WRAP)
+        val form = FormBody.Builder().add("data", body).add("appid", "27").add("platform", "android").add("version", appVersionCode).add("medium", "Website").add("token", HARDCODED_TOKEN).build()
+        val request = Request.Builder().url(if (useAlt) secondAPI else firstAPI).headers(headers.toHeaders()).post(form).build()
+        return buildClientWithCert().newCall(request).execute().body.string()
     }
 
-    fun queryApi(q: String, alt: Boolean = false): String {
-        val cipher = Cipher.getInstance("DESede/CBC/PKCS5Padding")
-        val bArr = ByteArray(24); System.arraycopy(key.toByteArray(), 0, bArr, 0, minOf(key.length, 24))
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(bArr, "DESede"), IvParameterSpec(iv.toByteArray()))
-        val enc = Base64.encodeToString(cipher.doFinal(q.toByteArray()), Base64.NO_WRAP)
-        val md5 = MessageDigest.getInstance("MD5").let { it.update("moviebox".toByteArray()); it.digest().joinToString("") { "%02x".format(it) } }
-        val verify = MessageDigest.getInstance("MD5").let { it.update((md5 + key + enc).toByteArray()); it.digest().joinToString("") { "%02x".format(it) } }
-        val body = Base64.encodeToString("""{"app_key":"$md5","verify":"$verify","encrypt_data":"$enc"}""".toByteArray(), Base64.NO_WRAP)
-        val form = FormBody.Builder().add("data", body).add("appid", "27").add("platform", "android").add("version", "131").add("medium", "Website").add("token", HARDCODED_TOKEN).build()
-        val url = if (alt) "https://showboxapissl.stsoso.com/api/api_client/" else "https://showboxssl.shegu.net/api/api_client/"
-        return buildClient().newCall(Request.Builder().url(url).post(form).build()).execute().body.string()
-    }
+    inline fun <reified T : Any> queryApiParsed(query: String): T = try { Gson().fromJson(queryApi(query), T::class.java) } catch (e: Exception) { Gson().fromJson(queryApi(query, true), T::class.java) }
+    fun getExpiryDate() = APIHolder.unixTime + 43200
 
-    inline fun <reified T : Any> queryApiParsed(q: String): T = try { Gson().fromJson(queryApi(q), T::class.java) } catch (e: Exception) { Gson().fromJson(queryApi(q, true), T::class.java) }
-
-    data class SearchData(val id: Int?, val mid: Int?, val box_type: Int?, val title: String?, val poster: String?, val imdb_rating: String?)
-    data class SearchRes(val data: List<SearchData> = emptyList())
-    data class HomeRes(val data: List<HomeSection> = emptyList())
+    data class SearchData(val id: Int?, val mid: Int?, val box_type: Int?, val title: String?, val poster: String?, val quality_tag: String?, val imdb_rating: String?)
+    data class SearchResponseData(val data: List<SearchData> = emptyList())
+    data class DataJSON(val data: List<HomeSection> = emptyList())
     data class HomeSection(val name: String?, val list: List<SearchData> = emptyList())
+    data class LoadData(val id: Int, val box_type: Int?)
+    data class LinkData(val id: Int, val type: Int, val season: Int?, val episode: Int?, val mediaId: Int?, val imdbId: String?)
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val q = """{"module":"Home_list_type_v2","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getUnixTime() + 43200}","platform":"android","appid":"$appId"}"""
-        val data = queryApiParsed<HomeRes>(q)
-        val sections = data.data.mapNotNull { s ->
-            val items = s.list.mapNotNull { i ->
-                newMovieSearchResponse(i.title ?: "", LoadData(i.id ?: return@mapNotNull null, i.box_type).toJson(), if (i.box_type == 2) TvType.TvSeries else TvType.Movie) { posterUrl = i.poster }
+        val apiQuery = """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android"}"""
+        val data = queryApiParsed<DataJSON>(apiQuery)
+        val sections = data.data.mapNotNull { section ->
+            val items = section.list.mapNotNull { i ->
+                newMovieSearchResponse(i.title ?: "", LoadData(i.id ?: return@mapNotNull null, i.box_type).toJson(), if (i.box_type == 2) TvType.TvSeries else TvType.Movie) {
+                    posterUrl = i.poster; this.score = Score.from10(i.imdb_rating)
+                }
             }
-            if (items.isEmpty()) null else HomePageList(s.name ?: "Trending", items)
+            if (items.isEmpty()) null else HomePageList(section.name ?: "Trending", items)
         }
-        return newHomePageResponse(sections, true)
+        return newHomePageResponse(sections, hasNext = true)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val q = """{"module":"Search3","keyword":"$query","page":"1","pagelimit":"15","expired_date":"${getUnixTime() + 43200}","platform":"android","appid":"$appId"}"""
-        return queryApiParsed<SearchRes>(q).data.mapNotNull { i ->
-            newMovieSearchResponse(i.title ?: "", LoadData(i.id ?: i.mid ?: return@mapNotNull null, i.box_type).toJson(), if (i.box_type == 2) TvType.TvSeries else TvType.Movie) { posterUrl = i.poster }
+        val apiQuery = """{"childmode":"0","app_version":"$appVersion","module":"Search3","channel":"Website","page":"1","lang":"en","type":"all","keyword":"$query","pagelimit":"15","expired_date":"${getExpiryDate()}","platform":"android","appid":"$appId"}"""
+        return queryApiParsed<SearchResponseData>(apiQuery).data.mapNotNull {
+            newMovieSearchResponse(it.title ?: "", LoadData(it.id ?: it.mid ?: return@mapNotNull null, it.box_type).toJson(), if (it.box_type == 2) TvType.TvSeries else TvType.Movie) { posterUrl = it.poster }
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val ld = parseJson<LoadData>(url)
-        val q = if (ld.box_type == 1) """{"module":"Movie_detail","mid":"${ld.id}","expired_date":"${getUnixTime() + 43200}","platform":"android","appid":"$appId"}"""
-                else """{"module":"TV_detail_1","tid":"${ld.id}","display_all":"1","expired_date":"${getUnixTime() + 43200}","platform":"android","appid":"$appId"}"""
+        val loadData = parseJson<LoadData>(url)
+        val isMovie = loadData.box_type == 1
+        val apiQuery = if (isMovie) """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"Movie_detail","mid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android"}"""
+                       else """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"TV_detail_1","display_all":"1","tid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android"}"""
         
-        return if (ld.box_type == 1) {
-            val d = queryApiParsed<MovieDataProp>(q).data!!
-            newMovieLoadResponse(d.title ?: "", url, TvType.Movie, LinkData(d.id!!, 1, null, null, d.id, d.imdb_id)) { 
-                this.posterUrl = d.poster
-                this.plot = d.description // Perbaikan scope
-                addImdbId(d.imdb_id)
+        return if (isMovie) {
+            val d = queryApiParsed<MovieDataProp>(apiQuery).data!!
+            newMovieLoadResponse(d.title ?: "", url, TvType.Movie, LinkData(d.id!!, 1, null, null, d.id, d.imdb_id)) {
+                posterUrl = d.poster_org ?: d.poster; plot = d.description; year = d.year; addImdbId(d.imdb_id); this.score = Score.from10(d.imdb_rating)
             }
         } else {
-            val d = queryApiParsed<SeriesDataProp>(q).data!!
+            val d = queryApiParsed<SeriesDataProp>(apiQuery).data!!
             val eps = mutableListOf<Episode>()
             d.season.forEach { s ->
-                val sq = """{"module":"TV_episode","season":"$s","tid":"${ld.id}","platform":"android","appid":"$appId"}"""
-                queryApiParsed<SeriesSeasonProp>(sq).data?.forEach { ep ->
-                    eps.add(newEpisode(LinkData(ep.id ?: ep.tid!!, 2, ep.season, ep.episode, d.id, d.imdb_id).toJson()) { name = ep.title; season = ep.season; episode = ep.episode })
+                val sQuery = """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"TV_episode","season":"$s","tid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android"}"""
+                queryApiParsed<SeriesSeasonProp>(sQuery).data?.forEach { ep ->
+                    eps.add(newEpisode(LinkData(ep.id ?: ep.tid!!, 2, ep.season, ep.episode, d.id, d.imdb_id).toJson()) { name = ep.title; season = ep.season; episode = ep.episode; description = ep.synopsis })
                 }
             }
-            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { 
-                this.posterUrl = d.poster
-                this.plot = d.description // Perbaikan scope
-                addImdbId(d.imdb_id)
-            }
+            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { posterUrl = d.poster_org ?: d.poster; plot = d.description; addImdbId(d.imdb_id) }
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val p = parseJson<LinkData>(data)
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+        val parsed = parseJson<LinkData>(data)
         runAllAsync(
-            { AboruFilmExtractor.invokeInternalSource(p.id, p.type, p.season, p.episode, subCallback, callback) },
-            { AboruFilmExtractor.invokeExternalSource(p.mediaId, p.type, p.season, p.episode, callback) },
-            { AboruFilmExtractor.invokeOpenSubs(p.imdbId, p.season, p.episode, subCallback) },
-            { AboruFilmExtractor.invokeWatchsomuch(p.imdbId, p.season, p.episode, subCallback) }
+            { AboruFilmExtractor.invokeInternalSource(parsed.id, parsed.type, parsed.season, parsed.episode, subtitleCallback, callback) },
+            { AboruFilmExtractor.invokeExternalSource(parsed.mediaId, parsed.type, parsed.season, parsed.episode, callback) },
+            { AboruFilmExtractor.invokeOpenSubs(parsed.imdbId, parsed.season, parsed.episode, subtitleCallback) }
         )
         return true
     }
