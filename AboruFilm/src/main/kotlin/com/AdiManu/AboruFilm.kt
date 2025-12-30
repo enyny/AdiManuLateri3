@@ -37,6 +37,15 @@ open class AboruFilm : MainAPI() {
 
     companion object {
         const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+        
+        // Pindahkan ke sini agar bisa diakses oleh Extractor tanpa error
+        enum class ResponseTypes(val value: Int) {
+            Series(2),
+            Movies(1);
+            companion object {
+                fun getResponseType(value: Int?) = entries.firstOrNull { it.value == value } ?: Movies
+            }
+        }
     }
 
     private val iv = "wEiphTn!"
@@ -44,6 +53,11 @@ open class AboruFilm : MainAPI() {
     private val firstAPI = "https://showboxssl.shegu.net/api/api_client/"
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
+    
+    // Tambahkan variabel API yang hilang agar tidak error di Extractor
+    val openSubAPI = "https://opensubtitles-v3.strem.io"
+    val watchSomuchAPI = "https://watchsomuch.tv"
+    
     val appId = "com.tdo.showbox"
     private val appVersion = "11.7"
     private val appVersionCode = "131"
