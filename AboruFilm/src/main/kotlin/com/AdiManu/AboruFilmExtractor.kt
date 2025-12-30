@@ -21,8 +21,8 @@ object AboruFilmExtractor : AboruFilm() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        // PERBAIKAN: Mengakses ResponseTypes dari Companion Object AboruFilm
-        val query = if (type == AboruFilm.ResponseTypes.Movies.value) {
+        // PERBAIKAN: ResponseTypes sekarang dipanggil langsung karena bersifat global di Parser.kt
+        val query = if (type == ResponseTypes.Movies.value) {
             """{"childmode":"0","app_version":"11.7","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN"}"""
         } else {
             """{"childmode":"0","app_version":"11.7","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
@@ -31,7 +31,7 @@ object AboruFilmExtractor : AboruFilm() {
         try {
             val linkData = queryApiParsed<LinkDataProp>(query)
             linkData.data?.list?.forEach { link ->
-                // PERBAIKAN: Hanya hapus backslash agar struktur URL tetap valid
+                // PERBAIKAN: Membersihkan URL tanpa merusak protokol https://
                 val path = link.path?.replace("\\", "") ?: return@forEach
                 callback.invoke(
                     newExtractorLink(
@@ -57,7 +57,7 @@ object AboruFilmExtractor : AboruFilm() {
         id: Int?, fid: Int?, type: Int?, season: Int?, episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        val subQuery = if (type == AboruFilm.ResponseTypes.Movies.value) {
+        val subQuery = if (type == ResponseTypes.Movies.value) {
             """{"childmode":"0","fid":"$fid","app_version":"11.7","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","uid":"$HARDCODED_TOKEN"}"""
         } else {
             """{"childmode":"0","fid":"$fid","app_version":"11.7","module":"TV_srt_list_v2","channel":"Website","episode":"$episode","tid":"$id","uid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season"}"""
@@ -108,7 +108,6 @@ object AboruFilmExtractor : AboruFilm() {
     suspend fun invokeOpenSubs(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
         val slug = if (season == null) "movie/$imdbId" else "series/$imdbId:$season:$episode"
         try {
-            // PERBAIKAN: Mengambil variabel openSubAPI dari AboruFilm
             app.get("$openSubAPI/subtitles/$slug.json").parsedSafe<OsResult>()?.subtitles?.forEach {
                 subtitleCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
             }
