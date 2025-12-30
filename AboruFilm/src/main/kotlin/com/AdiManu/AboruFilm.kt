@@ -22,6 +22,7 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.getQualityFromString
@@ -75,17 +76,18 @@ open class AboruFilm : MainAPI() {
         TvType.AnimeMovie,
     )
     
-    // KONFIGURASI SESUAI FILE classes.dex / Superstream.java
-    
-    // Token Sakti (UID & Token)
-    private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+    // PERBAIKAN: Memindahkan const val ke dalam companion object
+    companion object {
+        // Token Sakti (UID & Token)
+        private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+    }
 
     // IV: "wEiphTn!"
     private val iv = "wEiphTn!"
     // Key: "123d6cedf626dy54233aa1w6"
     private val key = "123d6cedf626dy54233aa1w6"
 
-    // API URLs (Base64 Decoded from original source)
+    // API URLs
     private val firstAPI = "https://showboxssl.shegu.net/api/api_client/"
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
@@ -138,7 +140,7 @@ open class AboruFilm : MainAPI() {
 
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
     
-    // Cipher Utils tetap sama
+    // Cipher Utils
     object CipherUtils {
         private const val ALGORITHM = "DESede"
         private const val TRANSFORMATION = "DESede/CBC/PKCS5Padding"
@@ -218,7 +220,6 @@ open class AboruFilm : MainAPI() {
     }
 
     // ================== CERTIFICATES (HARDCODED) ==================
-    // Sertifikat tetap sama, tidak berubah
     
     private val CLIENT_CERT_PEM = """
 -----BEGIN CERTIFICATE-----
