@@ -10,7 +10,7 @@ import org.jsoup.nodes.Document
 
 object AboruFilmExtractor : AboruFilm() {
 
-    // Token disamakan dengan AboruFilm.kt agar sesi tetap valid
+    // Menggunakan token yang sama dengan file utama agar sesi sinkron
     private const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
     private const val HARDCODED_COOKIE_TOKEN = "ui=59e139fd173d9045a2b5fc13b40dfd87"
 
@@ -32,7 +32,7 @@ object AboruFilmExtractor : AboruFilm() {
             val quality = this.quality
             val rawPath = this.path ?: return null
             
-            // PERBAIKAN: Hanya menghapus backslash (\), bukan merusak forward slash (/)
+            // PERBAIKAN: Hanya menghapus backslash (\) agar URL https:// tidak rusak
             val fixedPath = rawPath.replace("\\", "")
             
             return newExtractorLink(
@@ -46,8 +46,8 @@ object AboruFilmExtractor : AboruFilm() {
             }
         }
         
-        // Payload menggunakan versi 11.7 dan token yang konsisten
-        val query = if (type == ResponseTypes.Movies.value) {
+        // Mengakses ResponseTypes melalui AboruFilm.Companion
+        val query = if (type == AboruFilm.ResponseTypes.Movies.value) {
             """{"childmode":"0","app_version":"11.7","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN"}"""
         } else {
             """{"childmode":"0","app_version":"11.7","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
@@ -73,7 +73,7 @@ object AboruFilmExtractor : AboruFilm() {
         id: Int?, fid: Int?, type: Int?, season: Int?, episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        val subQuery = if (type == ResponseTypes.Movies.value) {
+        val subQuery = if (type == AboruFilm.ResponseTypes.Movies.value) {
             """{"childmode":"0","fid":"$fid","app_version":"11.7","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","uid":"$HARDCODED_TOKEN","platform":"android"}"""
         } else {
             """{"childmode":"0","fid":"$fid","app_version":"11.7","module":"TV_srt_list_v2","channel":"Website","episode":"$episode","tid":"$id","uid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
@@ -127,11 +127,24 @@ object AboruFilmExtractor : AboruFilm() {
         } catch (e: Exception) { }
     }
 
+    // Menggunakan openSubAPI dari kelas induk (AboruFilm)
     suspend fun invokeOpenSubs(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
         val slug = if (season == null) "movie/$imdbId" else "series/$imdbId:$season:$episode"
         try {
             app.get("$openSubAPI/subtitles/$slug.json").parsedSafe<OsResult>()?.subtitles?.forEach {
                 subtitleCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
+            }
+        } catch (e: Exception) { }
+    }
+
+    // Menggunakan watchSomuchAPI dari kelas induk (AboruFilm)
+    suspend fun invokeWatchsomuch(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
+        val id = imdbId?.removePrefix("tt") ?: return
+        try {
+            val res = app.post("$watchSomuchAPI/Watch/ajMovieTorrents.aspx", data = mapOf("mid" to id, "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45")).parsedSafe<WatchsomuchResponses>()
+            val tid = res?.movie?.torrents?.find { if (season == null) true else it.season == season && it.episode == episode }?.id ?: return
+            app.get("$watchSomuchAPI/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$tid").parsedSafe<WatchsomuchSubResponses>()?.subtitles?.forEach { sub ->
+                subtitleCallback.invoke(newSubtitleFile(sub.label ?: "English", sub.url ?: return@forEach))
             }
         } catch (e: Exception) { }
     }
