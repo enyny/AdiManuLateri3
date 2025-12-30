@@ -13,14 +13,20 @@ import org.jsoup.nodes.Document
 
 object AboruFilmExtractor : AboruFilm() {
 
-    // TOKEN ASLI DARI HASIL DECOMPILE (Superstream.java)
+    // TOKEN SAKTI (Dari file Superstream.java baris 36)
+    // Karena aplikasi asli jalan pakai ini, kita juga HARUS pakai ini.
     private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
-    
-    // Header standar SuperStream
-    private val commonHeaders = mapOf(
+
+    // Header Video (Bukan Header API)
+    // Ini digunakan saat memutar video, bukan saat request link.
+    private val videoHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Accept" to "*/*",
-        "Accept-Language" to "en-US,en;q=0.8"
+        "Accept-Language" to "en-US,en;q=0.8",
+        "Connection" to "keep-alive",
+        "Sec-Fetch-Dest" to "video",
+        "Sec-Fetch-Mode" to "no-cors",
+        "Sec-Fetch-Site" to "cross-site",
     )
 
     suspend fun invokeInternalSource(
@@ -31,11 +37,7 @@ object AboruFilmExtractor : AboruFilm() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val videoheaders = commonHeaders + mapOf(
-            "Connection" to "keep-alive",
-            "Referer" to thirdAPI, 
-        )
-
+        
         suspend fun LinkList.toExtractorLink(): ExtractorLink? {
             val quality = this.quality
             if (this.path.isNullOrBlank()) return null
@@ -47,17 +49,26 @@ object AboruFilmExtractor : AboruFilm() {
             )
             {
                 this.quality = getQualityFromName(quality)
-                this.headers = videoheaders
+                // Menambahkan Referer khusus agar tidak ditolak server video
+                this.headers = videoHeaders + mapOf("Referer" to thirdAPI)
             }
         }
         
-        // MENGGUNAKAN REAL_TOKEN UNTUK UID DAN TOKEN
-        // "oss":"1" penting untuk memberi tahu server ini adalah request dari aplikasi
+        // PERBAIKAN VITAL: 
+        // 1. Mengubah "app_version" jadi "11.5" sesuai file dex asli.
+        // 2. Menambahkan "oss":"1" pada Movie (sebelumnya hilang).
+        // 3. Memastikan urutan parameter mirip dengan aslinya.
+        
         val query = if (type == ResponseTypes.Movies.value) {
+            // Format asli dari Superstream.java (Movie)
             """{"childmode":"0","uid":"$REAL_TOKEN","app_version":"11.5","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
         } else {
+            // Format asli dari Superstream.java (TV Series)
             """{"childmode":"0","app_version":"11.5","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","appid":"$appId","season":"$season","lang":"en","group":""}"""
         }
+
+        // Debugging: Cek apakah query berhasil
+        // Log.d("AboruFilm", "Requesting: $query")
 
         val linkData = queryApiParsed<LinkDataProp>(query)
 
@@ -68,7 +79,7 @@ object AboruFilmExtractor : AboruFilm() {
 
         val fid = linkData.data?.list?.firstOrNull { it.fid != null }?.fid
 
-        // Subtitle juga menggunakan token yang sama
+        // Query Subtitle juga disesuaikan versinya ke 11.5
         val subtitleQuery = if (type == ResponseTypes.Movies.value) {
             """{"childmode":"0","fid":"$fid","uid":"$REAL_TOKEN","app_version":"11.5","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","open_udid":"$REAL_TOKEN","expired_date":"${getExpiryDate()}","platform":"android"}"""
         } else {
@@ -118,7 +129,7 @@ object AboruFilmExtractor : AboruFilm() {
         } ?: return
 
         fids.amapIndexed { index, fileList ->
-            // CRITICAL: Cookie harus diset ui=TOKEN
+            // PENTING: Cookie UI harus diset manual menggunakan REAL_TOKEN
             val cookieHeader = "ui=$REAL_TOKEN"
             
             val player = app.get(
@@ -150,7 +161,7 @@ object AboruFilmExtractor : AboruFilm() {
                         url,
                         INFER_TYPE
                     ) {
-                        this.headers = commonHeaders
+                        this.headers = videoHeaders
                         this.quality = getIndexQuality(quality)
                     }
                 )
@@ -188,6 +199,7 @@ object AboruFilmExtractor : AboruFilm() {
         } ?: return
 
         fids.amapIndexed { index, fileList ->
+            // Cookie dan Header disamakan
             val cookieHeader = "ui=$REAL_TOKEN"
             val mediaType = "application/x-www-form-urlencoded; charset=UTF-8".toMediaType()
             val body = """fid=${fileList.fid}&share_key=$shareKey""".trimIndent().toRequestBody(mediaType)
@@ -198,7 +210,7 @@ object AboruFilmExtractor : AboruFilm() {
                 headers = mapOf(
                     "Cookie" to cookieHeader,
                     "content-type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                    "User-Agent" to commonHeaders["User-Agent"]!!
+                    "User-Agent" to videoHeaders["User-Agent"]!!
                 )
             ).text
 
@@ -219,7 +231,7 @@ object AboruFilmExtractor : AboruFilm() {
         }
     }
 
-    // --- Fungsi Helper ---
+    // --- Fungsi Helper (Tetap sama) ---
 
     suspend fun invokeWatchsomuch(imdbId: String? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit) {
         val id = imdbId?.removePrefix("tt")
