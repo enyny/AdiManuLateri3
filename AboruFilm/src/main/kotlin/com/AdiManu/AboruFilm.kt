@@ -22,7 +22,6 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.base64Encode
 import com.lagradost.cloudstream3.getQualityFromString
@@ -76,20 +75,17 @@ open class AboruFilm : MainAPI() {
         TvType.AnimeMovie,
     )
     
-    // HARDCODED SECRETS & CONFIGURATION
-    // Semua nilai ini diambil dari hasil reverse engineering classes.dex
+    // KONFIGURASI SESUAI FILE classes.dex / Superstream.java
     
-    companion object {
-        // Token global yang ditemukan (OpenUDID)
-        private const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
-    }
-    
+    // Token Sakti (UID & Token)
+    private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+
     // IV: "wEiphTn!"
     private val iv = "wEiphTn!"
     // Key: "123d6cedf626dy54233aa1w6"
     private val key = "123d6cedf626dy54233aa1w6"
 
-    // API URLs
+    // API URLs (Base64 Decoded from original source)
     private val firstAPI = "https://showboxssl.shegu.net/api/api_client/"
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
@@ -101,7 +97,9 @@ open class AboruFilm : MainAPI() {
     private val appKey = "moviebox"
     val appId = "com.tdo.showbox"
     private val appIdSecond = "com.tdo.showbox"
-    private val appVersion = "11.7"
+    
+    // PENTING: Versi harus 11.5 agar cocok dengan Token
+    private val appVersion = "11.5"
     private val appVersionCode = "131"
 
     enum class ResponseTypes(val value: Int) {
@@ -138,17 +136,10 @@ open class AboruFilm : MainAPI() {
         }
     }
 
-    // Random 32 length string
-    private fun randomToken(): String {
-        return (0..31).joinToString("") {
-            (('0'..'9') + ('a'..'f')).random().toString()
-        }
-    }
-
-    private val token = randomToken()
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
     
-    private object CipherUtils {
+    // Cipher Utils tetap sama
+    object CipherUtils {
         private const val ALGORITHM = "DESede"
         private const val TRANSFORMATION = "DESede/CBC/PKCS5Padding"
         fun encrypt(str: String, key: String, iv: String): String? {
@@ -227,6 +218,7 @@ open class AboruFilm : MainAPI() {
     }
 
     // ================== CERTIFICATES (HARDCODED) ==================
+    // Sertifikat tetap sama, tidak berubah
     
     private val CLIENT_CERT_PEM = """
 -----BEGIN CERTIFICATE-----
@@ -344,7 +336,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             "platform" to "android",
             "version" to appVersionCode,
             "medium" to "Website",
-            "token" to token
+            "token" to REAL_TOKEN // MENGGUNAKAN REAL_TOKEN
         )
 
         val url = if (useAlternativeApi) secondAPI else firstAPI
@@ -395,7 +387,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         @SerializedName("season_episode") val seasonEpisode: String? = null,
         @SerializedName("update_title") val updateTitle: String? = null,
         @SerializedName("quality_tag") val qualityTag: String? = null,
-        @SerializedName("3d") val is3D: Int? = null // Some movie items have "3d"
+        @SerializedName("3d") val is3D: Int? = null 
     )
 
     private data class ListJSON(
@@ -417,11 +409,14 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val hideNsfw = 0 // Default to Adult Content Allowed (0 = Show, 1 = Hide) for hardcoded simplicity
-        val data = queryApiParsed<DataJSON>(
-            """{"childmode":"$hideNsfw","app_version":"$appVersion","appid":"$appIdSecond","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android"}
-            """.trimIndent()
-        )
+        val hideNsfw = 0 
+        
+        // QUERY UTAMA DIPERBARUI:
+        // Menambahkan: oss, uid, open_udid, token, dan app_version 11.5
+        val queryStr = """{"childmode":"$hideNsfw","app_version":"$appVersion","appid":"$appIdSecond","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
+        
+        val data = queryApiParsed<DataJSON>(queryStr)
+        
         // Cut off the first row (featured)
         val pages = data.data.let { it.subList(minOf(it.size, 1), it.size) }
             .mapNotNull {
@@ -485,9 +480,12 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
     override suspend fun search(query: String): List<SearchResponse> {
         val hideNsfw = 0 
+        
+        // QUERY SEARCH DIPERBARUI:
+        // Menambahkan REAL_TOKEN dan versi 11.5
         val apiQuery =
-            // Originally 8 pagelimit
-            """{"childmode":"$hideNsfw","app_version":"$appVersion","module":"Search3","channel":"Website","page":"1","lang":"en","type":"all","keyword":"$query","pagelimit":"15","expired_date":"${getExpiryDate()}","platform":"android","appid":"$appId"}"""
+            """{"childmode":"$hideNsfw","app_version":"$appVersion","module":"Search3","channel":"Website","page":"1","lang":"en","type":"all","keyword":"$query","pagelimit":"15","expired_date":"${getExpiryDate()}","platform":"android","appid":"$appId","oss":"1","uid":"$REAL_TOKEN","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
+            
         val searchResponse = queryApiParsed<MainData>(apiQuery).data.mapNotNull {
             it.toSearchResponse(this)
         }
@@ -653,9 +651,14 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         val loadData = parseJson<LoadData>(url)
         val isMovie = loadData.box_type == ResponseTypes.Movies.value
         val hideNsfw = 0 
+        
+        // QUERY LOAD (DETAIL) DIPERBARUI:
+        // Menambahkan REAL_TOKEN dan versi 11.5
+        
         if (isMovie) { // 1 = Movie
             val apiQuery =
-                """{"childmode":"$hideNsfw","uid":"","app_version":"$appVersion","appid":"$appIdSecond","module":"Movie_detail","channel":"Website","mid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","oss":"","group":""}"""
+                """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"Movie_detail","channel":"Website","mid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
+                
             val data = (queryApiParsed<MovieDataProp>(apiQuery)).data
                 ?: throw RuntimeException("API error")
             val responseData = if (!data.imdbId.isNullOrEmpty()) {
@@ -694,8 +697,10 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 this.addImdbId(data.imdbId)
             }
         } else { // 2 Series
+            // Query detail series (oss, token, version)
             val apiQuery =
-                """{"childmode":"$hideNsfw","uid":"","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_detail_1","display_all":"1","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}"}"""
+                """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_detail_1","display_all":"1","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
+                
             val data = queryApiParsed<SeriesDataProp>(apiQuery).data
                 ?: throw RuntimeException("API error")
             val responseData = if (!data.imdbId.isNullOrEmpty()) {
@@ -710,8 +715,9 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             val genre: List<String>? = responseData?.meta?.genre
             val allEpisodes = mutableListOf<Episode>()
             data.season.forEach { seasonNumber ->
+                // Query per season (oss, token, version)
                 val seasonApiQuery =
-                    """{"childmode":"$hideNsfw","uid":"","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_episode","display_all":"1","season":"$seasonNumber","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}"}"""
+                    """{"childmode":"$hideNsfw","uid":"$REAL_TOKEN","app_version":"$appVersion","appid":"$appIdSecond","module":"TV_episode","display_all":"1","season":"$seasonNumber","channel":"Website","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","tid":"${loadData.id}","oss":"1","open_udid":"$REAL_TOKEN","token":"$REAL_TOKEN","group":""}"""
 
                 val seasonData = queryApiParsed<SeriesSeasonProp>(seasonApiQuery).data
                     ?: return@forEach
