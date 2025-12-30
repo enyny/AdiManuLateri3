@@ -2,65 +2,137 @@ package com.AdiManu
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 object AboruFilmExtractor : AboruFilm() {
 
-    private val vHeaders = mapOf("User-Agent" to "okhttp/3.12.1", "Referer" to "https://www.febbox.com/")
+    // Token disamakan dengan AboruFilm.kt agar sesi tetap valid
+    private const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+    private const val HARDCODED_COOKIE_TOKEN = "ui=59e139fd173d9045a2b5fc13b40dfd87"
 
-    suspend fun invokeInternalSource(id: Int?, type: Int?, s: Int?, e: Int?, subCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val q = if (type == 1) """{"module":"Movie_downloadurl_v3","mid":"$id","uid":"$HARDCODED_TOKEN","platform":"android","appid":"$appId"}"""
-                else """{"module":"TV_downloadurl_v3","tid":"$id","season":"$s","episode":"$e","uid":"$HARDCODED_TOKEN","platform":"android","appid":"$appId"}"""
-        
-        try {
-            val res = queryApiParsed<LinkDataProp>(q)
-            // Gunakan for loop biasa untuk menghindari suspension error
-            val list = res.data?.list ?: return
-            for (link in list) {
-                callback.invoke(newExtractorLink("Aboru Internal", "Internal ${link.quality ?: ""}", link.path ?: continue, INFER_TYPE) { this.headers = vHeaders })
+    suspend fun invokeInternalSource(
+        id: Int? = null,
+        type: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val videoheaders = mapOf(
+            "User-Agent" to "okhttp/3.12.1",
+            "Referer" to thirdAPI,
+            "Accept-Language" to "en-US,en;q=0.9"
+        )
+
+        suspend fun LinkList.toExtractorLink(): ExtractorLink? {
+            val quality = this.quality
+            val rawPath = this.path ?: return null
+            
+            // PERBAIKAN: Hanya menghapus backslash (\), bukan merusak forward slash (/)
+            val fixedPath = rawPath.replace("\\", "")
+            
+            return newExtractorLink(
+                "Aboru Internal",
+                "Aboru Internal [${this.size ?: ""}]",
+                fixedPath,
+                INFER_TYPE,
+            ) {
+                this.quality = getQualityFromName(quality)
+                this.headers = videoheaders
             }
-        } catch (err: Exception) { }
+        }
+        
+        // Payload menggunakan versi 11.7 dan token yang konsisten
+        val query = if (type == ResponseTypes.Movies.value) {
+            """{"childmode":"0","app_version":"11.7","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN"}"""
+        } else {
+            """{"childmode":"0","app_version":"11.7","module":"TV_downloadurl_v3","channel":"Website","episode":"$episode","expired_date":"${getExpiryDate()}","platform":"android","tid":"$id","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
+        }
+
+        try {
+            val linkData = queryApiParsed<LinkDataProp>(query)
+            linkData.data?.list?.forEach { link ->
+                link.toExtractorLink()?.let { callback.invoke(it) }
+            }
+            
+            // Logika Subtitle Internal
+            val fid = linkData.data?.list?.firstOrNull { it.fid != null }?.fid
+            if (fid != null) {
+                fetchInternalSubtitles(id, fid, type, season, episode, subtitleCallback)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    suspend fun invokeExternalSource(mid: Int?, type: Int?, s: Int?, e: Int?, callback: (ExtractorLink) -> Unit) {
+    private suspend fun fetchInternalSubtitles(
+        id: Int?, fid: Int?, type: Int?, season: Int?, episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        val subQuery = if (type == ResponseTypes.Movies.value) {
+            """{"childmode":"0","fid":"$fid","app_version":"11.7","appid":"$appId","module":"Movie_srt_list_v2","channel":"Website","mid":"$id","lang":"en","uid":"$HARDCODED_TOKEN","platform":"android"}"""
+        } else {
+            """{"childmode":"0","fid":"$fid","app_version":"11.7","module":"TV_srt_list_v2","channel":"Website","episode":"$episode","tid":"$id","uid":"$HARDCODED_TOKEN","appid":"$appId","season":"$season","lang":"en"}"""
+        }
+
         try {
-            val shareText = app.get("https://www.febbox.com/mbp/to_share_page?box_type=$type&mid=$mid&json=1").parsedSafe<ExternalResponse>()?.data?.link ?: return
-            val fileRes = app.get("https://www.febbox.com/file/file_share_list?share_key=$shareText").parsedSafe<ExternalResponse>()?.data?.file_list ?: return
-            
-            // amap adalah Cloudstream utility yang mendukung suspend function
-            fileRes.amap { file ->
-                val p = app.get("https://www.febbox.com/console/video_quality_list?fid=${file.fid}&share_key=$shareText", headers = mapOf("Cookie" to "ui=$HARDCODED_TOKEN")).text
-                val html = JSONObject(p).optString("html")
-                Jsoup.parse(html).select("div.file_quality").forEach { el ->
-                    val url = el.attr("data-url")
-                    if (url.isNotEmpty()) callback.invoke(newExtractorLink("Aboru External", "Server ${el.attr("data-quality")}", url, INFER_TYPE) { this.headers = vHeaders })
+            val subtitles = queryApiParsed<SubtitleDataProp>(subQuery).data
+            subtitles?.list?.forEach { subs ->
+                val sub = subs.subtitles.maxByOrNull { it.support_total ?: 0 }
+                if (sub?.filePath != null) {
+                    subtitleCallback.invoke(
+                        newSubtitleFile(sub.language ?: sub.lang ?: "English", sub.filePath)
+                    )
                 }
             }
-        } catch (err: Exception) { }
+        } catch (e: Exception) { }
     }
 
-    suspend fun invokeWatchsomuch(imdb: String?, s: Int?, e: Int?, subCallback: (SubtitleFile) -> Unit) {
+    suspend fun invokeExternalSource(
+        mediaId: Int? = null,
+        type: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val videoheaders = mapOf(
+            "User-Agent" to "okhttp/3.12.1",
+            "Referer" to "https://www.febbox.com/"
+        )
+        
         try {
-            val id = imdb?.removePrefix("tt") ?: return
-            val res = app.post("https://watchsomuch.tv/Watch/ajMovieTorrents.aspx", data = mapOf("mid" to id, "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45")).parsedSafe<WatchsomuchResponses>()
-            val torrents = res?.movie?.torrents ?: return
-            val tid = torrents.find { if (s == null) true else it.season == s && it.episode == e }?.id ?: return
+            val shareRes = app.get("$thirdAPI/mbp/to_share_page?box_type=$type&mid=$mediaId&json=1").parsedSafe<ExternalResponse>()?.data
+            val shareKey = shareRes?.link ?: shareRes?.share_link?.substringAfterLast("/") ?: return
             
-            val subs = app.get("https://watchsomuch.tv/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$tid").parsedSafe<WatchsomuchSubResponses>()
-            subs?.subtitles?.forEach { sub ->
-                subCallback.invoke(newSubtitleFile(sub.label ?: "English", sub.url ?: return@forEach))
+            val fileList = app.get("$thirdAPI/file/file_share_list?share_key=$shareKey").parsedSafe<ExternalResponse>()?.data?.file_list ?: return
+            
+            fileList.amap { file ->
+                val playerRes = app.get("$thirdAPI/console/video_quality_list?fid=${file.fid}&share_key=$shareKey", headers = mapOf("Cookie" to HARDCODED_COOKIE_TOKEN)).text
+                val html = JSONObject(playerRes).optString("html")
+                if (html.isNotEmpty()) {
+                    Jsoup.parse(html).select("div.file_quality").forEach { el ->
+                        val url = el.attr("data-url")
+                        if (url.isNotEmpty()) {
+                            callback.invoke(newExtractorLink("Aboru External", "Server External ${el.attr("data-quality")}", url, INFER_TYPE) {
+                                this.headers = videoheaders
+                            })
+                        }
+                    }
+                }
             }
-        } catch (err: Exception) { }
+        } catch (e: Exception) { }
     }
 
-    suspend fun invokeOpenSubs(imdb: String?, s: Int?, e: Int?, subCallback: (SubtitleFile) -> Unit) {
-        val slug = if (s == null) "movie/$imdb" else "series/$imdb:$s:$e"
+    suspend fun invokeOpenSubs(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
+        val slug = if (season == null) "movie/$imdbId" else "series/$imdbId:$season:$episode"
         try {
-            val res = app.get("https://opensubtitles-v3.strem.io/subtitles/$slug.json").parsedSafe<OsResult>()
-            res?.subtitles?.forEach {
-                subCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
+            app.get("$openSubAPI/subtitles/$slug.json").parsedSafe<OsResult>()?.subtitles?.forEach {
+                subtitleCallback.invoke(newSubtitleFile(it.lang ?: "English", it.url ?: return@forEach))
             }
-        } catch (err: Exception) { }
+        } catch (e: Exception) { }
     }
 }
