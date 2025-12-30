@@ -19,13 +19,15 @@ plugins {
 }
 
 android {
-    compileSdkVersion(33)
+    // PERBAIKAN: Menggunakan properti compileSdk (bukan fungsi compileSdkVersion)
+    compileSdk = 33
 
     defaultConfig {
-        minSdkVersion(21)
-        targetSdkVersion(33)
-        versionCode = 1
-        versionName = "1.0.0"
+        // PERBAIKAN: Menggunakan properti minSdk dan targetSdk
+        minSdk = 21
+        targetSdk = 33
+        
+        // PERBAIKAN: Menghapus versionCode dan versionName karena ini adalah library, bukan aplikasi.
     }
 
     buildTypes {
@@ -60,12 +62,11 @@ dependencies {
 }
 
 cloudstream {
-    // Informasi Plugin
-    name = "AboruFilm"
-    label = "AboruFilm"
+    // PERBAIKAN: Menghapus properti 'name', 'label', dan 'recommends' yang menyebabkan error.
+    // Nama plugin akan diambil dari nama folder/project secara otomatis.
+    
     description = "Streaming provider AboruFilm (Based on SuperStream)"
     authors = listOf("AdiManu")
-    recommends = listOf("com.lagradost.cloudstream3.animeproviders")
     
     // Status: 1 = OK, 2 = Slow, 3 = Beta/Broken
     status = 1 
