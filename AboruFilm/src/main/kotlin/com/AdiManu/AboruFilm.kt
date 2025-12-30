@@ -36,15 +36,6 @@ open class AboruFilm : MainAPI() {
 
     companion object {
         const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
-        
-        // Pindahkan ke sini agar bisa diakses oleh Extractor tanpa error
-        enum class ResponseTypes(val value: Int) {
-            Series(2),
-            Movies(1);
-            companion object {
-                fun getResponseType(value: Int?) = entries.firstOrNull { it.value == value } ?: Movies
-            }
-        }
     }
 
     private val iv = "wEiphTn!"
@@ -53,7 +44,7 @@ open class AboruFilm : MainAPI() {
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
     
-    // Variabel API untuk Extractor
+    // Variabel API yang dibutuhkan Extractor
     val openSubAPI = "https://opensubtitles-v3.strem.io"
     val watchSomuchAPI = "https://watchsomuch.tv"
     
@@ -100,7 +91,7 @@ ZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJhpMlr/+IatuBqpuZuA
 6QvqdI2QiFb1UMVujb/xiaBC/vqJMlMenLSDysk8xd4fLeC+GC8AyWf1IMJIz6d9
 rBjOhN4D+MxvgphufkdIVqs63SqKcrr/ZL0JaRpxxEg/pKqSjH55Ik71keB8tt0m
 mQ76WK1swMydOAqn6DIKVAi7wF9acWyX/6Ly+cmxfueLDZvkLigXl3gMHbuoa5Y+
-CadqKl2qlijhnvjpuEbAvyDyXWe838TUi0PYMMVuOu7PV4By2LINsm+gKv83od4k
+CadqKl2qlijhnvjpuEbAvyDyXWe838TUi0PYMHVuOu7PV4By2LINsm+gKv83od4k
 RCSWTrLKlgfqneqnudMrqeWckNUHGVB+3Lruw1ebB/Rs4gJ59VhJYpbNmM2mYT0r
 VQkCAwEAAaOBuzCBuDATBgNVHSUEDDAKBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAA
 MB0GA1UdDgQWBBSF9Jkz4ZkbS5+LANO3YGWZRuX/PDAfBgNVHSMEGDAWgBTj01Q6
@@ -159,14 +150,13 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
     }
 
     inline fun <reified T : Any> queryApiParsed(query: String): T = try { Gson().fromJson(queryApi(query), T::class.java) } catch (e: Exception) { Gson().fromJson(queryApi(query, true), T::class.java) }
+    
     fun getExpiryDate() = APIHolder.unixTime + 43200
 
     data class SearchData(val id: Int?, val mid: Int?, val box_type: Int?, val title: String?, val poster: String?, val quality_tag: String?, val imdb_rating: String?)
     data class SearchResponseData(val data: List<SearchData> = emptyList())
     data class DataJSON(val data: List<HomeSection> = emptyList())
     data class HomeSection(val name: String?, val list: List<SearchData> = emptyList())
-    data class LoadData(val id: Int, val box_type: Int?)
-    data class LinkData(val id: Int, val type: Int, val season: Int?, val episode: Int?, val mediaId: Int?, val imdbId: String?)
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val apiQuery = """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"Home_list_type_v2","channel":"Website","page":"$page","lang":"en","type":"all","pagelimit":"20","expired_date":"${getExpiryDate()}","platform":"android"}"""
@@ -197,7 +187,11 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         return if (isMovie) {
             val d = queryApiParsed<MovieDataProp>(apiQuery).data!!
             newMovieLoadResponse(d.title ?: "", url, TvType.Movie, LinkData(d.id!!, 1, null, null, d.id, d.imdb_id)) {
-                posterUrl = d.poster_org ?: d.poster; this.plot = d.description; year = d.year; addImdbId(d.imdb_id); this.score = Score.from10(d.imdb_rating)
+                this.posterUrl = d.poster_org ?: d.poster
+                this.plot = d.description
+                this.year = d.year
+                addImdbId(d.imdb_id)
+                this.score = Score.from10(d.imdb_rating)
             }
         } else {
             val d = queryApiParsed<SeriesDataProp>(apiQuery).data!!
@@ -205,18 +199,29 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             d.season.forEach { s ->
                 val sQuery = """{"childmode":"0","app_version":"$appVersion","appid":"$appId","module":"TV_episode","season":"$s","tid":"${loadData.id}","lang":"en","expired_date":"${getExpiryDate()}","platform":"android"}"""
                 queryApiParsed<SeriesSeasonProp>(sQuery).data?.forEach { ep ->
-                    eps.add(newEpisode(LinkData(ep.id ?: ep.tid!!, 2, ep.season, ep.episode, d.id, d.imdb_id).toJson()) { name = ep.title; season = ep.season; episode = ep.episode; description = ep.synopsis })
+                    eps.add(newEpisode(LinkData(ep.id ?: ep.tid!!, 2, ep.season, ep.episode, d.id, d.imdb_id).toJson()) { 
+                        this.name = ep.title
+                        this.season = ep.season
+                        this.episode = ep.episode
+                        this.description = ep.synopsis 
+                    })
                 }
             }
-            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { posterUrl = d.poster_org ?: d.poster; this.plot = d.description; addImdbId(d.imdb_id) }
+            newTvSeriesLoadResponse(d.title ?: "", url, TvType.TvSeries, eps) { 
+                this.posterUrl = d.poster_org ?: d.poster
+                this.plot = d.description
+                addImdbId(d.imdb_id)
+            }
         }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val parsed = parseJson<LinkData>(data)
-        AboruFilmExtractor.invokeInternalSource(parsed.id, parsed.type, parsed.season, parsed.episode, subtitleCallback, callback)
-        AboruFilmExtractor.invokeExternalSource(parsed.mediaId, parsed.type, parsed.season, parsed.episode, callback)
-        AboruFilmExtractor.invokeOpenSubs(parsed.imdbId, parsed.season, parsed.episode, subtitleCallback)
+        runAllAsync(
+            { AboruFilmExtractor.invokeInternalSource(parsed.id, parsed.type, parsed.season, parsed.episode, subtitleCallback, callback) },
+            { AboruFilmExtractor.invokeExternalSource(parsed.mediaId, parsed.type, parsed.season, parsed.episode, callback) },
+            { AboruFilmExtractor.invokeOpenSubs(parsed.imdbId, parsed.season, parsed.episode, subtitleCallback) }
+        )
         return true
     }
 }
