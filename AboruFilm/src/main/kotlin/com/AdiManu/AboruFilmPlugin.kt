@@ -1,4 +1,5 @@
 package com.AdiManu
+
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
@@ -6,6 +7,10 @@ import android.content.Context
 @CloudstreamPlugin
 class AboruFilmPlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(AboruFilm())
+        // Mendaftarkan API utama AboruFilm.
+        // Berbeda dengan Superstream asli, kita tidak memerlukan sharedPreferences 
+        // karena token sudah di-hardcode di dalam kelas AboruFilm.
+        val api = AboruFilm() 
+        registerMainAPI(api)
     }
 }
