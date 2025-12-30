@@ -13,6 +13,10 @@ object AboruFilmExtractor : AboruFilm() {
         "Accept" to "*/*"
     )
 
+    // Token Hardcoded agar sinkron
+    private const val HARDCODED_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
+    private const val HARDCODED_COOKIE_TOKEN = "ui=59e139fd173d9045a2b5fc13b40dfd87"
+
     suspend fun invokeInternalSource(
         id: Int? = null,
         type: Int? = null,
@@ -21,7 +25,7 @@ object AboruFilmExtractor : AboruFilm() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        // PERBAIKAN: ResponseTypes sekarang dipanggil langsung karena bersifat global di Parser.kt
+        // Menggunakan ResponseTypes global dari Parser
         val query = if (type == ResponseTypes.Movies.value) {
             """{"childmode":"0","app_version":"11.7","appid":"$appId","module":"Movie_downloadurl_v3","channel":"Website","mid":"$id","lang":"en","expired_date":"${getExpiryDate()}","platform":"android","uid":"$HARDCODED_TOKEN","open_udid":"$HARDCODED_TOKEN"}"""
         } else {
@@ -31,7 +35,7 @@ object AboruFilmExtractor : AboruFilm() {
         try {
             val linkData = queryApiParsed<LinkDataProp>(query)
             linkData.data?.list?.forEach { link ->
-                // PERBAIKAN: Membersihkan URL tanpa merusak protokol https://
+                // Membersihkan path URL
                 val path = link.path?.replace("\\", "") ?: return@forEach
                 callback.invoke(
                     newExtractorLink(
@@ -85,11 +89,14 @@ object AboruFilmExtractor : AboruFilm() {
     ) {
         try {
             val shareRes = app.get("$thirdAPI/mbp/to_share_page?box_type=$type&mid=$mediaId&json=1").parsedSafe<ExternalResponse>()?.data
+            
+            // PERBAIKAN: Menggunakan share_link yang sudah didefinisikan di Parser
             val shareKey = shareRes?.link ?: shareRes?.share_link?.substringAfterLast("/") ?: return
+            
             val fileList = app.get("$thirdAPI/file/file_share_list?share_key=$shareKey").parsedSafe<ExternalResponse>()?.data?.file_list ?: return
             
-            for (file in fileList) {
-                val playerRes = app.get("$thirdAPI/console/video_quality_list?fid=${file.fid}&share_key=$shareKey", headers = mapOf("Cookie" to "ui=$HARDCODED_TOKEN")).text
+            fileList.forEach { file ->
+                val playerRes = app.get("$thirdAPI/console/video_quality_list?fid=${file.fid}&share_key=$shareKey", headers = mapOf("Cookie" to HARDCODED_COOKIE_TOKEN)).text
                 val html = JSONObject(playerRes).optString("html")
                 if (html.isNotEmpty()) {
                     Jsoup.parse(html).select("div.file_quality").forEach { el ->
