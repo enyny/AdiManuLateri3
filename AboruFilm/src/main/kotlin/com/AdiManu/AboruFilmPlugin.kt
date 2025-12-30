@@ -7,8 +7,8 @@ import android.content.Context
 @CloudstreamPlugin
 class AboruFilmPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan API utama AboruFilm ke dalam sistem Cloudstream.
-        // Pastikan tidak ada karakter aneh seperti 'span' atau 'start_span' di sini.
+        // Mendaftarkan API utama AboruFilm.
+        // Pastikan nama class 'AboruFilm' sesuai dengan yang ada di AboruFilm.kt
         registerMainAPI(AboruFilm())
     }
 }
