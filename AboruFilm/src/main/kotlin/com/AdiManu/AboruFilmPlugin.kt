@@ -7,8 +7,9 @@ import android.content.Context
 @CloudstreamPlugin
 class AboruFilmPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan API utama AboruFilm.
-        // Pastikan nama class 'AboruFilm' sesuai dengan yang ada di AboruFilm.kt
-        registerMainAPI(AboruFilm())
+        // Kita menginisialisasi API utama (AboruFilm).
+        // Tidak perlu passing 'sharedPreferences' atau 'settings' karena token sudah di-hardcode.
+        val api = AboruFilm() 
+        registerMainAPI(api)
     }
 }
