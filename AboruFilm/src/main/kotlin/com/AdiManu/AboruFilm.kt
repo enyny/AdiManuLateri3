@@ -76,16 +76,12 @@ open class AboruFilm : MainAPI() {
     )
     
     companion object {
-        // Token Sakti (UID & Token)
         private const val REAL_TOKEN = "59e139fd173d9045a2b5fc13b40dfd87"
     }
 
-    // IV: "wEiphTn!"
     private val iv = "wEiphTn!"
-    // Key: "123d6cedf626dy54233aa1w6"
     private val key = "123d6cedf626dy54233aa1w6"
 
-    // API URLs
     private val firstAPI = "https://showboxssl.shegu.net/api/api_client/"
     val secondAPI = "https://showboxapissl.stsoso.com/api/api_client/"
     val thirdAPI = "https://www.febbox.com"
@@ -93,12 +89,10 @@ open class AboruFilm : MainAPI() {
     val watchSomuchAPI = "https://watchsomuch.tv"
     val openSubAPI = "https://opensubtitles-v3.strem.io"
 
-    // App Identity
     private val appKey = "moviebox"
     val appId = "com.tdo.showbox"
     private val appIdSecond = "com.tdo.showbox"
     
-    // PENTING: Versi harus 11.5 agar cocok dengan Token
     private val appVersion = "11.5"
     private val appVersionCode = "131"
 
@@ -116,10 +110,11 @@ open class AboruFilm : MainAPI() {
         }
     }
     
+    // PERBAIKAN: Menghapus Cookie yang kadaluarsa. Hanya gunakan header standar.
     private val headers = mapOf(
         "Platform" to "android",
         "Accept" to "charset=utf-8",
-        "Cookie" to "ci=168aec549ca68e",
+        // "Cookie" -> DIHAPUS karena menyebabkan error <!DOCTYPE html>
     )
 
     private class UserAgentInterceptor : Interceptor {
@@ -331,7 +326,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
         val data = mapOf(
             "data" to base64Body,
-            "appid" to "27",
+            "appid" to "27", // Gunakan 27 sebagai default, atau appId (com.tdo.showbox) jika gagal
             "platform" to "android",
             "version" to appVersionCode,
             "medium" to "Website",
@@ -349,7 +344,7 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
         val request = Request.Builder()
             .url(url)
-            .headers(headers.toHeaders())
+            .headers(headers.toHeaders()) // Headers bersih tanpa cookie
             .post(formBody)
             .build()
 
@@ -371,7 +366,6 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
 
 
     fun getExpiryDate(): Long {
-        // Current time + 12 hours
         return unixTime + 60 * 60 * 12
     }
 
@@ -414,22 +408,25 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
         
         val data = queryApiParsed<DataJSON>(queryStr)
         
-        // PERBAIKAN 1: Hapus logika 'subList' yang menyembunyikan kategori.
-        // Tampilkan SEMUA kategori yang didapat dari API.
         val pages = data.data.mapNotNull {
             var name = it.name
             if (name.isNullOrEmpty()) name = "Featured"
             
             val postList = it.list.mapNotNull second@{ post ->
+                val id = post.id ?: return@second null
+                val title = post.title ?: return@second null
+
                 val type = if (post.boxType == 1) TvType.Movie else TvType.TvSeries
                 val normalizedQuality = post.qualityTag?.let { if (it.contains("blu-ray", ignoreCase = true)) "Blueray" else it } ?: ""
                 
-                // PERBAIKAN 2: Pastikan URL poster tidak null. Jika null, item dilewati.
-                val posterUrlFix = post.poster ?: post.poster2 ?: return@second null
+                // PERBAIKAN: Gunakan URL dummy jika poster kosong agar tidak crash
+                val posterUrlFix = if (!post.poster.isNullOrEmpty()) post.poster 
+                                   else if (!post.poster2.isNullOrEmpty()) post.poster2 
+                                   else "https://via.placeholder.com/300x450?text=No+Poster"
 
                 newMovieSearchResponse(
-                    name = post.title ?: return@second null,
-                    url = LoadData(post.id ?: return@mapNotNull null, post.boxType).toJson(),
+                    name = title,
+                    url = LoadData(id, post.boxType).toJson(),
                     type = type,
                     fix = false
                 ) {
@@ -468,8 +465,11 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 ResponseTypes.getResponseType(actualBoxType).toTvType(),
                 false
             ) {
-                // PERBAIKAN: Penanganan poster null juga di Search
-                this.posterUrl = if (!this@Data.posterOrg.isNullOrEmpty()) this@Data.posterOrg else (this@Data.poster ?: "")
+                // PERBAIKAN: Dummy image fallback
+                this.posterUrl = if (!this@Data.posterOrg.isNullOrEmpty()) this@Data.posterOrg 
+                                 else if (!this@Data.poster.isNullOrEmpty()) this@Data.poster
+                                 else "https://via.placeholder.com/300x450?text=No+Poster"
+                                 
                 year = this@Data.year ?: 0
                 quality = getQualityFromString(this@Data.qualityTag?.replace("-", "") ?: "")
             }
@@ -687,7 +687,9 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
             ) {
                 this.recommendations = data.recommend.mapNotNull { it.toSearchResponse(this@AboruFilm) }
                 // Fix poster
-                this.posterUrl = data.posterOrg ?: data.poster ?: ""
+                this.posterUrl = if (!data.posterOrg.isNullOrEmpty()) data.posterOrg 
+                                 else if (!data.poster.isNullOrEmpty()) data.poster
+                                 else "https://via.placeholder.com/300x450?text=No+Poster"
                 this.backgroundPosterUrl = background ?: data.posterOrg ?: data.poster
                 this.year = data.year
                 addActors(cast)
@@ -754,7 +756,9 @@ oFuZne+lYcCPMNDXdku6wKdf9gSnOSHOGMu8TvHcud4uIDYmFH5qabJL5GDoQi7Q
                 plot = data.description
                 addActors(cast)
                 // Fix poster
-                this.posterUrl = data.posterOrg ?: data.poster ?: ""
+                this.posterUrl = if (!data.posterOrg.isNullOrEmpty()) data.posterOrg 
+                                 else if (!data.poster.isNullOrEmpty()) data.poster
+                                 else "https://via.placeholder.com/300x450?text=No+Poster"
                 backgroundPosterUrl = background ?: data.posterOrg ?: data.poster
                 score = Score.from10(data.imdbRating)
                 tags = genre ?: data.cats?.split(",")?.map { it.capitalize() }
