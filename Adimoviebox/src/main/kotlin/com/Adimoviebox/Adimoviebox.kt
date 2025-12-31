@@ -6,14 +6,9 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.nicehttp.RequestBodyTypes
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    
-    // UPDATED: Menggunakan domain baru untuk video
     private val apiUrl = "https://filmboom.top"
 
     override val instantLinkLoading = true
@@ -28,13 +23,10 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // HEADER FIX: Menghapus 'Host' dan 'Content-Type' manual untuk mencegah error "Canceled"
+    // Header minimalis agar tidak konflik dengan sistem Cloudstream
     private val commonHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-        "Accept" to "application/json, text/plain, */*",
         "Origin" to mainUrl,
-        "Referer" to "$mainUrl/",
-        "X-Requested-With" to "XMLHttpRequest"
+        "Referer" to "$mainUrl/"
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -57,17 +49,20 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        val body = mapOf(
+        
+        // FIX: Menggunakan Map langsung (tanpa convert ke JSON String manual)
+        // dan menggunakan tipe data Integer untuk page/perPage
+        val postData = mapOf(
             "channelId" to params.first(),
             "page" to page,
-            "perPage" to "24",
+            "perPage" to 24, // Integer
             "sort" to params.last()
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        )
 
         val home = app.post(
             "$mainUrl/wefeed-h5-bff/web/filter", 
             headers = commonHeaders, 
-            requestBody = body
+            data = postData // Menggunakan parameter 'data'
         ).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
         } ?: throw ErrorLoadingException("No Data Found")
@@ -78,21 +73,23 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // FIX: Menggunakan Map langsung & Integer
+        val postData = mapOf(
+            "keyword" to query,
+            "page" to 1,
+            "perPage" to 20, 
+            "subjectType" to 0, 
+        )
+
         return app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search",
             headers = commonHeaders,
-            requestBody = mapOf(
-                "keyword" to query,
-                "page" to "1",
-                "perPage" to "20", 
-                "subjectType" to "0", 
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            data = postData // Menggunakan parameter 'data'
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Fix URL parsing jika ada query parameters
         val id = if (url.contains("?id=")) {
             url.substringAfter("?id=").substringBefore("&")
         } else {
@@ -189,14 +186,11 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer menggunakan apiUrl (filmboom.top)
         val videoReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Headers khusus untuk player video
         val videoHeaders = mapOf(
             "Referer" to videoReferer,
-            "Origin" to apiUrl,
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            "Origin" to apiUrl
         )
 
         val streams = app.get(
