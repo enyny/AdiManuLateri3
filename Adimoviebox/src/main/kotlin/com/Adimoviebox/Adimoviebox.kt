@@ -3,20 +3,24 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.net.URLDecoder
 
 class Adimoviebox : MainAPI() {
-    override var mainUrl = "https://moviebox.ph"
+    // URL Web Utama (Referensi)
+    override var mainUrl = "https://moviebox.ph" 
+    
+    // URL API Baru (Sesuai Screenshot h5-api.aoneroom.com)
     private val apiUrl = "https://h5-api.aoneroom.com"
+    
+    // Path Baru (Menghilangkan '/web/' dan menambahkan 'api')
+    private val apiPrefix = "/wefeed-h5api-bff"
 
-    // Variabel untuk menyimpan token sementara
-    private var authToken: String? = null
+    // Token yang diambil dari screenshot headers yang kamu kirim
+    private val authToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjM0ODMzMzc2NjUwODQyOTQ5MzYsImF0IjoxNzY3MTg5MDA5LCJleHAiOjE3NjcxOTAwNjksImlzcyI6Imhpc2F2YW5hIn0.TZ9mWf4ePL7AyAvPfSaaTS6UAr6v9wiIUvwRyr2ikGA"
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -30,39 +34,15 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header dasar (Token akan ditambahkan dinamis nanti)
-    private val baseHeaders = mapOf(
-        "Origin" to mainUrl,
-        "Referer" to "$mainUrl/",
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-        "Accept" to "application/json, text/plain, */*",
-        "X-Request-Lang" to "en",
-        "X-Client-Info" to "{\"timezone\":\"Asia/Jakarta\"}"
-    )
-
-    // --- FUNGSI PENTING: MENDAPATKAN TOKEN ---
-    private suspend fun getHeaders(): Map<String, String> {
-        if (authToken == null) {
-            // 1. Buka halaman utama untuk memancing Cookie
-            val response = app.get(mainUrl)
-            
-            // 2. Cari cookie 'mb_token'
-            val cookies = response.okhttpResponse.headers.values("Set-Cookie")
-            val tokenCookie = cookies.find { it.contains("mb_token") }
-            
-            // 3. Bersihkan format token (hapus %22 dsb)
-            authToken = if (tokenCookie != null) {
-                val rawToken = tokenCookie.substringAfter("mb_token=").substringBefore(";")
-                // Decode URL (mengubah %22 menjadi ") dan hapus tanda kutip
-                URLDecoder.decode(rawToken, "UTF-8").replace("\"", "")
-            } else {
-                // Fallback: Jika gagal, coba token tamu hardcoded (kadang bisa expired)
-                "" 
-            }
-        }
-        
-        // 4. Gabungkan header dasar dengan Authorization Bearer
-        return baseHeaders + mapOf("Authorization" to "Bearer $authToken")
+    // Header wajib untuk API baru agar tidak NO DATA FOUND
+    private fun getApiHeaders(): Map<String, String> {
+        return mapOf(
+            "Authorization" to "Bearer $authToken",
+            "X-Client-Info" to """{"timezone":"Asia/Jayapura"}""", // Disesuaikan dengan screenshot kamu
+            "X-Request-Lang" to "en",
+            "Origin" to mainUrl,
+            "Referer" to "$mainUrl/"
+        )
     }
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -85,24 +65,22 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        
-        // Data request (Integer aman)
-        val postData = mapOf(
+        val body = mapOf(
             "channelId" to params.first(),
-            "page" to page, 
-            "perPage" to 24, 
+            "page" to page,
+            "perPage" to "24",
             "sort" to params.last()
-        )
-        val jsonBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Menggunakan getHeaders() agar ada Token-nya
+        // Menggunakan apiUrl baru dan apiPrefix baru, serta headers
+        // Path disesuaikan dengan struktur API baru
         val home = app.post(
-            "$apiUrl/wefeed-h5-api-bff/web/filter", 
-            headers = getHeaders(), 
-            requestBody = jsonBody
+            "$apiUrl$apiPrefix/web/filter", 
+            requestBody = body,
+            headers = getApiHeaders()
         ).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found (Cek Token)")
+        } ?: throw ErrorLoadingException("No Data Found on Home")
 
         return newHomePageResponse(request.name, home)
     }
@@ -110,32 +88,27 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val postData = mapOf(
-            "keyword" to query,
-            "page" to 1,
-            "perPage" to 20, 
-            "subjectType" to 0, 
-        )
-        val jsonBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-
+        // Menggunakan endpoint search dengan headers autentikasi
         return app.post(
-            "$apiUrl/wefeed-h5-api-bff/web/subject/search",
-            headers = getHeaders(),
-            requestBody = jsonBody
+            "$apiUrl$apiPrefix/subject/search", 
+            headers = getApiHeaders(),
+            requestBody = mapOf(
+                "keyword" to query,
+                "page" to "1",
+                "perPage" to "0",
+                "subjectType" to "0",
+            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Search failed")
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = if (url.contains("?id=")) {
-            url.substringAfter("?id=").substringBefore("&")
-        } else {
-            url.substringAfterLast("/")
-        }
+        val id = url.substringAfterLast("/")
         
+        // Mengambil detail menggunakan endpoint API baru
         val document = app.get(
-            "$apiUrl/wefeed-h5-api-bff/web/subject/detail?subjectId=$id",
-            headers = getHeaders()
+            "$apiUrl$apiPrefix/subject/detail?subjectId=$id",
+            headers = getApiHeaders()
         ).parsedSafe<MediaDetail>()?.data
         
         val subject = document?.subject
@@ -147,7 +120,6 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -159,10 +131,11 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
+        // Rekomendasi (Menggunakan endpoint detail-rec dari screenshot)
         val recommendations =
             app.get(
-                "$apiUrl/wefeed-h5-api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
-                headers = getHeaders()
+                "$apiUrl$apiPrefix/subject/detail-rec?subjectId=$id&page=1&perPage=12",
+                headers = getApiHeaders()
             ).parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
             }
@@ -185,7 +158,6 @@ class Adimoviebox : MainAPI() {
                         }
                     }
             }?.flatten() ?: emptyList()
-      
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 this.year = year
@@ -223,16 +195,12 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        val videoReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
-
-        // Headers khusus video (mungkin butuh token juga, jadi kita pakai getHeaders() + Referer)
-        val videoHeaders = getHeaders() + mapOf(
-            "Referer" to videoReferer
-        )
+        // Referer disesuaikan agar tidak diblokir
+        val referer = "$mainUrl/"
 
         val streams = app.get(
-            "$apiUrl/wefeed-h5-api-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            headers = videoHeaders
+            "$apiUrl$apiPrefix/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
+            headers = getApiHeaders() // WAJIB: Header Auth
         ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
@@ -243,32 +211,34 @@ class Adimoviebox : MainAPI() {
                     source.url ?: return@map,
                     INFER_TYPE
                 ) {
-                    this.referer = "$apiUrl/"
+                    this.referer = referer
                     this.quality = getQualityFromName(source.resolutions)
                 }
             )
         }
 
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
+        val id = streams?.firstOrNull()?.id
+        val format = streams?.firstOrNull()?.format
 
-        app.get(
-            "$apiUrl/wefeed-h5-api-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            headers = videoHeaders
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
+        if (id != null && format != null) {
+            app.get(
+                "$apiUrl$apiPrefix/subject/caption?format=$format&id=$id&subjectId=${media.id}",
+                headers = getApiHeaders()
+            ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        subtitle.lanName ?: "",
+                        subtitle.url ?: return@map
+                    )
                 )
-            )
+            }
         }
 
         return true
     }
 }
 
-// --- Data Classes ---
+// --- Data Classes TETAP SAMA ---
 
 data class LoadData(
     val id: String? = null,
@@ -346,7 +316,7 @@ data class Items(
 
         return provider.newMovieSearchResponse(
             title ?: "",
-            url, 
+            url,
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
