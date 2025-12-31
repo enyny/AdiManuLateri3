@@ -19,7 +19,7 @@ class Adimoviebox : MainAPI() {
     private val apiPrefix = "/wefeed-h5api-bff"
 
     // Token Authorization (Wajib ada agar tidak No Data Found)
-    // Token ini diambil dari screenshot headers kamu
+    // Token ini diambil dari screenshot headers kamu (1002058562.jpg)
     private val authToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjM0ODMzMzc2NjUwODQyOTQ5MzYsImF0IjoxNzY3MTg5MDA5LCJleHAiOjE3NjcxOTAwNjksImlzcyI6Imhpc2F2YW5hIn0.TZ9mWf4ePL7AyAvPfSaaTS6UAr6v9wiIUvwRyr2ikGA"
 
     override val instantLinkLoading = true
@@ -46,28 +46,20 @@ class Adimoviebox : MainAPI() {
 
     override val mainPage: List<MainPageData> = mainPageOf(
         // Angka pertama adalah subjectType (1=Movie, 2=TV, 1006=Anime)
-        // String kedua adalah Sort (ForYou, Hottest, dll)
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest"
+        // Kita sederhanakan listnya agar loading lebih cepat dan akurat
+        "1" to "Movies",
+        "2" to "TV Shows",
+        "1006" to "Animation"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val params = request.data.split(",")
-        val subjectType = params.first()
-        // Sort mapping bisa ditambahkan jika server mendukung parameter sort spesifik
-        // Saat ini kita fokus agar data muncul dulu.
+        val subjectType = request.data
         
-        // FIX Pagination: API mulai dari 0, Cloudstream mulai dari 1
+        // FIX Pagination: API mulai dari 0, Cloudstream mulai dari 1.
+        // Jika tidak dikurangi, halaman pertama mungkin terlewat atau error.
         val apiPage = if (page > 0) page - 1 else 0
         
         // FIX Endpoint: Menggunakan 'everyone-search' untuk Home Page.
