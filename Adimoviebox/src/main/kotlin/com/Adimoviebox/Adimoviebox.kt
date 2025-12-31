@@ -1,12 +1,13 @@
 package com.Adimoviebox
 
-import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+
+// HAPUS import android.util.Log agar Build Sukses (Cross-platform compatible)
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -52,29 +53,24 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Logika Endpoint:
-        // Jika request adalah 'trending', pakai endpoint trending.
-        // Sisanya pakai 'everyone-search' yang lebih aman untuk list umum.
         val endpoint = if(request.data == "trending") "trending" else "everyone-search"
         val pg = page - 1 
         
-        // Parameter URL disesuaikan. 'everyone-search' mungkin tidak butuh keyword.
         val url = if (endpoint == "trending") {
             "$apiUrl/subject/trending?page=$pg&perPage=20"
         } else {
             "$apiUrl/subject/everyone-search?page=$pg&perPage=20"
         }
 
-        // DEBUGGING: Mencetak respon asli ke Logcat
+        // Ganti Log.d dengan println agar lolos build check
+        // println akan tetap muncul di Logcat (System.out)
         val responseText = app.get(url, headers = getApiHeaders()).text
-        Log.d("DEBUG_ADI", "MainPage URL: $url")
-        // Log.d("DEBUG_ADI", "Response: $responseText") // Uncomment jika ingin lihat isi JSON penuh
-
-        // Parsing manual dengan try-catch agar tidak crash
+        println("DEBUG_ADI MainPage URL: $url")
+        
         val mediaData = try {
             parseJson<Media>(responseText)
         } catch (e: Exception) {
-            Log.e("DEBUG_ADI", "JSON Parse Error: ${e.message}")
+            println("DEBUG_ADI JSON Parse Error: ${e.message}")
             null
         }
 
@@ -99,7 +95,6 @@ class Adimoviebox : MainAPI() {
         
         val response = app.get(url, headers = getApiHeaders()).parsedSafe<Media>()
         
-        // Fallback cek items atau subjectList
         val items = response?.data?.items ?: response?.data?.subjectList
 
         return items?.map { it.toSearchResponse(this) }
@@ -236,8 +231,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes Update ---
-// Menambahkan subjectList kembali untuk jaga-jaga
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -250,7 +244,6 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        // Kita dukung keduanya: items DAN subjectList
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
         
