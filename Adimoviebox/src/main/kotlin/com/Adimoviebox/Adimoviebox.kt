@@ -18,8 +18,8 @@ class Adimoviebox : MainAPI() {
     // Prefix Path Baru
     private val apiPrefix = "/wefeed-h5api-bff"
 
-    // Token Authorization (Diambil dari screenshot headers kamu)
-    // Pastikan token ini masih aktif. Jika expired, ambil lagi dari Packet Capture.
+    // Token Authorization (Wajib ada agar tidak No Data Found)
+    // Token ini diambil dari screenshot headers kamu
     private val authToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjM0ODMzMzc2NjUwODQyOTQ5MzYsImF0IjoxNzY3MTg5MDA5LCJleHAiOjE3NjcxOTAwNjksImlzcyI6Imhpc2F2YW5hIn0.TZ9mWf4ePL7AyAvPfSaaTS6UAr6v9wiIUvwRyr2ikGA"
 
     override val instantLinkLoading = true
@@ -45,25 +45,35 @@ class Adimoviebox : MainAPI() {
     }
 
     override val mainPage: List<MainPageData> = mainPageOf(
-        // Angka di depan koma adalah 'subjectType'
-        "1" to "Movies",
-        "2" to "TV Shows",
-        "1006" to "Animation",
+        // Angka pertama adalah subjectType (1=Movie, 2=TV, 1006=Anime)
+        // String kedua adalah Sort (ForYou, Hottest, dll)
+        "1,ForYou" to "Movie ForYou",
+        "1,Hottest" to "Movie Hottest",
+        "1,Latest" to "Movie Latest",
+        "2,ForYou" to "TVShow ForYou",
+        "2,Hottest" to "TVShow Hottest",
+        "2,Latest" to "TVShow Latest",
+        "1006,ForYou" to "Animation ForYou",
+        "1006,Hottest" to "Animation Hottest",
+        "1006,Latest" to "Animation Latest"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Screenshot menunjukkan parameter page=0, sedangkan Cloudstream mulai dari 1.
-        // Jadi kita harus kurangi 1.
+        val params = request.data.split(",")
+        val subjectType = params.first()
+        // Sort mapping bisa ditambahkan jika server mendukung parameter sort spesifik
+        // Saat ini kita fokus agar data muncul dulu.
+        
+        // FIX Pagination: API mulai dari 0, Cloudstream mulai dari 1
         val apiPage = if (page > 0) page - 1 else 0
         
-        val subjectType = request.data
-        
-        // PERBAIKAN: Menggunakan endpoint '/subject/trending' sesuai screenshot 1002058598.jpg
-        // Menambahkan parameter subjectType untuk mencoba memfilter konten (Movie/TV)
-        val url = "$apiUrl$apiPrefix/subject/trending?page=$apiPage&perPage=24&subjectType=$subjectType"
+        // FIX Endpoint: Menggunakan 'everyone-search' untuk Home Page.
+        // Endpoint ini stabil dan mendukung subjectType untuk memisahkan Movie/TV.
+        // Kita kirim keyword kosong "" untuk mendapatkan list default.
+        val url = "$apiUrl$apiPrefix/subject/everyone-search?keyword=&page=$apiPage&perPage=24&subjectType=$subjectType"
 
         val home = app.get(
             url, 
@@ -78,8 +88,9 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Menggunakan endpoint everyone-search dengan method GET (Sesuai screenshot 1002058516.png)
-        val url = "$apiUrl$apiPrefix/subject/everyone-search?keyword=$query&page=1&perPage=50&subjectType=0"
+        // Menggunakan endpoint everyone-search dengan method GET
+        // subjectType=0 artinya cari semua tipe
+        val url = "$apiUrl$apiPrefix/subject/everyone-search?keyword=$query&page=0&perPage=50&subjectType=0"
 
         return app.get(
             url,
@@ -117,7 +128,7 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        // Recommendations request (GET) - Menggunakan detail-rec sesuai screenshot
+        // Recommendations request (GET) - menggunakan detail-rec
         val recommendations =
             app.get(
                 "$apiUrl$apiPrefix/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -181,6 +192,7 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
+        // Referer perlu disesuaikan agar stream tidak 403
         val referer = "$mainUrl/"
 
         // Play request (GET)
@@ -224,7 +236,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes (Sama seperti sebelumnya) ---
+// --- Data Classes (Tidak Berubah) ---
 
 data class LoadData(
     val id: String? = null,
