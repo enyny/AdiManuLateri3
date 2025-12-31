@@ -1,5 +1,6 @@
 package com.Adimoviebox
 
+import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -27,7 +28,6 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header wajib untuk API baru
     private fun getApiHeaders(): Map<String, String> {
         return mapOf(
             "authority" to "h5-api.aoneroom.com",
@@ -38,32 +38,56 @@ class Adimoviebox : MainAPI() {
             "authorization" to authToken,
             "x-request-lang" to "en",
             "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
-            // User Agent manual sesuai screenshot kamu agar lebih aman
             "user-agent" to "Mozilla/5.0 (Linux; Android 13; CPH2235) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36"
         )
     }
 
     override val mainPage: List<MainPageData> = mainPageOf(
         "trending" to "Trending Now",
-        "movies" to "Movies",
-        "tv" to "TV Series"
+        "everyone-search" to "Recommendation",
+        "movies" to "Movies"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val endpoint = if(request.data == "trending") "trending" else "search" 
+        // Logika Endpoint:
+        // Jika request adalah 'trending', pakai endpoint trending.
+        // Sisanya pakai 'everyone-search' yang lebih aman untuk list umum.
+        val endpoint = if(request.data == "trending") "trending" else "everyone-search"
         val pg = page - 1 
         
-        val url = "$apiUrl/subject/$endpoint?page=$pg&perPage=20&keyword="
+        // Parameter URL disesuaikan. 'everyone-search' mungkin tidak butuh keyword.
+        val url = if (endpoint == "trending") {
+            "$apiUrl/subject/trending?page=$pg&perPage=20"
+        } else {
+            "$apiUrl/subject/everyone-search?page=$pg&perPage=20"
+        }
 
-        val response = app.get(url, headers = getApiHeaders())
-            .parsedSafe<Media>()
+        // DEBUGGING: Mencetak respon asli ke Logcat
+        val responseText = app.get(url, headers = getApiHeaders()).text
+        Log.d("DEBUG_ADI", "MainPage URL: $url")
+        // Log.d("DEBUG_ADI", "Response: $responseText") // Uncomment jika ingin lihat isi JSON penuh
 
-        val home = response?.data?.items?.map {
+        // Parsing manual dengan try-catch agar tidak crash
+        val mediaData = try {
+            parseJson<Media>(responseText)
+        } catch (e: Exception) {
+            Log.e("DEBUG_ADI", "JSON Parse Error: ${e.message}")
+            null
+        }
+
+        // Fallback: Cek 'items', jika kosong cek 'subjectList'
+        val items = mediaData?.data?.items 
+            ?: mediaData?.data?.subjectList 
+            ?: emptyList()
+
+        if (items.isEmpty()) throw ErrorLoadingException("No Data Found. Cek Logcat 'DEBUG_ADI'")
+
+        val home = items.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        }
 
         return newHomePageResponse(request.name, home)
     }
@@ -72,15 +96,18 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/subject/search?keyword=$query&page=0&perPage=20"
+        
+        val response = app.get(url, headers = getApiHeaders()).parsedSafe<Media>()
+        
+        // Fallback cek items atau subjectList
+        val items = response?.data?.items ?: response?.data?.subjectList
 
-        return app.get(url, headers = getApiHeaders())
-            .parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+        return items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Search failed")
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        
         val detailUrl = "$apiUrl/subject/detail?subjectId=$id"
         
         val document = app.get(detailUrl, headers = getApiHeaders())
@@ -209,6 +236,9 @@ class Adimoviebox : MainAPI() {
     }
 }
 
+// --- Data Classes Update ---
+// Menambahkan subjectList kembali untuk jaga-jaga
+
 data class LoadData(
     val id: String? = null,
     val season: Int? = null,
@@ -220,7 +250,10 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
+        // Kita dukung keduanya: items DAN subjectList
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+        @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
     ) {
