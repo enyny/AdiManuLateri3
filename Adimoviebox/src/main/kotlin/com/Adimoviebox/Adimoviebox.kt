@@ -12,13 +12,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph" 
     
-    // API Host Baru
+    // API Host Baru sesuai screenshot everyone-search
     private val apiUrl = "https://h5-api.aoneroom.com"
     
     // Prefix Path Baru
     private val apiPrefix = "/wefeed-h5api-bff"
 
-    // Token dari screenshot kamu
+    // Token Authorization dari screenshot headers
     private val authToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjM0ODMzMzc2NjUwODQyOTQ5MzYsImF0IjoxNzY3MTg5MDA5LCJleHAiOjE3NjcxOTAwNjksImlzcyI6Imhpc2F2YW5hIn0.TZ9mWf4ePL7AyAvPfSaaTS6UAr6v9wiIUvwRyr2ikGA"
 
     override val instantLinkLoading = true
@@ -33,6 +33,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // Header wajib (Auth & Client-Info) agar tidak error No Data Found
     private fun getApiHeaders(): Map<String, String> {
         return mapOf(
             "Authorization" to "Bearer $authToken",
@@ -66,8 +67,10 @@ class Adimoviebox : MainAPI() {
         val channelId = params.first()
         val sort = params.last()
         
-        // PERBAIKAN: Mengubah POST ke GET dan menggunakan endpoint 'trending'
-        // Endpoint diambil dari analisa screenshot sidebar (trending)
+        // PERBAIKAN PENTING:
+        // 1. Mengubah dari POST ke GET.
+        // 2. Menggunakan endpoint '/subject/trending' yang terlihat di sidebar screenshot packet capture.
+        // 3. Memasukkan parameter ke URL (query string) bukan body.
         val url = "$apiUrl$apiPrefix/subject/trending?channelId=$channelId&page=$page&perPage=24&sort=$sort"
 
         val home = app.get(
@@ -83,8 +86,9 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN: Mengubah POST ke GET dan endpoint 'everyone-search'
-        // Sesuai screenshot 1002058516.png
+        // PERBAIKAN PENTING:
+        // 1. Mengubah endpoint menjadi '/subject/everyone-search' sesuai screenshot.
+        // 2. Mengubah method menjadi GET.
         val url = "$apiUrl$apiPrefix/subject/everyone-search?keyword=$query&page=1&perPage=50&subjectType=0"
 
         return app.get(
@@ -97,7 +101,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // PERBAIKAN: Memastikan menggunakan GET dengan headers
+        // Menggunakan GET untuk detail
         val document = app.get(
             "$apiUrl$apiPrefix/subject/detail?subjectId=$id",
             headers = getApiHeaders()
@@ -123,7 +127,7 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        // Rekomendasi
+        // Rekomendasi (menggunakan GET sesuai screenshot detail-rec)
         val recommendations =
             app.get(
                 "$apiUrl$apiPrefix/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -189,7 +193,7 @@ class Adimoviebox : MainAPI() {
         val media = parseJson<LoadData>(data)
         val referer = "$mainUrl/"
 
-        // PERBAIKAN: Memastikan menggunakan GET dengan headers
+        // Pastikan play request juga menggunakan GET
         val streams = app.get(
             "$apiUrl$apiPrefix/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             headers = getApiHeaders()
@@ -230,7 +234,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes (Tidak Berubah) ---
+// --- Data Classes Tidak Berubah ---
 
 data class LoadData(
     val id: String? = null,
