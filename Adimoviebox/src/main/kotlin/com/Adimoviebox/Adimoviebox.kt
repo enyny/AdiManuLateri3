@@ -7,15 +7,13 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 
-// HAPUS import android.util.Log agar Build Sukses (Cross-platform compatible)
-
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     // URL API Baru
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff" 
     
-    // Token User (Valid sampai Maret 2026)
-    private val authToken = "Bearer EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjUwOTk0MzcyMzg5ODM4NDA4MjQsImF0cCI6MywiZXh0IjoiMTc2NzIwMzA0MCIsImV4cCI6MTc3NDk3OTA0MCwiaWF0IjoxNzY3MjAyNzQwfQ.mxTceq2bBWYz-zuKI2sSPkZByjLF_H_LTeUjGffCL1k"
+    // PERBAIKAN: Token diawali 'e' kecil sesuai screenshot, bukan 'E' besar.
+    private val authToken = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjUwOTk0MzcyMzg5ODM4NDA4MjQsImF0cCI6MywiZXh0IjoiMTc2NzIwMzA0MCIsImV4cCI6MTc3NDk3OTA0MCwiaWF0IjoxNzY3MjAyNzQwfQ.mxTceq2bBWYz-zuKI2sSPkZByjLF_H_LTeUjGffCL1k"
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -56,16 +54,20 @@ class Adimoviebox : MainAPI() {
         val endpoint = if(request.data == "trending") "trending" else "everyone-search"
         val pg = page - 1 
         
+        // Menggunakan perPage=18 sesuai screenshot browser kamu
         val url = if (endpoint == "trending") {
-            "$apiUrl/subject/trending?page=$pg&perPage=20"
+            "$apiUrl/subject/trending?page=$pg&perPage=18"
         } else {
-            "$apiUrl/subject/everyone-search?page=$pg&perPage=20"
+            "$apiUrl/subject/everyone-search?page=$pg&perPage=18"
         }
 
-        // Ganti Log.d dengan println agar lolos build check
-        // println akan tetap muncul di Logcat (System.out)
         val responseText = app.get(url, headers = getApiHeaders()).text
+        
+        // DEBUGGING PENTING:
+        // Ini akan mencetak isi respon server ke Logcat.
+        // Jika masih error "No Data Found", kirimkan bagian log yang berisi "DEBUG_ADI Response:"
         println("DEBUG_ADI MainPage URL: $url")
+        println("DEBUG_ADI Response: $responseText")
         
         val mediaData = try {
             parseJson<Media>(responseText)
@@ -74,7 +76,7 @@ class Adimoviebox : MainAPI() {
             null
         }
 
-        // Fallback: Cek 'items', jika kosong cek 'subjectList'
+        // Cek 'items' lalu cek 'subjectList'
         val items = mediaData?.data?.items 
             ?: mediaData?.data?.subjectList 
             ?: emptyList()
@@ -91,7 +93,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$apiUrl/subject/search?keyword=$query&page=0&perPage=20"
+        val url = "$apiUrl/subject/search?keyword=$query&page=0&perPage=18"
         
         val response = app.get(url, headers = getApiHeaders()).parsedSafe<Media>()
         
