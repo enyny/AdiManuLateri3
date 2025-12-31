@@ -12,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    private val apiUrl = "https://filmboom.top" // Server video
+    private val apiUrl = "https://filmboom.top"
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -26,12 +26,18 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // FIX: Header Wajib agar tidak diblokir server moviebox.ph
+    // FIX: Header Lengkap agar terlihat seperti Browser Chrome Asli
     private val commonHeaders = mapOf(
-        "Origin" to mainUrl,
-        "Referer" to "$mainUrl/",
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "Accept" to "application/json, text/plain, */*"
+        "Host" to "moviebox.ph",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+        "Accept" to "application/json, text/plain, */*",
+        "Content-Type" to "application/json;charset=UTF-8",
+        "Origin" to "https://moviebox.ph",
+        "Referer" to "https://moviebox.ph/",
+        "Sec-Fetch-Dest" to "empty",
+        "Sec-Fetch-Mode" to "cors",
+        "Sec-Fetch-Site" to "same-origin",
+        "X-Requested-With" to "XMLHttpRequest" // Penting untuk API internal
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -61,7 +67,7 @@ class Adimoviebox : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // FIX: Menambahkan headers=commonHeaders
+        // Menggunakan commonHeaders yang baru
         val home = app.post(
             "$mainUrl/wefeed-h5-bff/web/filter", 
             headers = commonHeaders, 
@@ -76,7 +82,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // FIX: Menambahkan headers=commonHeaders
         return app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search",
             headers = commonHeaders,
@@ -92,13 +97,11 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        
-        // FIX: Menambahkan headers=commonHeaders
         val document = app.get(
             "$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
         ).parsedSafe<MediaDetail>()?.data
-
+        
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -120,13 +123,13 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        // FIX: Menambahkan headers=commonHeaders
-        val recommendations = app.get(
-            "$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
-            headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.items?.map {
-            it.toSearchResponse(this)
-        }
+        val recommendations =
+            app.get(
+                "$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
+                headers = commonHeaders
+            ).parsedSafe<Media>()?.data?.items?.map {
+                it.toSearchResponse(this)
+            }
 
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
@@ -184,7 +187,6 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        
         // Referer khusus untuk server video (berbeda dengan mainUrl)
         val videoReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
@@ -226,7 +228,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes Tidak Berubah ---
+// --- Data Classes (Tidak ada perubahan, tetap gunakan ini) ---
 
 data class LoadData(
     val id: String? = null,
