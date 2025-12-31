@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // URL API Baru sesuai screenshot
+    // URL API Baru
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff" 
     
     // Token User (Valid sampai Maret 2026)
@@ -38,30 +38,24 @@ class Adimoviebox : MainAPI() {
             "authorization" to authToken,
             "x-request-lang" to "en",
             "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
-            "user-agent" to UserAgent.android
+            // User Agent manual sesuai screenshot kamu agar lebih aman
+            "user-agent" to "Mozilla/5.0 (Linux; Android 13; CPH2235) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36"
         )
     }
 
-    // Saya menyederhanakan MainPage karena filter lama (POST) mungkin sudah tidak valid.
-    // Kita gunakan endpoint 'trending' yang sudah pasti ada.
     override val mainPage: List<MainPageData> = mainPageOf(
         "trending" to "Trending Now",
-        "movies" to "Movies",     // Asumsi endpoint, perlu dicek
-        "tv" to "TV Series"       // Asumsi endpoint, perlu dicek
+        "movies" to "Movies",
+        "tv" to "TV Series"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Menggunakan endpoint Trending (GET) sesuai screenshot
-        // Logika: Jika request 'trending', panggil API trending.
-        // Jika tidak, kita coba panggil subject/search kosong atau filter lain (perlu riset lebih lanjut untuk filter kategori)
-        
         val endpoint = if(request.data == "trending") "trending" else "search" 
-        val pg = page - 1 // API biasanya mulai dari 0, Cloudstream dari 1
+        val pg = page - 1 
         
-        // Membangun URL
         val url = "$apiUrl/subject/$endpoint?page=$pg&perPage=20&keyword="
 
         val response = app.get(url, headers = getApiHeaders())
@@ -77,8 +71,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Menggunakan metode GET sesuai pola baru
-        // Asumsi endpoint search adalah /subject/search?keyword=query
         val url = "$apiUrl/subject/search?keyword=$query&page=0&perPage=20"
 
         return app.get(url, headers = getApiHeaders())
@@ -89,7 +81,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Update endpoint ke path baru
         val detailUrl = "$apiUrl/subject/detail?subjectId=$id"
         
         val document = app.get(detailUrl, headers = getApiHeaders())
@@ -178,8 +169,6 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
-        // Update Endpoint Play ke path baru
-        // Referer penting untuk loadLinks
         val playUrl = "$apiUrl/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}"
 
         val streams = app.get(
@@ -204,7 +193,6 @@ class Adimoviebox : MainAPI() {
         val id = streams?.first()?.id
         val format = streams?.first()?.format
 
-        // Update Endpoint Caption
         app.get(
             "$apiUrl/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             headers = getApiHeaders()
@@ -220,10 +208,6 @@ class Adimoviebox : MainAPI() {
         return true
     }
 }
-
-// --- Data Classes (Struktur JSON) ---
-// Pastikan tidak ada perubahan besar pada nama field di JSON baru.
-// Jika error parsing, kita perlu melihat respon JSON mentah dari /subject/detail
 
 data class LoadData(
     val id: String? = null,
