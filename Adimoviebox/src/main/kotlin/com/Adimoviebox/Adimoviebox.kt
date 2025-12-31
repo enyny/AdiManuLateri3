@@ -3,15 +3,20 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
+    // KEMBALI KE ASAL: Halaman utama tetap moviebox.ph agar poster & list film muncul
     override var mainUrl = "https://moviebox.ph"
-    private val apiUrl = "https://fmoviesunblocked.net"
+    
+    // UPDATE BARU: Server video diganti ke filmboom.top sesuai logcat
+    private val apiUrl = "https://filmboom.top"
+    
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -51,6 +56,7 @@ class Adimoviebox : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
+        // Menggunakan mainUrl (moviebox.ph) untuk request daftar film
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
@@ -62,14 +68,14 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Diperbarui agar lebih akurat dengan memastikan parameter multi-tipe (subjectType 0)
+        // Menggunakan mainUrl (moviebox.ph) untuk pencarian
         return app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", 
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "0", // 0 diasumsikan sebagai "tidak terbatas" atau default
-                "subjectType" to "0", // 0 diasumsikan sebagai pencarian multi-tipe/semua
+                "perPage" to "0", 
+                "subjectType" to "0", 
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Search failed or returned no results.")
@@ -77,6 +83,8 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
+        
+        // Menggunakan mainUrl (moviebox.ph) untuk detail film (poster, deskripsi, dll)
         val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
@@ -88,7 +96,7 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        // ✅ Peningkatan Skor: Menggunakan Score.from10() dengan pengecekan aman
+        
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -124,6 +132,7 @@ class Adimoviebox : MainAPI() {
                         }
                     }
             }?.flatten() ?: emptyList()
+      
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 this.year = year
@@ -161,8 +170,11 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
+        
+        // Menggunakan apiUrl (filmboom.top) untuk referer video
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
+        // Request ke API video menggunakan apiUrl (filmboom.top)
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -185,6 +197,7 @@ class Adimoviebox : MainAPI() {
         val id = streams?.first()?.id
         val format = streams?.first()?.format
 
+        // Subtitle juga diambil dari apiUrl (filmboom.top)
         app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             referer = referer
@@ -201,7 +214,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Class Dikeluarkan dari class Adimoviebox ---
+// --- Data Classes Tidak Berubah (Tetap gunakan yang sama) ---
 
 data class LoadData(
     val id: String? = null,
@@ -279,12 +292,11 @@ data class Items(
 
         return provider.newMovieSearchResponse(
             title ?: "",
-            url, // Menggunakan URL lengkap sebagai data yang diteruskan ke load()
+            url, 
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
             this.posterUrl = cover?.url
-            // ✅ Peningkatan Skor: Menambahkan skor ke SearchResponse
             this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
