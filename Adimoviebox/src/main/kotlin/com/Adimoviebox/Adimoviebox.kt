@@ -9,11 +9,10 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import android.util.Log // Tambahan untuk Logcat
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    
-    // UPDATED: Menggunakan domain baru sesuai info kamu
     private val apiUrl = "https://filmboom.top"
 
     override val instantLinkLoading = true
@@ -28,28 +27,12 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // HEADER BERSIH: Tanpa 'Content-Type' (biar otomatis) dan tanpa 'Host' (biar aman)
+    // Header disesuaikan agar mirip browser asli
     private val commonHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
         "Accept" to "application/json, text/plain, */*",
         "Origin" to mainUrl,
-        "Referer" to "$mainUrl/",
-        "X-Requested-With" to "XMLHttpRequest" // Penting untuk menyamar sebagai aplikasi web
-    )
-
-    override val mainPage: List<MainPageData> = mainPageOf(
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "1,Rating" to "Movie Rating",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "2,Rating" to "TVShow Rating",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest",
-        "1006,Rating" to "Animation Rating",
+        "Referer" to "$mainUrl/"
     )
 
     override suspend fun getMainPage(
@@ -57,8 +40,6 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        
-        // Request body standar
         val body = mapOf(
             "channelId" to params.first(),
             "page" to page,
@@ -66,14 +47,22 @@ class Adimoviebox : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Menggunakan headers yang sudah dibersihkan
-        val home = app.post(
+        // --- MONITORING MODE START ---
+        val response = app.post(
             "$mainUrl/wefeed-h5-bff/web/filter", 
             headers = commonHeaders, 
             requestBody = body
-        ).parsedSafe<Media>()?.data?.items?.map {
+        )
+
+        // Kita cetak respon aslinya ke Logcat dengan tag "AdiDebug"
+        Log.d("AdiDebug", "URL: $mainUrl/wefeed-h5-bff/web/filter")
+        Log.d("AdiDebug", "Status Code: ${response.code}")
+        Log.d("AdiDebug", "Raw Response: ${response.text}")
+        // --- MONITORING MODE END ---
+
+        val home = response.parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        } ?: throw ErrorLoadingException("Cek Logcat 'AdiDebug' untuk lihat respon asli")
 
         return newHomePageResponse(request.name, home)
     }
@@ -87,21 +76,33 @@ class Adimoviebox : MainAPI() {
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "20", // Ubah 0 jadi 20 biar server tidak bingung
+                "perPage" to "20",
                 "subjectType" to "0", 
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed or returned no results.")
+            ?: throw ErrorLoadingException("Search failed")
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
+        // Logika ekstraksi ID diperbaiki agar menangani URL browser yang mengandung query params
+        // Contoh URL browser: https://moviebox.ph/id/detail/cashero...?id=12345
         
-        val document = app.get(
-            "$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id",
+        val rawId = if (url.contains("?id=")) {
+            url.substringAfter("?id=").substringBefore("&")
+        } else {
+            url.substringAfterLast("/")
+        }
+
+        // --- MONITORING LOAD START ---
+        Log.d("AdiDebug", "Load URL ID: $rawId")
+        val response = app.get(
+            "$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$rawId",
             headers = commonHeaders
-        ).parsedSafe<MediaDetail>()?.data
-        
+        )
+        Log.d("AdiDebug", "Load Response: ${response.text}")
+        // --- MONITORING LOAD END ---
+
+        val document = response.parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -125,7 +126,7 @@ class Adimoviebox : MainAPI() {
 
         val recommendations =
             app.get(
-                "$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
+                "$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$rawId&page=1&perPage=12",
                 headers = commonHeaders
             ).parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
@@ -138,7 +139,7 @@ class Adimoviebox : MainAPI() {
                     .map { episode ->
                         newEpisode(
                             LoadData(
-                                id,
+                                rawId,
                                 seasons.se,
                                 episode,
                                 subject?.detailPath
@@ -165,7 +166,7 @@ class Adimoviebox : MainAPI() {
                 title,
                 url,
                 TvType.Movie,
-                LoadData(id, detailPath = subject?.detailPath).toJson()
+                LoadData(rawId, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
                 this.year = year
@@ -187,10 +188,8 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer khusus untuk server video (menggunakan apiUrl filmboom.top)
         val videoReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Headers khusus video agar tidak diblokir
         val videoHeaders = mapOf(
             "Referer" to videoReferer,
             "Origin" to apiUrl,
@@ -235,7 +234,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes (Wajib disertakan agar parsing JSON berhasil) ---
+// --- Data Classes Tetap Sama ---
 
 data class LoadData(
     val id: String? = null,
