@@ -9,12 +9,14 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLDecoder
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    
-    // Server API Backend (Sesuai Screenshot)
     private val apiUrl = "https://h5-api.aoneroom.com"
+
+    // Variabel untuk menyimpan token sementara
+    private var authToken: String? = null
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -28,15 +30,40 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Lengkap (Sesuai Screenshot Kiwi Browser)
-    private val commonHeaders = mapOf(
+    // Header dasar (Token akan ditambahkan dinamis nanti)
+    private val baseHeaders = mapOf(
         "Origin" to mainUrl,
         "Referer" to "$mainUrl/",
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
         "Accept" to "application/json, text/plain, */*",
-        "X-Request-Lang" to "en", 
+        "X-Request-Lang" to "en",
         "X-Client-Info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
+
+    // --- FUNGSI PENTING: MENDAPATKAN TOKEN ---
+    private suspend fun getHeaders(): Map<String, String> {
+        if (authToken == null) {
+            // 1. Buka halaman utama untuk memancing Cookie
+            val response = app.get(mainUrl)
+            
+            // 2. Cari cookie 'mb_token'
+            val cookies = response.okhttpResponse.headers.values("Set-Cookie")
+            val tokenCookie = cookies.find { it.contains("mb_token") }
+            
+            // 3. Bersihkan format token (hapus %22 dsb)
+            authToken = if (tokenCookie != null) {
+                val rawToken = tokenCookie.substringAfter("mb_token=").substringBefore(";")
+                // Decode URL (mengubah %22 menjadi ") dan hapus tanda kutip
+                URLDecoder.decode(rawToken, "UTF-8").replace("\"", "")
+            } else {
+                // Fallback: Jika gagal, coba token tamu hardcoded (kadang bisa expired)
+                "" 
+            }
+        }
+        
+        // 4. Gabungkan header dasar dengan Authorization Bearer
+        return baseHeaders + mapOf("Authorization" to "Bearer $authToken")
+    }
 
     override val mainPage: List<MainPageData> = mainPageOf(
         "1,ForYou" to "Movie ForYou",
@@ -59,25 +86,23 @@ class Adimoviebox : MainAPI() {
     ): HomePageResponse {
         val params = request.data.split(",")
         
-        // FIX: Map<String, Any> dikonversi manual ke JSON Body
-        // agar compiler tidak error dan server tetap menerima format angka (Integer)
+        // Data request (Integer aman)
         val postData = mapOf(
             "channelId" to params.first(),
-            "page" to page, // Int
-            "perPage" to 24, // Int (Wajib angka, bukan string)
+            "page" to page, 
+            "perPage" to 24, 
             "sort" to params.last()
         )
-
-        // Konversi Map ke JSON String, lalu ke RequestBody
         val jsonBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
+        // Menggunakan getHeaders() agar ada Token-nya
         val home = app.post(
             "$apiUrl/wefeed-h5-api-bff/web/filter", 
-            headers = commonHeaders, 
-            requestBody = jsonBody // Gunakan requestBody, bukan data
+            headers = getHeaders(), 
+            requestBody = jsonBody
         ).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        } ?: throw ErrorLoadingException("No Data Found (Cek Token)")
 
         return newHomePageResponse(request.name, home)
     }
@@ -85,20 +110,18 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // FIX: Menggunakan Map<String, Any> dan dikonversi ke JSON
         val postData = mapOf(
             "keyword" to query,
             "page" to 1,
-            "perPage" to 20, // Int
-            "subjectType" to 0, // Int
+            "perPage" to 20, 
+            "subjectType" to 0, 
         )
-
         val jsonBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         return app.post(
             "$apiUrl/wefeed-h5-api-bff/web/subject/search",
-            headers = commonHeaders,
-            requestBody = jsonBody // Gunakan requestBody
+            headers = getHeaders(),
+            requestBody = jsonBody
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Search failed")
     }
@@ -112,7 +135,7 @@ class Adimoviebox : MainAPI() {
         
         val document = app.get(
             "$apiUrl/wefeed-h5-api-bff/web/subject/detail?subjectId=$id",
-            headers = commonHeaders
+            headers = getHeaders()
         ).parsedSafe<MediaDetail>()?.data
         
         val subject = document?.subject
@@ -139,7 +162,7 @@ class Adimoviebox : MainAPI() {
         val recommendations =
             app.get(
                 "$apiUrl/wefeed-h5-api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
-                headers = commonHeaders
+                headers = getHeaders()
             ).parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
             }
@@ -200,14 +223,11 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        
-        // Referer menggunakan apiUrl
         val videoReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        val videoHeaders = mapOf(
-            "Referer" to videoReferer,
-            "Origin" to apiUrl,
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+        // Headers khusus video (mungkin butuh token juga, jadi kita pakai getHeaders() + Referer)
+        val videoHeaders = getHeaders() + mapOf(
+            "Referer" to videoReferer
         )
 
         val streams = app.get(
