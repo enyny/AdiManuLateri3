@@ -9,21 +9,21 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     
-    // Domain untuk pencarian dan home
+    // Domain navigasi dari Network Log
     private val searchApiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
     
-    // Domain untuk detail dan streaming
+    // Domain streaming dari Network Log
     private val playApiUrl = "https://filmboom.top/wefeed-h5-bff/web"
     
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "en"
+    override var lang = "id" // Disetel ke ID untuk kategori lokal
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
     private var currentToken: String? = null
 
-    // Fungsi otomatis mengambil Token Bearer
+    // Login anonim otomatis untuk mendapatkan token Bearer
     private suspend fun getAuthToken(): String {
         currentToken?.let { return it }
         val res = app.post(
@@ -36,19 +36,20 @@ class Adimoviebox : MainAPI() {
         return currentToken!!
     }
 
-    // Header dinamis menyesuaikan domain yang dituju
+    // Header dinamis menyesuaikan target domain
     private suspend fun getHeaders(isPlayDomain: Boolean = false): Map<String, String> {
         return mapOf(
             "Authorization" to getAuthToken(),
-            "X-Request-Lang" to "en",
+            "X-Request-Lang" to "id",
             "Origin" to if (isPlayDomain) "https://filmboom.top" else "https://moviebox.ph",
             "Referer" to if (isPlayDomain) "https://filmboom.top/" else "https://moviebox.ph/"
         )
     }
 
+    // Daftar halaman utama berdasarkan tampilan terbaru
     override val mainPage: List<MainPageData> = mainPageOf(
-        "$searchApiUrl/subject/trending" to "Trending Now", //
-        "$searchApiUrl/home?host=moviebox.ph" to "Home Selection" //
+        "$searchApiUrl/subject/trending" to "Sedang Tren 🔥",
+        "$searchApiUrl/home?host=moviebox.ph" to "Pilihan Utama"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -58,15 +59,16 @@ class Adimoviebox : MainAPI() {
             request.data
         }
         
+        // Menggunakan method GET sesuai temuan log
         val home = app.get(url, headers = getHeaders()).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Data Kosong")
+        } ?: throw ErrorLoadingException("Gagal memuat halaman utama")
         
         return newHomePageResponse(request.name, home)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Menggunakan endpoint everyone-search via GET
+        // Endpoint pencarian global
         return app.get(
             "$searchApiUrl/subject/everyone-search",
             params = mapOf("keyword" to query),
@@ -77,9 +79,9 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Berpindah ke domain filmboom untuk mengambil detail
+        // Detail dimuat dari domain filmboom
         val detail = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
-            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Detail Gagal Dimuat")
+            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Detail tidak tersedia")
         
         val subject = detail.subject
         val title = subject?.title ?: ""
@@ -120,7 +122,7 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // Request link video menggunakan domain filmboom
+        // Mengambil link stream dari domain filmboom
         val res = app.get(
             "$playApiUrl/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}",
             headers = getHeaders(true)
@@ -134,7 +136,7 @@ class Adimoviebox : MainAPI() {
             )
         }
         
-        // Menambahkan subtitle dari endpoint caption
+        // Integrasi Subtitle dari API caption
         app.get(
             "$playApiUrl/subject/caption?format=MP4&id=${res?.streams?.firstOrNull()?.id ?: ""}&subjectId=${media.id}",
             headers = getHeaders(true)
@@ -146,7 +148,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// Data Classes sesuai struktur JSON di log
+// --- Struktur Data ---
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String? = null)
 data class LoginResponse(@JsonProperty("data") val data: TokenData? = null)
 data class TokenData(@JsonProperty("token") val token: String? = null)
