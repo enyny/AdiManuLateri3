@@ -8,7 +8,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    // Domain Katalog
     private val searchApiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
+    // Domain Streaming
     private val playApiUrl = "https://filmboom.top/wefeed-h5-bff/web"
     
     override var name = "Adimoviebox"
@@ -18,15 +20,13 @@ class Adimoviebox : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
     private var currentToken: String? = null
-
-    // Perbaikan User-Agent sesuai log agar tidak di-Canceled
     private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
 
     private suspend fun getAuthToken(): String {
         currentToken?.let { return it }
         val res = app.post(
             "$searchApiUrl/user/anonymous-login",
-            headers = mapOf("X-Request-Lang" to "en", "User-Agent" to userAgent)
+            headers = mapOf("X-Request-Lang" to "id", "User-Agent" to userAgent)
         ).parsedSafe<LoginResponse>()
         
         val token = res?.data?.token ?: ""
@@ -34,17 +34,18 @@ class Adimoviebox : MainAPI() {
         return currentToken!!
     }
 
+    // ✅ PERBAIKAN: Menghapus nested 'if' yang menyebabkan error compile
     private suspend fun getHeaders(isPlayDomain: Boolean = false): Map<String, String> {
+        val targetOrigin = if (isPlayDomain) "https://filmboom.top" else "https://moviebox.ph"
         return mapOf(
             "Authorization" to getAuthToken(),
             "X-Request-Lang" to "id",
-            "Origin" to if (isPlayDomain) "https://filmboom.top" else "https://moviebox.ph",
-            "Referer" to if (isPlayDomain) (if (isPlayDomain) "https://filmboom.top/" else "https://moviebox.ph/"),
+            "Origin" to targetOrigin,
+            "Referer" to "$targetOrigin/",
             "User-Agent" to userAgent
         )
     }
 
-    // Daftar baris kategori diperbaiki parameter area-nya
     override val mainPage: List<MainPageData> = mainPageOf(
         "$searchApiUrl/subject/trending" to "Sedang Tren 🔥",
         "$searchApiUrl/subject/filter?channelId=1&area=Indonesia" to "Film Indonesia Lagi Ngetren",
@@ -64,12 +65,12 @@ class Adimoviebox : MainAPI() {
         val response = app.get(url, headers = getHeaders())
         val mediaData = response.parsedSafe<Media>()?.data
         
-        // Cek items atau subjectList agar tidak null
-        val items = (mediaData?.items ?: mediaData?.subjectList)?.map {
+        // ✅ PERBAIKAN: Cek 'items' ATAU 'subjectList' agar data tidak kosong
+        val listItems = (mediaData?.items ?: mediaData?.subjectList)?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Gagal memuat ${request.name}: Data Kosong")
+        } ?: throw ErrorLoadingException("Kategori ${request.name} tidak dapat dimuat")
         
-        return newHomePageResponse(request.name, items)
+        return newHomePageResponse(request.name, listItems)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -84,11 +85,11 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         val detail = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
-            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Detail tidak ditemukan")
+            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Gagal memuat detail")
         
         val subject = detail.subject
         val title = subject?.title ?: ""
-        val poster = subject?.cover?.url ?: subject?.coverVerticalUrl // Fallback poster
+        val poster = subject?.cover?.url ?: subject?.coverVerticalUrl
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
@@ -148,7 +149,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes (Diperluas untuk fleksibilitas parsing) ---
+// --- Data Classes Tetap Sama ---
 data class Media(@JsonProperty("data") val data: Data? = null) {
     data class Data(
         @JsonProperty("items") val items: ArrayList<Items>? = null,
@@ -162,23 +163,14 @@ data class Media(@JsonProperty("data") val data: Data? = null) {
 }
 
 data class Items(
-    @JsonProperty("subjectId") val subjectId: String? = null, 
-    @JsonProperty("subjectType") val subjectType: Int? = null,
-    @JsonProperty("title") val title: String? = null, 
-    @JsonProperty("description") val description: String? = null,
-    @JsonProperty("releaseDate") val releaseDate: String? = null,
-    @JsonProperty("cover") val cover: Cover? = null,
-    @JsonProperty("coverVerticalUrl") val coverVerticalUrl: String? = null,
-    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("subjectId") val subjectId: String? = null, @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("title") val title: String? = null, @JsonProperty("description") val description: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null, @JsonProperty("cover") val cover: Cover? = null,
+    @JsonProperty("coverVerticalUrl") val coverVerticalUrl: String? = null, @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
     @JsonProperty("detailPath") val detailPath: String? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        return provider.newMovieSearchResponse(
-            title ?: "", 
-            "${provider.mainUrl}/detail/$subjectId", 
-            if (subjectType == 1) TvType.Movie else TvType.TvSeries, 
-            false
-        ) { 
+        return provider.newMovieSearchResponse(title ?: "", "${provider.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { 
             this.posterUrl = cover?.url ?: coverVerticalUrl
         }
     }
