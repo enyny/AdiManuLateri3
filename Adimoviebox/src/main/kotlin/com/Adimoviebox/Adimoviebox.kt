@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.random.Random
@@ -23,15 +24,15 @@ class Adimoviebox : MainAPI() {
     private var currentToken: String? = null
     private val tokenMutex = Mutex() 
     
-    // Identitas perangkat agar tidak dianggap bot
+    // Identitas perangkat unik agar tidak dianggap spam
     private val deviceId = List(16) { Random.nextInt(0, 16).toString(16) }.joinToString("")
-    private val userAgent = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
 
     private suspend fun getAuthToken(): String {
         return tokenMutex.withLock {
             if (!currentToken.isNullOrBlank()) return@withLock currentToken!!
 
-            // Request login dengan body JSON agar server tidak menolak
+            // Request login anonim sesuai protokol Network Log
             val res = app.post(
                 "$searchApiUrl/user/anonymous-login",
                 headers = mapOf(
@@ -39,7 +40,7 @@ class Adimoviebox : MainAPI() {
                     "User-Agent" to userAgent,
                     "Content-Type" to "application/json"
                 ),
-                data = mapOf("deviceId" to deviceId)
+                data = mapOf("deviceId" to deviceId, "host" to "moviebox.ph")
             ).parsedSafe<LoginResponse>()
             
             val token = res?.data?.token
@@ -47,15 +48,16 @@ class Adimoviebox : MainAPI() {
                 currentToken = "Bearer $token"
                 return@withLock currentToken!!
             }
-            throw ErrorLoadingException("Gagal mendapatkan akses server")
+            ""
         }
     }
 
     private suspend fun getHeaders(isPlayDomain: Boolean = false): Map<String, String> {
         val target = if (isPlayDomain) "https://filmboom.top" else "https://moviebox.ph"
+        val token = getAuthToken()
         return mapOf(
-            "Authorization" to getAuthToken(),
-            "X-Request-Lang" to "en", // Gunakan 'en' untuk kestabilan API
+            "Authorization" to token,
+            "X-Request-Lang" to "en", // Server lebih stabil dengan 'en'
             "Origin" to target,
             "Referer" to "$target/",
             "User-Agent" to userAgent,
@@ -75,17 +77,21 @@ class Adimoviebox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (request.data.contains("?")) "${request.data}&page=${page - 1}&perPage=18" 
-                  else "${request.data}?page=${page - 1}&perPage=18"
+        // ✅ Tambahkan jeda acak agar server tidak memutus koneksi (Anti-Canceled)
+        delay(Random.nextLong(100, 500))
+
+        val pageNum = page - 1
+        val url = if (request.data.contains("?")) "${request.data}&page=$pageNum&perPage=18" 
+                  else "${request.data}?page=$pageNum&perPage=18"
         
-        // Coba memuat data, jika gagal berikan fallback list kosong agar tidak crash
         val response = try {
-            app.get(url, headers = getHeaders(), timeout = 20).parsedSafe<Media>()?.data
+            app.get(url, headers = getHeaders(), timeout = 30).parsedSafe<Media>()?.data
         } catch (e: Exception) { null }
 
+        // ✅ Cek subjectList atau items agar tidak NullRequestDataException
         val items = (response?.items ?: response?.subjectList)?.mapNotNull {
             it.toSearchResponse(this)
-        } ?: emptyList() // Balas dengan list kosong jika server sibuk agar UI tidak error
+        } ?: emptyList() 
         
         return newHomePageResponse(request.name, items)
     }
