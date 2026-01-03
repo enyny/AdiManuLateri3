@@ -24,8 +24,8 @@ class Adimoviebox : MainAPI() {
     private var currentToken: String? = null
     private val tokenMutex = Mutex() 
     
-    // Gunakan User-Agent yang lebih spesifik untuk aplikasi Android agar tidak di-Canceled
-    private val userAgent = "Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    // Gunakan User-Agent yang stabil dan identitas perangkat unik
+    private val userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private val deviceId = List(16) { Random.nextInt(0, 16).toString(16) }.joinToString("")
 
     private suspend fun getAuthToken(): String {
@@ -34,12 +34,7 @@ class Adimoviebox : MainAPI() {
 
             val res = app.post(
                 "$searchApiUrl/user/anonymous-login",
-                headers = mapOf(
-                    "X-Request-Lang" to "en",
-                    "User-Agent" to userAgent,
-                    "Content-Type" to "application/json",
-                    "Platform" to "android"
-                ),
+                headers = mapOf("X-Request-Lang" to "en", "User-Agent" to userAgent),
                 data = mapOf("deviceId" to deviceId, "host" to "moviebox.ph")
             ).parsedSafe<LoginResponse>()
             
@@ -71,19 +66,18 @@ class Adimoviebox : MainAPI() {
         "$searchApiUrl/subject/filter?channelId=1004" to "Hot Short TV 🎬",
         "$searchApiUrl/subject/filter?channelId=2&area=South Korea" to "K-Drama Terbaru",
         "$searchApiUrl/subject/filter?channelId=1006" to "Masuk ke Dunia Anime 🌟",
-        "$searchApiUrl/subject/filter?channelId=2&genre=Bromance" to "Bromance",
         "$searchApiUrl/subject/filter?channelId=1&area=USA" to "Impian Filem Hollywood"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Jeda lebih lama di awal untuk memastikan sinkronisasi token
-        delay(Random.nextLong(300, 800))
+        // Jeda staggered (berjenjang) agar tidak di-Canceled
+        delay(Random.nextLong(400, 1200))
 
         val pageNum = page - 1
         val url = if (request.data.contains("?")) "${request.data}&page=$pageNum&perPage=18" 
                   else "${request.data}?page=$pageNum&perPage=18"
         
-        val response = app.get(url, headers = getHeaders(), timeout = 40).parsedSafe<Media>()?.data
+        val response = app.get(url, headers = getHeaders(), timeout = 30).parsedSafe<Media>()?.data
         
         val items = (response?.items ?: response?.subjectList)?.mapNotNull {
             it.toSearchResponse(this)
@@ -103,9 +97,8 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        // Gunakan retry untuk mengatasi Canceled yang tiba-tiba
-        val response = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
-        val detail = response.parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Gagal mengambil detail")
+        val detail = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
+            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Metadata gagal dimuat")
         
         val subject = detail.subject
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
@@ -125,11 +118,13 @@ class Adimoviebox : MainAPI() {
             newTvSeriesLoadResponse(subject?.title ?: "", url, TvType.TvSeries, episodes) {
                 this.posterUrl = subject?.cover?.url ?: subject?.coverVerticalUrl
                 this.plot = subject?.description
+                this.year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
             }
         } else {
             newMovieLoadResponse(subject?.title ?: "", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
                 this.posterUrl = subject?.cover?.url ?: subject?.coverVerticalUrl
                 this.plot = subject?.description
+                this.year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
             }
         }
     }
@@ -142,14 +137,17 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // Tambahkan timeout lebih besar (60 detik) untuk pemuatan link agar tidak Canceled
+        // PENTING: Gunakan detail_path yang didapat dari API untuk validasi link
         val res = app.get(
-            "$playApiUrl/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}",
+            "$playApiUrl/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath ?: ""}",
             headers = getHeaders(true),
             timeout = 60 
         ).parsedSafe<Media>()?.data
 
-        res?.streams?.map { source ->
+        val streams = res?.streams
+        if (streams.isNullOrEmpty()) return false // Mencegah toast "Tautan Tidak Ditemukan" palsu
+
+        streams.map { source ->
             callback.invoke(
                 newExtractorLink(this.name, this.name, source.url ?: return@map, INFER_TYPE) {
                     this.quality = getQualityFromName(source.resolutions)
@@ -158,7 +156,7 @@ class Adimoviebox : MainAPI() {
         }
         
         app.get(
-            "$playApiUrl/subject/caption?format=MP4&id=${res?.streams?.firstOrNull()?.id ?: ""}&subjectId=${media.id}",
+            "$playApiUrl/subject/caption?format=MP4&id=${streams.firstOrNull()?.id ?: ""}&subjectId=${media.id}",
             headers = getHeaders(true)
         ).parsedSafe<Media>()?.data?.captions?.map { sub ->
             subtitleCallback.invoke(newSubtitleFile(sub.lanName ?: "", sub.url ?: return@map))
@@ -168,7 +166,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes ---
+// --- Data Classes yang Diperbaiki ---
 data class Media(@JsonProperty("data") val data: Data? = null) {
     data class Data(
         @JsonProperty("items") val items: ArrayList<Items>? = null,
@@ -186,13 +184,17 @@ data class Items(
     @JsonProperty("subjectType") val subjectType: Int? = null,
     @JsonProperty("title") val title: String? = null, 
     @JsonProperty("description") val description: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("coverVerticalUrl") val coverVerticalUrl: String? = null,
     @JsonProperty("detailPath") val detailPath: String? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
         if (subjectId == null) return null
-        val poster = cover?.url ?: coverVerticalUrl ?: return null // Hindari poster null
+        // Perbaikan: Fallback poster agar tidak NullRequestDataException
+        val poster = cover?.url ?: coverVerticalUrl 
+        if (poster.isNullOrBlank()) return null 
+
         return provider.newMovieSearchResponse(title ?: "", "${provider.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { 
             this.posterUrl = poster
         }
