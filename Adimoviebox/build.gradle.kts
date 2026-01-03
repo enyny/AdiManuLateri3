@@ -1,27 +1,15 @@
-// use an integer for version numbers
-version = 1
+import com.lagradost.cloudstream3.gradle.CloudstreamExtension
+import org.gradle.kotlin.dsl.configure
 
+version = 2 // Versi dinaikkan karena ada perubahan besar
 
 cloudstream {
-
     description = "Nonton sampe biji mata kaluar"
-    language    = "id" // Bahasa dari Moviebox
+    language    = "id"
     authors = listOf("AdiManuLateri3")
-
-    /**
-    * Status int as the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta only
-    * */
     status = 1
-
-    // List of video source types. Users are able to filter for extensions in a given category.
-    // Anda mendukung semua tipe dari Moviebox
-    tvTypes = listOf("Movie","TvSeries","Anime","AsianDrama")
-
-    iconUrl="https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/adi.png"
-
+    [span_1](start_span)// Mendukung semua tipe dari Moviebox[span_1](end_span)
+    tvTypes = listOf("Movie", "TvSeries", "Anime", "AsianDrama")
+    iconUrl = "https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/adi.png"
     isCrossPlatform = true
 }
