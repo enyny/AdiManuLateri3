@@ -8,8 +8,10 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    
     // Domain untuk pencarian dan home
     private val searchApiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
+    
     // Domain untuk detail dan streaming
     private val playApiUrl = "https://filmboom.top/wefeed-h5-bff/web"
     
@@ -21,7 +23,7 @@ class Adimoviebox : MainAPI() {
 
     private var currentToken: String? = null
 
-    // Fungsi otomatis mengambil Token Bearer sesuai pola header di DevTools
+    // Fungsi otomatis mengambil Token Bearer
     private suspend fun getAuthToken(): String {
         currentToken?.let { return it }
         val res = app.post(
@@ -34,6 +36,7 @@ class Adimoviebox : MainAPI() {
         return currentToken!!
     }
 
+    // Header dinamis menyesuaikan domain yang dituju
     private suspend fun getHeaders(isPlayDomain: Boolean = false): Map<String, String> {
         return mapOf(
             "Authorization" to getAuthToken(),
@@ -49,10 +52,16 @@ class Adimoviebox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (request.data.contains("trending")) "${request.data}?page=${page - 1}&perPage=18" else request.data
+        val url = if (request.data.contains("trending")) {
+            "${request.data}?page=${page - 1}&perPage=18" 
+        } else {
+            request.data
+        }
+        
         val home = app.get(url, headers = getHeaders()).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
         } ?: throw ErrorLoadingException("Data Kosong")
+        
         return newHomePageResponse(request.name, home)
     }
 
@@ -67,6 +76,7 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
+        
         // Berpindah ke domain filmboom untuk mengambil detail
         val detail = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
             .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Detail Gagal Dimuat")
@@ -109,7 +119,8 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        // Request play menggunakan domain filmboom
+        
+        // Request link video menggunakan domain filmboom
         val res = app.get(
             "$playApiUrl/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}",
             headers = getHeaders(true)
@@ -123,7 +134,7 @@ class Adimoviebox : MainAPI() {
             )
         }
         
-        // Menambahkan subtitle
+        // Menambahkan subtitle dari endpoint caption
         app.get(
             "$playApiUrl/subject/caption?format=MP4&id=${res?.streams?.firstOrNull()?.id ?: ""}&subjectId=${media.id}",
             headers = getHeaders(true)
@@ -135,10 +146,11 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// Data Classes (Struktur Data API)
+// Data Classes sesuai struktur JSON di log
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String? = null)
 data class LoginResponse(@JsonProperty("data") val data: TokenData? = null)
 data class TokenData(@JsonProperty("token") val token: String? = null)
+
 data class Media(@JsonProperty("data") val data: Data? = null) {
     data class Data(
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
@@ -149,20 +161,32 @@ data class Media(@JsonProperty("data") val data: Data? = null) {
         data class Captions(@JsonProperty("lanName") val lanName: String? = null, @JsonProperty("url") val url: String? = null)
     }
 }
+
 data class MediaDetail(@JsonProperty("data") val data: Data? = null) {
     data class Data(@JsonProperty("subject") val subject: Items? = null, @JsonProperty("resource") val resource: Resource? = null) {
         data class Resource(@JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf())
         data class Seasons(@JsonProperty("se") val se: Int? = null, @JsonProperty("maxEp") val maxEp: Int? = null, @JsonProperty("allEp") val allEp: String? = null)
     }
 }
+
 data class Items(
-    @JsonProperty("subjectId") val subjectId: String? = null, @JsonProperty("subjectType") val subjectType: Int? = null,
-    @JsonProperty("title") val title: String? = null, @JsonProperty("description") val description: String? = null,
-    @JsonProperty("cover") val cover: Cover? = null, @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("subjectId") val subjectId: String? = null, 
+    @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("title") val title: String? = null, 
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("cover") val cover: Cover? = null, 
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
     @JsonProperty("detailPath") val detailPath: String? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        return provider.newMovieSearchResponse(title ?: "", "${provider.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { this.posterUrl = cover?.url }
+        return provider.newMovieSearchResponse(
+            title ?: "", 
+            "${provider.mainUrl}/detail/$subjectId", 
+            if (subjectType == 1) TvType.Movie else TvType.TvSeries, 
+            false
+        ) { 
+            this.posterUrl = cover?.url 
+        }
     }
     data class Cover(@JsonProperty("url") val url: String? = null)
 }
