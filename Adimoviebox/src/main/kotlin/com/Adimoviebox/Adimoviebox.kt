@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.random.Random
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -20,26 +21,33 @@ class Adimoviebox : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
     private var currentToken: String? = null
-    private val tokenMutex = Mutex() // Mencegah perebutan token
+    private val tokenMutex = Mutex() 
     
-    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+    // Identitas perangkat agar tidak dianggap bot
+    private val deviceId = List(16) { Random.nextInt(0, 16).toString(16) }.joinToString("")
+    private val userAgent = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
 
     private suspend fun getAuthToken(): String {
-        // Gunakan lock agar hanya 1 request yang meminta token ke server
         return tokenMutex.withLock {
             if (!currentToken.isNullOrBlank()) return@withLock currentToken!!
 
+            // Request login dengan body JSON agar server tidak menolak
             val res = app.post(
                 "$searchApiUrl/user/anonymous-login",
-                headers = mapOf("X-Request-Lang" to "en", "User-Agent" to userAgent),
-                json = mapOf<String, String>() // Kirim body kosong {}
+                headers = mapOf(
+                    "X-Request-Lang" to "en",
+                    "User-Agent" to userAgent,
+                    "Content-Type" to "application/json"
+                ),
+                data = mapOf("deviceId" to deviceId)
             ).parsedSafe<LoginResponse>()
             
-            val token = res?.data?.token ?: ""
-            if (token.isNotEmpty()) {
+            val token = res?.data?.token
+            if (!token.isNullOrBlank()) {
                 currentToken = "Bearer $token"
+                return@withLock currentToken!!
             }
-            currentToken ?: ""
+            throw ErrorLoadingException("Gagal mendapatkan akses server")
         }
     }
 
@@ -47,11 +55,11 @@ class Adimoviebox : MainAPI() {
         val target = if (isPlayDomain) "https://filmboom.top" else "https://moviebox.ph"
         return mapOf(
             "Authorization" to getAuthToken(),
-            "X-Request-Lang" to "id",
-            "Platform" to "android", // Menyamar sebagai aplikasi resmi
+            "X-Request-Lang" to "en", // Gunakan 'en' untuk kestabilan API
             "Origin" to target,
             "Referer" to "$target/",
-            "User-Agent" to userAgent
+            "User-Agent" to userAgent,
+            "Platform" to "android"
         )
     }
 
@@ -62,24 +70,24 @@ class Adimoviebox : MainAPI() {
         "$searchApiUrl/subject/filter?channelId=1004" to "Hot Short TV 🎬",
         "$searchApiUrl/subject/filter?channelId=2&area=South Korea" to "K-Drama Terbaru",
         "$searchApiUrl/subject/filter?channelId=1006" to "Masuk ke Dunia Anime 🌟",
+        "$searchApiUrl/subject/filter?channelId=2&genre=Bromance" to "Bromance",
         "$searchApiUrl/subject/filter?channelId=1&area=USA" to "Impian Filem Hollywood"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val pageNum = page - 1
-        val url = if (request.data.contains("?")) "${request.data}&page=$pageNum&perPage=18" 
-                  else "${request.data}?page=$pageNum&perPage=18"
+        val url = if (request.data.contains("?")) "${request.data}&page=${page - 1}&perPage=18" 
+                  else "${request.data}?page=${page - 1}&perPage=18"
         
-        // Timeout diperpanjang agar tidak Canceled di koneksi lambat
-        val response = app.get(url, headers = getHeaders(), timeout = 30)
-        val mediaData = response.parsedSafe<Media>()?.data
-        
-        // Gabungkan items dan subjectList agar tidak NullRequestDataException
-        val listItems = (mediaData?.items ?: mediaData?.subjectList)?.mapNotNull {
+        // Coba memuat data, jika gagal berikan fallback list kosong agar tidak crash
+        val response = try {
+            app.get(url, headers = getHeaders(), timeout = 20).parsedSafe<Media>()?.data
+        } catch (e: Exception) { null }
+
+        val items = (response?.items ?: response?.subjectList)?.mapNotNull {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Server sibuk, silakan coba lagi")
+        } ?: emptyList() // Balas dengan list kosong jika server sibuk agar UI tidak error
         
-        return newHomePageResponse(request.name, listItems)
+        return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -94,11 +102,9 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         val detail = app.get("$playApiUrl/subject/detail?subjectId=$id", headers = getHeaders(true))
-            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Gagal memuat detail")
+            .parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Detail tidak ditemukan")
         
         val subject = detail.subject
-        val title = subject?.title ?: ""
-        val poster = subject?.cover?.url ?: subject?.coverVerticalUrl
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
@@ -113,16 +119,14 @@ class Adimoviebox : MainAPI() {
                 }
             }?.flatten() ?: emptyList()
 
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
+            newTvSeriesLoadResponse(subject?.title ?: "", url, TvType.TvSeries, episodes) {
+                this.posterUrl = subject?.cover?.url ?: subject?.coverVerticalUrl
                 this.plot = subject?.description
-                this.year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
-                this.posterUrl = poster
+            newMovieLoadResponse(subject?.title ?: "", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
+                this.posterUrl = subject?.cover?.url ?: subject?.coverVerticalUrl
                 this.plot = subject?.description
-                this.year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
             }
         }
     }
@@ -176,7 +180,6 @@ data class Items(
     @JsonProperty("subjectType") val subjectType: Int? = null,
     @JsonProperty("title") val title: String? = null, 
     @JsonProperty("description") val description: String? = null,
-    @JsonProperty("releaseDate") val releaseDate: String? = null,
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("coverVerticalUrl") val coverVerticalUrl: String? = null,
     @JsonProperty("detailPath") val detailPath: String? = null
