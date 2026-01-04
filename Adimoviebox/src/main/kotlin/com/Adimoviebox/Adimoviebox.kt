@@ -23,7 +23,7 @@ class Adimoviebox : MainAPI() {
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // Menggunakan Token terbaru yang Anda berikan
+    // Menggunakan Token Baru yang Anda berikan
     private val commonHeaders: Map<String, String>
         get() = mapOf(
             "Authorization" to "Bearer EyJhbGciOiJlUzI1NilsinR5cCl6lkpXVCJ9.eyJ1aWQiOjc4NDAwNzU0NTU2MTIyMDk4MTYsImF0cC16MywiZXh0IjoiMTc2NzUzMDI00SIsImV4cCl6MTc3NTMwNjI00SwiaWF0ljoxNzY3NTI5OTQ5fQ.9tF50rKtU-mawbeyDCoyBwgamN6ku0CMnv99Rf8BhxY", 
@@ -40,7 +40,8 @@ class Adimoviebox : MainAPI() {
         "5,Korea,All" to "K-Drama",
         "2,Indonesia,All" to "Indo Film",
         "5,China,All" to "C-Drama",
-        "5,All,Anime" to "Anime"
+        "5,All,Anime" to "Anime",
+        "2,United States,All" to "Hollywood"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -50,7 +51,8 @@ class Adimoviebox : MainAPI() {
                 val response = app.get(request.data, headers = commonHeaders).text
                 val json = parseJson<MediaResponse>(response)
                 
-                // Bypass elemen iklan dan hanya ambil konten film
+                // BYPASS IKLAN: Hanya ambil tipe SUBJECTS_MOVIE dan BANNER.
+                // Mengabaikan tipe CUSTOM (Edukasi/Ruangguru/Promo VIP)
                 json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                     op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                     op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
@@ -64,6 +66,7 @@ class Adimoviebox : MainAPI() {
                     "perPage" to "20",
                     "filterType" to mapOf("country" to params[1], "genre" to params[2], "sort" to "Hottest", "year" to "All").toJson()
                 )
+                // Path filter disesuaikan (menghilangkan /web/)
                 val response = app.post("$apiHost/wefeed-h5api-bff/subject/filter", headers = commonHeaders, json = body).parsedSafe<MediaResponse>()
                 response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
             }
@@ -79,7 +82,7 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        // Menggunakan path API yang benar berdasarkan network log
+        // FIX: Menghapus /web/ dari path sesuai dengan data JSON asli
         val response = app.get("$apiHost/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
         
         val res = response.parsedSafe<MediaDetailResponse>()?.data 
@@ -108,7 +111,7 @@ class Adimoviebox : MainAPI() {
     }
 
     private fun fillDetails(container: LoadResponse, item: Items?) {
-        // Proteksi Coil agar tidak crash saat poster kosong
+        // Proteksi CoilImgLoader agar tidak crash jika poster null
         container.posterUrl = item?.cover?.url ?: "" 
         container.plot = if (item?.description.isNullOrBlank()) "No description available." else item?.description
         container.year = item?.releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -122,13 +125,17 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
+        // Path play disesuaikan (menghilangkan /web/)
         val response = app.get("$apiHost/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}", headers = commonHeaders)
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
+            // FIX: Urutan parameter sesuai permintaan compiler GitHub (source, name, url, type, initializer)
             callback.invoke(
                 newExtractorLink(
-                    this.name, this.name, stream.url ?: return@forEach, 
+                    this.name, 
+                    this.name, 
+                    stream.url ?: return@forEach, 
                     if (stream.format == "m3u8") ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                 ) {
                     this.quality = getQualityFromName(stream.resolutions)
