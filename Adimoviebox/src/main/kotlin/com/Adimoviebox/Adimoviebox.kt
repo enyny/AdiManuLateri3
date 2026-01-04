@@ -20,7 +20,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Wajib berdasarkan analisis Network Tab (Gambar 3)
+    // Header Wajib berdasarkan analisis Network Tab
     private val commonHeaders = mapOf(
         "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
         "X-Client-Info" to "{\"timezone\":\"Asia/Jayapura\"}",
@@ -30,7 +30,6 @@ class Adimoviebox : MainAPI() {
         "X-Request-Lang" to "en"
     )
 
-    // Definisi Kategori/Filter berdasarkan log JSON
     override val mainPage: List<MainPageData> = mainPageOf(
         "$apiHost/wefeed-h5api-bff/home?host=moviebox.ph" to "Home",
         "$apiHost/wefeed-h5api-bff/subject/trending?page=0&perPage=18" to "Trending Now",
@@ -146,15 +145,16 @@ class Adimoviebox : MainAPI() {
         ).parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
-            // PERBAIKAN UTAMA: Menggunakan positional arguments untuk menghindari "No parameter with name" error
+            // PERBAIKAN FINAL: Menggunakan newExtractorLink dengan parameter posisional
+            // Format: name, source, url, referer, quality, isM3u8
             callback.invoke(
-                ExtractorLink(
-                    this.name,                                     // source
-                    this.name,                                     // name
-                    stream.url ?: return@forEach,                 // url
-                    "$mainUrl/",                                   // referer
-                    getQualityFromName(stream.resolutions),        // quality
-                    if (stream.format == "m3u8") ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO // type
+                newExtractorLink(
+                    this.name, 
+                    this.name, 
+                    stream.url ?: return@forEach, 
+                    "$mainUrl/", 
+                    getQualityFromName(stream.resolutions), 
+                    stream.format == "m3u8"
                 )
             )
         }
@@ -162,7 +162,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Models (Wajib ada agar tidak error saat compile) ---
+// --- Data Models ---
 
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
 
@@ -171,6 +171,7 @@ data class MediaResponse(val data: Data? = null) {
         val operatingList: List<OperatingItem>? = null,
         val subjectList: List<Items>? = null,
         val items: List<Items>? = null,
+        val everyoneSearch: List<Items>? = null,
         val streams: List<Stream>? = null
     )
 }
