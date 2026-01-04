@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import java.util.TimeZone // Import untuk deteksi zona waktu
+import java.util.TimeZone
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -25,11 +25,11 @@ class Adimoviebox : MainAPI() {
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // Header Wajib dengan Timezone Dinamis
+    // Header Wajib dengan Timezone Dinamis (Bypass Ads & Tracking)
     private val commonHeaders: Map<String, String>
         get() = mapOf(
             "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
-            "X-Client-Info" to "{\"timezone\":\"$deviceTimezone\"}", // Otomatis menyesuaikan lokasi pengguna
+            "X-Client-Info" to "{\"timezone\":\"$deviceTimezone\"}",
             "Referer" to "$mainUrl/",
             "Origin" to mainUrl,
             "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
@@ -53,7 +53,7 @@ class Adimoviebox : MainAPI() {
             val response = app.get(request.data, headers = commonHeaders).text
             val json = parseJson<MediaResponse>(response)
             
-            // BYPASS IKLAN: Hanya ambil tipe SUBJECTS_MOVIE dan BANNER
+            // BYPASS IKLAN: Hanya ambil tipe konten film/banner
             json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                 op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                 op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
@@ -125,38 +125,66 @@ class Adimoviebox : MainAPI() {
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
-            // Fix Build Error: Parameter posisional (name, source, url, referer, quality, isM3u8)
+            // FIX BUILD ERROR: Menyesuaikan signature newExtractorLink berdasarkan log error GitHub
+            // Parameter: source, name, url, type, initializer
             callback.invoke(
                 newExtractorLink(
-                    this.name, 
-                    this.name, 
-                    stream.url ?: return@forEach, 
-                    "$mainUrl/", 
-                    getQualityFromName(stream.resolutions), 
-                    stream.format == "m3u8"
-                )
+                    source = this.name,
+                    name = this.name,
+                    url = stream.url ?: return@forEach,
+                    type = if (stream.format == "m3u8") ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                ) {
+                    this.quality = getQualityFromName(stream.resolutions)
+                    this.referer = "$mainUrl/"
+                }
             )
         }
         return true
     }
 }
 
-// --- Data Models ---
+// --- Data Models (Disesuaikan untuk Bypass Iklan) ---
+
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
+
 data class MediaResponse(val data: Data? = null) {
-    data class Data(val operatingList: List<OperatingItem>? = null, val subjectList: List<Items>? = null, val items: List<Items>? = null, val streams: List<Stream>? = null)
+    data class Data(
+        val operatingList: List<OperatingItem>? = null,
+        val subjectList: List<Items>? = null,
+        val items: List<Items>? = null,
+        val streams: List<Stream>? = null
+    )
 }
-data class OperatingItem(val type: String? = null, val subjects: List<Items>? = null, val banner: Banner? = null)
-data class Banner(val items: List<BannerItem>? = null)
-data class BannerItem(val subject: Items? = null)
-data class Stream(val url: String?, val resolutions: String?, val format: String?)
+
 data class MediaDetailResponse(val data: Data? = null) {
     data class Data(val subject: Items? = null, val resource: Resource? = null) {
         data class Resource(val seasons: List<Season>? = null)
         data class Season(val se: Int?, val maxEp: Int?)
     }
 }
-data class Items(val subjectId: String?, val subjectType: Int?, val title: String?, val description: String?, val releaseDate: String?, val cover: Cover?, val imdbRatingValue: String?, val detailPath: String?) {
-    fun toSearchResponse(api: MainAPI): SearchResponse = api.newMovieSearchResponse(title ?: "", "${api.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { this.posterUrl = cover?.url }
+
+data class OperatingItem(val type: String? = null, val subjects: List<Items>? = null, val banner: Banner? = null)
+data class Banner(val items: List<BannerItem>? = null)
+data class BannerItem(val subject: Items? = null)
+data class Stream(val url: String?, val resolutions: String?, val format: String?)
+
+data class Items(
+    val subjectId: String?,
+    val subjectType: Int?,
+    val title: String?,
+    val description: String?,
+    val releaseDate: String?,
+    val cover: Cover?,
+    val imdbRatingValue: String?,
+    val detailPath: String?
+) {
+    fun toSearchResponse(api: MainAPI): SearchResponse {
+        return api.newMovieSearchResponse(
+            title ?: "",
+            "${api.mainUrl}/detail/$subjectId",
+            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
+            false
+        ) { this.posterUrl = cover?.url }
+    }
     data class Cover(val url: String?)
 }
