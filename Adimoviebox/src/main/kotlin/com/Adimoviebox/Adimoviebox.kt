@@ -25,7 +25,7 @@ class Adimoviebox : MainAPI() {
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // Header Wajib dengan Timezone Dinamis (Bypass Ads & Tracking)
+    // Header Wajib untuk bypass keamanan dan validasi server
     private val commonHeaders: Map<String, String>
         get() = mapOf(
             "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
@@ -36,6 +36,7 @@ class Adimoviebox : MainAPI() {
             "X-Request-Lang" to "en"
         )
 
+    // Menampilkan kategori film/drama berdasarkan data filter yang valid
     override val mainPage: List<MainPageData> = mainPageOf(
         "$apiHost/wefeed-h5api-bff/home?host=moviebox.ph" to "Home",
         "$apiHost/wefeed-h5api-bff/subject/trending?page=0&perPage=18" to "Trending Now",
@@ -50,22 +51,29 @@ class Adimoviebox : MainAPI() {
         val items = mutableListOf<SearchResponse>()
         
         if (request.data.startsWith("http")) {
+            // Logika untuk halaman Home/Trending (GET)
             val response = app.get(request.data, headers = commonHeaders).text
             val json = parseJson<MediaResponse>(response)
             
-            // BYPASS IKLAN: Hanya ambil tipe konten film/banner
+            // BYPASS IKLAN: Hanya mengambil tipe konten SUBJECTS_MOVIE dan BANNER
             json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                 op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                 op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
             }
             json.data?.subjectList?.forEach { items.add(it.toSearchResponse(this)) }
         } else {
+            // Logika untuk Kategori menggunakan metode POST (Filter)
             val params = request.data.split(",")
             val body = mapOf(
                 "tabId" to params[0],
                 "page" to page.toString(),
                 "perPage" to "20",
-                "filterType" to mapOf("country" to params[1], "genre" to params[2], "sort" to "Hottest", "year" to "All").toJson()
+                "filterType" to mapOf(
+                    "country" to params[1],
+                    "genre" to params[2],
+                    "sort" to "Hottest",
+                    "year" to "All"
+                ).toJson()
             )
             val response = app.post("$apiHost/wefeed-h5api-bff/web/filter", headers = commonHeaders, json = body).parsedSafe<MediaResponse>()
             response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
@@ -97,19 +105,20 @@ class Adimoviebox : MainAPI() {
                     }
                 }
             } ?: emptyList()
-            newTvSeriesLoadResponse(subject?.title ?: "", url, TvType.TvSeries, episodes) {
+            newTvSeriesLoadResponse(subject?.title ?: "Unknown", url, TvType.TvSeries, episodes) {
                 fillDetails(this, subject)
             }
         } else {
-            newMovieLoadResponse(subject?.title ?: "", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
+            newMovieLoadResponse(subject?.title ?: "Unknown", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
                 fillDetails(this, subject)
             }
         }
     }
 
     private fun fillDetails(container: LoadResponse, item: Items?) {
-        container.posterUrl = item?.cover?.url
-        container.plot = item?.description
+        // FIX: Proteksi null pada posterUrl agar CoilImgLoader tidak error
+        container.posterUrl = item?.cover?.url ?: "" 
+        container.plot = item?.description ?: "No description available."
         container.year = item?.releaseDate?.substringBefore("-")?.toIntOrNull()
         container.score = Score.from10(item?.imdbRatingValue)
     }
@@ -125,8 +134,7 @@ class Adimoviebox : MainAPI() {
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
-            // FIX BUILD ERROR: Menyesuaikan signature newExtractorLink berdasarkan log error GitHub
-            // Parameter: source, name, url, type, initializer
+            // FIX BUILD ERROR: Menggunakan signature yang tepat (source, name, url, type, initializer)
             callback.invoke(
                 newExtractorLink(
                     source = this.name,
@@ -143,7 +151,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Models (Disesuaikan untuk Bypass Iklan) ---
+// --- Data Models (Wajib disertakan agar tidak terjadi error kompilasi) ---
 
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
 
@@ -157,7 +165,10 @@ data class MediaResponse(val data: Data? = null) {
 }
 
 data class MediaDetailResponse(val data: Data? = null) {
-    data class Data(val subject: Items? = null, val resource: Resource? = null) {
+    data class Data(
+        val subject: Items? = null,
+        val resource: Resource? = null
+    ) {
         data class Resource(val seasons: List<Season>? = null)
         data class Season(val se: Int?, val maxEp: Int?)
     }
@@ -180,11 +191,14 @@ data class Items(
 ) {
     fun toSearchResponse(api: MainAPI): SearchResponse {
         return api.newMovieSearchResponse(
-            title ?: "",
+            title ?: "Unknown",
             "${api.mainUrl}/detail/$subjectId",
-            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
+            if (subjectType == 2) TvType.TvSeries else TvType.Movie,
             false
-        ) { this.posterUrl = cover?.url }
+        ) { 
+            this.posterUrl = cover?.url ?: "" // Fix Coil Loader
+            this.quality = SearchQuality.HD
+        }
     }
     data class Cover(val url: String?)
 }
