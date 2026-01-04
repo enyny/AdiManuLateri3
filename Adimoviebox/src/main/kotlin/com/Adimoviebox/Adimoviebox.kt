@@ -8,6 +8,7 @@ import java.util.TimeZone
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    // Host API yang benar berdasarkan Network Log
     private val apiHost = "https://h5-api.aoneroom.com"
     
     override var name = "Adimoviebox"
@@ -23,8 +24,7 @@ class Adimoviebox : MainAPI() {
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // CATATAN: Jika muncul "Data Null" lagi di logcat, 
-    // Berarti Bearer Token di bawah ini sudah mati dan harus diganti dengan yang baru dari browser.
+    // Header Wajib. Jika "Data Null" muncul lagi, perbarui token di bawah ini.
     private val commonHeaders: Map<String, String>
         get() = mapOf(
             "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
@@ -53,7 +53,7 @@ class Adimoviebox : MainAPI() {
                 val response = app.get(request.data, headers = commonHeaders).text
                 val json = parseJson<MediaResponse>(response)
                 
-                // Bypass Iklan & Elemen Non-Film
+                // Hanya render film/banner, bypass iklan
                 json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                     op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                     op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
@@ -70,9 +70,7 @@ class Adimoviebox : MainAPI() {
                 val response = app.post("$apiHost/wefeed-h5api-bff/web/filter", headers = commonHeaders, json = body).parsedSafe<MediaResponse>()
                 response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
             }
-        } catch (e: Exception) {
-            // Silently fail to avoid crashing the UI
-        }
+        } catch (e: Exception) { /* Log error if needed */ }
 
         return newHomePageResponse(request.name, items.distinctBy { it.name })
     }
@@ -85,10 +83,10 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
+        // MENGGUNAKAN HOST API DAN PATH YANG BENAR
         val response = app.get("$apiHost/wefeed-h5api-bff/web/subject/detail?subjectId=$id", headers = commonHeaders)
-        
         val res = response.parsedSafe<MediaDetailResponse>()?.data 
-            ?: throw ErrorLoadingException("Server response empty or Token Expired")
+            ?: throw ErrorLoadingException("Data Null: Token Expired or Path Wrong")
 
         val subject = res.subject
         val isTv = subject?.subjectType == 2
@@ -113,7 +111,6 @@ class Adimoviebox : MainAPI() {
     }
 
     private fun fillDetails(container: LoadResponse, item: Items?) {
-        // Proteksi CoilImgLoader agar tidak "NullRequestDataException"
         container.posterUrl = item?.cover?.url ?: "" 
         container.plot = if (item?.description.isNullOrBlank()) "No description available." else item?.description
         container.year = item?.releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -131,6 +128,7 @@ class Adimoviebox : MainAPI() {
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
+            // FIX BUILD: Urutan parameter (source, name, url, type, initializer)
             callback.invoke(
                 newExtractorLink(
                     this.name, 
@@ -147,7 +145,8 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Models ---
+// --- Data Models (Wajib disertakan di bawah class) ---
+
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
 data class MediaResponse(val data: Data? = null) {
     data class Data(val operatingList: List<OperatingItem>? = null, val subjectList: List<Items>? = null, val items: List<Items>? = null, val streams: List<Stream>? = null)
