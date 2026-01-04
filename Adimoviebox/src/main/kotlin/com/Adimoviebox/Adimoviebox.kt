@@ -5,10 +5,11 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import java.util.TimeZone // Import untuk deteksi zona waktu
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    private val apiHost = "https://h5-api.aoneroom.com" // Domain konten utama
+    private val apiHost = "https://h5-api.aoneroom.com"
     
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -20,15 +21,20 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Wajib untuk bypass validasi server
-    private val commonHeaders = mapOf(
-        "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
-        "X-Client-Info" to "{\"timezone\":\"Asia/Jayapura\"}", // Berdasarkan log DevTools
-        "Referer" to "$mainUrl/",
-        "Origin" to mainUrl,
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-        "X-Request-Lang" to "en"
-    )
+    // Deteksi zona waktu perangkat secara dinamis
+    private val deviceTimezone: String 
+        get() = TimeZone.getDefault().id
+
+    // Header Wajib dengan Timezone Dinamis
+    private val commonHeaders: Map<String, String>
+        get() = mapOf(
+            "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
+            "X-Client-Info" to "{\"timezone\":\"$deviceTimezone\"}", // Otomatis menyesuaikan lokasi pengguna
+            "Referer" to "$mainUrl/",
+            "Origin" to mainUrl,
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+            "X-Request-Lang" to "en"
+        )
 
     override val mainPage: List<MainPageData> = mainPageOf(
         "$apiHost/wefeed-h5api-bff/home?host=moviebox.ph" to "Home",
@@ -48,7 +54,6 @@ class Adimoviebox : MainAPI() {
             val json = parseJson<MediaResponse>(response)
             
             // BYPASS IKLAN: Hanya ambil tipe SUBJECTS_MOVIE dan BANNER
-            // Abaikan tipe CUSTOM (Iklan/Edukasi pihak ketiga)
             json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                 op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                 op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
@@ -62,7 +67,6 @@ class Adimoviebox : MainAPI() {
                 "perPage" to "20",
                 "filterType" to mapOf("country" to params[1], "genre" to params[2], "sort" to "Hottest", "year" to "All").toJson()
             )
-            // Menggunakan POST untuk filter sesuai analisa network
             val response = app.post("$apiHost/wefeed-h5api-bff/web/filter", headers = commonHeaders, json = body).parsedSafe<MediaResponse>()
             response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
         }
@@ -117,12 +121,11 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        // Ambil link streaming langsung dari domain utama
         val response = app.get("$apiHost/wefeed-h5api-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}", headers = commonHeaders)
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
-            // Fix Build Error: Menggunakan format positional arguments
+            // Fix Build Error: Parameter posisional (name, source, url, referer, quality, isM3u8)
             callback.invoke(
                 newExtractorLink(
                     this.name, 
@@ -138,7 +141,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Model Data Tetap Sama ---
+// --- Data Models ---
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
 data class MediaResponse(val data: Data? = null) {
     data class Data(val operatingList: List<OperatingItem>? = null, val subjectList: List<Items>? = null, val items: List<Items>? = null, val streams: List<Stream>? = null)
