@@ -8,7 +8,6 @@ import java.util.TimeZone
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // Host API yang benar berdasarkan log jaringan Anda
     private val apiHost = "https://h5-api.aoneroom.com"
     
     override var name = "Adimoviebox"
@@ -24,10 +23,10 @@ class Adimoviebox : MainAPI() {
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // ⚠️ Jika muncul "Data Null", ganti Token di bawah ini dengan yang terbaru dari browser
+    // Menggunakan Token terbaru yang Anda berikan
     private val commonHeaders: Map<String, String>
         get() = mapOf(
-            "Authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0NjQyNzc1MTQyOTY1ODY5NjA5NiIsImV4cCI6MTc2NzUzMjI4MDY4MX0.0a21f9c317675348954000aefa9b4eaa", 
+            "Authorization" to "Bearer EyJhbGciOiJlUzI1NilsinR5cCl6lkpXVCJ9.eyJ1aWQiOjc4NDAwNzU0NTU2MTIyMDk4MTYsImF0cC16MywiZXh0IjoiMTc2NzUzMDI00SIsImV4cCl6MTc3NTMwNjI00SwiaWF0ljoxNzY3NTI5OTQ5fQ.9tF50rKtU-mawbeyDCoyBwgamN6ku0CMnv99Rf8BhxY", 
             "X-Client-Info" to "{\"timezone\":\"$deviceTimezone\"}",
             "Referer" to "$mainUrl/",
             "Origin" to mainUrl,
@@ -51,7 +50,7 @@ class Adimoviebox : MainAPI() {
                 val response = app.get(request.data, headers = commonHeaders).text
                 val json = parseJson<MediaResponse>(response)
                 
-                // BYPASS IKLAN: Hanya ambil tipe konten asli
+                // Bypass elemen iklan dan hanya ambil konten film
                 json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
                     op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                     op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
@@ -80,11 +79,11 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        // KOREKSI: Path API Detail yang benar adalah /subject/detail (tanpa /web/)
+        // Menggunakan path API yang benar berdasarkan network log
         val response = app.get("$apiHost/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
         
         val res = response.parsedSafe<MediaDetailResponse>()?.data 
-            ?: throw ErrorLoadingException("Data Null: Token Expired or Path Wrong")
+            ?: throw ErrorLoadingException("Server response empty or Token Expired")
 
         val subject = res.subject
         val isTv = subject?.subjectType == 2
@@ -109,7 +108,7 @@ class Adimoviebox : MainAPI() {
     }
 
     private fun fillDetails(container: LoadResponse, item: Items?) {
-        // Proteksi Coil agar tidak error saat poster kosong
+        // Proteksi Coil agar tidak crash saat poster kosong
         container.posterUrl = item?.cover?.url ?: "" 
         container.plot = if (item?.description.isNullOrBlank()) "No description available." else item?.description
         container.year = item?.releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -127,7 +126,6 @@ class Adimoviebox : MainAPI() {
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
-            // Fix Build Signature
             callback.invoke(
                 newExtractorLink(
                     this.name, this.name, stream.url ?: return@forEach, 
@@ -158,6 +156,6 @@ data class MediaDetailResponse(val data: Data? = null) {
     }
 }
 data class Items(val subjectId: String?, val subjectType: Int?, val title: String?, val description: String?, val releaseDate: String?, val cover: Cover?, val imdbRatingValue: String?, val detailPath: String?) {
-    fun toSearchResponse(api: MainAPI): SearchResponse = api.newMovieSearchResponse(title ?: "Unknown", "${api.mainUrl}/detail/$subjectId", if (subjectType == 2) TvType.TvSeries else TvType.Movie, false) { this.posterUrl = cover?.url ?: "" }
+    fun toSearchResponse(api: MainAPI): SearchResponse = api.newMovieSearchResponse(title ?: "Unknown", "${api.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { this.posterUrl = cover?.url ?: "" }
     data class Cover(val url: String?)
 }
