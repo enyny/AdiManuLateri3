@@ -9,7 +9,7 @@ import java.util.TimeZone
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    private val apiHost = "https://h5-api.aoneroom.com"
+    private val apiHost = "https://h5-api.aoneroom.com" // Domain konten utama (Bukan Iklan)
     
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -21,40 +21,21 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Token cadangan jika auto-fetch gagal
-    private var cachedToken = "EyJhbGciOiJlUzI1NilsinR5cCl6lkpXVCJ9.eyJ1aWQiOjc4NDAwNzU0NTU2MTIyMDk4MTYsImF0cC16MywiZXh0IjoiMTc2NzUzMDI00SIsImV4cCl6MTc3NTMwNjI00SwiaWF0ljoxNzY3NTI5OTQ5fQ.9tF50rKtU-mawbeyDCoyBwgamN6ku0CMnv99Rf8BhxY"
-
+    // Deteksi zona waktu otomatis (WIB/WITA/WIT)
     private val deviceTimezone: String 
         get() = TimeZone.getDefault().id
 
-    // Fungsi untuk mendapatkan Header dengan Token Otomatis
-    private suspend fun getHeaders(): Map<String, String> {
-        return mapOf(
-            "Authorization" to "Bearer $cachedToken",
+    // Header Wajib untuk bypass validasi server
+    // GANTI TOKEN INI dengan yang baru dari browser jika nanti expired
+    private val commonHeaders: Map<String, String>
+        get() = mapOf(
+            "Authorization" to "Bearer EyJhbGciOiJlUzI1NilsinR5cCl6lkpXVCJ9.eyJ1aWQiOjc4NDAwNzU0NTU2MTIyMDk4MTYsImF0cC16MywiZXh0IjoiMTc2NzUzMDI00SIsImV4cCl6MTc3NTMwNjI00SwiaWF0ljoxNzY3NTI5OTQ5fQ.9tF50rKtU-mawbeyDCoyBwgamN6ku0CMnv99Rf8BhxY", 
             "X-Client-Info" to "{\"timezone\":\"$deviceTimezone\"}",
             "Referer" to "$mainUrl/",
             "Origin" to mainUrl,
             "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "X-Request-Lang" to "en"
         )
-    }
-
-    // Fungsi untuk mengambil Token terbaru dari Website
-    private suspend fun refreshToken() {
-        try {
-            // Mengakses halaman utama untuk mencari token yang tertanam (Scraping)
-            val response = app.get(mainUrl).text
-            // Regex mencari pola token JWT (biasanya dimulai dengan eyJ...)
-            val tokenRegex = """\"token\"[:=]\s*\"(eyJ[a-zA-Z0-9\-_.]+)\"""".toRegex()
-            val match = tokenRegex.find(response)
-            
-            if (match != null) {
-                cachedToken = match.groupValues[1]
-            }
-        } catch (e: Exception) {
-            // Jika gagal, gunakan token lama
-        }
-    }
 
     override val mainPage: List<MainPageData> = mainPageOf(
         "$apiHost/wefeed-h5api-bff/home?host=moviebox.ph" to "Home",
@@ -66,47 +47,50 @@ class Adimoviebox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Coba perbarui token saat membuka halaman utama
-        if (page == 1) refreshToken()
-        
         val items = mutableListOf<SearchResponse>()
-        try {
-            if (request.data.startsWith("http")) {
-                val response = app.get(request.data, headers = getHeaders()).text
-                val json = parseJson<MediaResponse>(response)
-                
-                json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
-                    op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
-                    op.banner?.items?.forEach { it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } }
+        
+        if (request.data.startsWith("http")) {
+            val response = app.get(request.data, headers = commonHeaders).text
+            val json = parseJson<MediaResponse>(response)
+            
+            // BYPASS IKLAN: Hanya ambil tipe SUBJECTS_MOVIE dan BANNER
+            // Abaikan tipe CUSTOM (Iklan/Edukasi/Bola)
+            json.data?.operatingList?.filter { it.type == "SUBJECTS_MOVIE" || it.type == "BANNER" }?.forEach { op ->
+                op.subjects?.forEach { items.add(it.toSearchResponse(this)) }
+                // Cek isi banner agar tidak error
+                op.banner?.items?.forEach { 
+                    it.subject?.let { sub -> items.add(sub.toSearchResponse(this)) } 
                 }
-                json.data?.subjectList?.forEach { items.add(it.toSearchResponse(this)) }
-            } else {
-                val params = request.data.split(",")
-                val body = mapOf(
-                    "tabId" to params[0],
-                    "page" to page.toString(),
-                    "perPage" to "20",
-                    "filterType" to mapOf("country" to params[1], "genre" to params[2], "sort" to "Hottest", "year" to "All").toJson()
-                )
-                val response = app.post("$apiHost/wefeed-h5api-bff/subject/filter", headers = getHeaders(), json = body).parsedSafe<MediaResponse>()
-                response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
             }
-        } catch (e: Exception) { }
+            json.data?.subjectList?.forEach { items.add(it.toSearchResponse(this)) }
+        } else {
+            val params = request.data.split(",")
+            val body = mapOf(
+                "tabId" to params[0],
+                "page" to page.toString(),
+                "perPage" to "20",
+                "filterType" to mapOf("country" to params[1], "genre" to params[2], "sort" to "Hottest", "year" to "All").toJson()
+            )
+            // Menggunakan POST untuk filter sesuai analisa network
+            val response = app.post("$apiHost/wefeed-h5api-bff/web/filter", headers = commonHeaders, json = body).parsedSafe<MediaResponse>()
+            response?.data?.items?.forEach { items.add(it.toSearchResponse(this)) }
+        }
+
         return newHomePageResponse(request.name, items.distinctBy { it.name })
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val body = mapOf("keyword" to query, "page" to "1", "perPage" to "20", "subjectType" to "0")
-        return app.post("$apiHost/wefeed-h5api-bff/subject/search", headers = getHeaders(), json = body)
+        return app.post("$apiHost/wefeed-h5api-bff/subject/search", headers = commonHeaders, json = body)
             .parsedSafe<MediaResponse>()?.data?.items?.map { it.toSearchResponse(this) } ?: emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        val response = app.get("$apiHost/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = getHeaders())
-        
-        val res = response.parsedSafe<MediaDetailResponse>()?.data 
-            ?: throw ErrorLoadingException("Gagal memuat data. Coba refresh atau cek koneksi.")
+        // Path yang benar: /subject/detail (Bukan /web/subject/detail)
+        val res = app.get("$apiHost/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
+            .parsedSafe<MediaDetailResponse>()?.data 
+            ?: throw ErrorLoadingException("Data Null / Token Expired")
 
         val subject = res.subject
         val isTv = subject?.subjectType == 2
@@ -120,19 +104,19 @@ class Adimoviebox : MainAPI() {
                     }
                 }
             } ?: emptyList()
-            newTvSeriesLoadResponse(subject?.title ?: "No Title", url, TvType.TvSeries, episodes) {
+            newTvSeriesLoadResponse(subject?.title ?: "", url, TvType.TvSeries, episodes) {
                 fillDetails(this, subject)
             }
         } else {
-            newMovieLoadResponse(subject?.title ?: "No Title", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
+            newMovieLoadResponse(subject?.title ?: "", url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
                 fillDetails(this, subject)
             }
         }
     }
 
     private fun fillDetails(container: LoadResponse, item: Items?) {
-        container.posterUrl = item?.cover?.url ?: "" 
-        container.plot = if (item?.description.isNullOrBlank()) "No description available." else item?.description
+        container.posterUrl = item?.cover?.url ?: ""
+        container.plot = item?.description
         container.year = item?.releaseDate?.substringBefore("-")?.toIntOrNull()
         container.score = Score.from10(item?.imdbRatingValue)
     }
@@ -144,27 +128,28 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        val response = app.get("$apiHost/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}", headers = getHeaders())
+        // Ambil link streaming langsung dari domain utama
+        val response = app.get("$apiHost/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}", headers = commonHeaders)
             .parsedSafe<MediaResponse>()?.data
 
         response?.streams?.forEach { stream ->
+            // Fix Build Error: Format argument posisional
             callback.invoke(
                 newExtractorLink(
                     this.name, 
                     this.name, 
                     stream.url ?: return@forEach, 
-                    if (stream.format == "m3u8") ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                ) {
-                    this.quality = getQualityFromName(stream.resolutions)
-                    this.referer = "$mainUrl/"
-                }
+                    this.mainUrl, 
+                    getQualityFromName(stream.resolutions), 
+                    stream.format == "m3u8"
+                )
             )
         }
         return true
     }
 }
 
-// --- Data Models ---
+// --- Model Data Tetap Sama ---
 data class LoadData(val id: String?, val season: Int? = null, val episode: Int? = null, val detailPath: String?)
 data class MediaResponse(val data: Data? = null) {
     data class Data(val operatingList: List<OperatingItem>? = null, val subjectList: List<Items>? = null, val items: List<Items>? = null, val streams: List<Stream>? = null)
@@ -180,6 +165,6 @@ data class MediaDetailResponse(val data: Data? = null) {
     }
 }
 data class Items(val subjectId: String?, val subjectType: Int?, val title: String?, val description: String?, val releaseDate: String?, val cover: Cover?, val imdbRatingValue: String?, val detailPath: String?) {
-    fun toSearchResponse(api: MainAPI): SearchResponse = api.newMovieSearchResponse(title ?: "Unknown", "${api.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { this.posterUrl = cover?.url ?: "" }
+    fun toSearchResponse(api: MainAPI): SearchResponse = api.newMovieSearchResponse(title ?: "", "${api.mainUrl}/detail/$subjectId", if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) { this.posterUrl = cover?.url }
     data class Cover(val url: String?)
 }
