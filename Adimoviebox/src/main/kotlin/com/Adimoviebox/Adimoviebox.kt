@@ -23,13 +23,9 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // API untuk Halaman Utama (Home/Trending)
     private val trendingApi = "https://h5-api.aoneroom.com"
-    
-    // API untuk Detail & Video (Search, Detail, Play)
     private val contentApi = "https://filmboom.top"
 
-    // Tab halaman utama
     override val mainPage: List<MainPageData> = mainPageOf(
         "home" to "Home"
     )
@@ -38,30 +34,23 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Kita hanya ambil halaman 1 karena endpoint 'home' mengembalikan semua kategori sekaligus
         if (page > 1) return newHomePageResponse(emptyList())
 
-        // Mengambil data struktur Home Page
         val url = "$trendingApi/wefeed-h5api-bff/web/home?host=moviebox.ph"
         val response = app.get(url).parsedSafe<HomeDataResponse>()
 
         val homeLists = ArrayList<HomePageList>()
 
-        // Loop melalui 'operatingList' untuk mencari kategori film (SUBJECTS_MOVIE)
         response?.data?.operatingList?.forEach { section ->
-            // Filter hanya tipe SUBJECTS_MOVIE yang punya daftar film
             if (section.type == "SUBJECTS_MOVIE" && !section.subjects.isNullOrEmpty()) {
                 val title = section.title ?: "Untitled"
                 val films = section.subjects.map { it.toSearchResponse(this) }
-                
-                // Tambahkan sebagai baris baru di halaman utama
                 homeLists.add(HomePageList(title, films))
             }
         }
 
         if (homeLists.isEmpty()) throw ErrorLoadingException("No Data Found")
 
-        // Perbaikan 1: Menggunakan newHomePageResponse yang menerima List<HomePageList>
         return newHomePageResponse(homeLists)
     }
 
@@ -74,7 +63,6 @@ class Adimoviebox : MainAPI() {
             "perPage" to 20
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Search menggunakan contentApi (filmboom.top)
         val searchUrl = "$contentApi/wefeed-h5-bff/web/subject/everyone-search"
         
         return app.post(searchUrl, requestBody = body).parsedSafe<MediaResponse>()?.data?.items?.map {
@@ -84,8 +72,6 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfter("id=")
-        
-        // Detail menggunakan contentApi
         val detailUrl = "$contentApi/wefeed-h5-bff/web/subject/detail?subjectId=$id"
         val response = app.get(detailUrl).parsedSafe<DetailResponse>()?.data 
             ?: throw ErrorLoadingException("Failed to load details")
@@ -102,7 +88,7 @@ class Adimoviebox : MainAPI() {
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val trailer = subject?.trailer?.videoAddress?.url
 
-        // Perbaikan 2: Menggunakan ActorData(Actor(...))
+        // Perbaikan: Menggunakan ActorData agar sesuai dengan tipe data Cloudstream terbaru
         val actors = response.stars?.mapNotNull { star ->
             val name = star.name ?: return@mapNotNull null
             val image = star.avatarUrl
@@ -118,7 +104,7 @@ class Adimoviebox : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.score = rating
-                this.actors = actors // Sekarang tipe datanya sudah benar List<ActorData>
+                this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
             }
@@ -165,8 +151,6 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val loadData = parseJson<LinkData>(data)
-        
-        // Play menggunakan contentApi
         val playUrl = "$contentApi/wefeed-h5-bff/web/subject/play?subjectId=${loadData.id}&se=${loadData.season}&ep=${loadData.episode}"
         
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
@@ -175,14 +159,15 @@ class Adimoviebox : MainAPI() {
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
             
-            // Perbaikan 3: Menggunakan ExtractorLink class langsung agar parameter dikenali
+            // Perbaikan: Menggunakan newExtractorLink dengan urutan parameter standar
+            // (source, name, url, referer, quality)
             callback.invoke(
-                ExtractorLink(
-                    source = this.name,
-                    name = "MovieBox $qualityStr",
-                    url = stream.url ?: return@forEach,
-                    referer = "$contentApi/", // Menggunakan huruf kecil 'referer'
-                    quality = quality
+                newExtractorLink(
+                    this.name,
+                    "MovieBox $qualityStr",
+                    stream.url ?: return@forEach,
+                    "$contentApi/",
+                    quality
                 )
             )
         }
@@ -252,7 +237,6 @@ data class SubjectItem(
             if (isMovie) TvType.Movie else TvType.TvSeries,
         ) {
             this.posterUrl = cover?.url
-            // Perbaikan 4: Menghapus 'this.plot' karena tidak ada di SearchResponse
             this.score = Score.from10(rating)
         }
     }
