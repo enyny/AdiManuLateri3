@@ -213,14 +213,16 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN: Menggunakan argumen posisi (urutan) untuk menghindari error "No parameter named..."
+                // PERBAIKAN: Menggunakan struktur (source, name, url, type, block)
                 newExtractorLink(
-                    this.name,                          // source
-                    "Server ${source.resolutions}p",    // name
-                    source.url ?: return@forEach,       // url
-                    "$playApiUrl/",                     // referer
-                    getQualityFromName(source.resolutions) // quality
-                )
+                    this.name,                          
+                    "Server ${source.resolutions}p",    
+                    source.url ?: return@forEach,
+                    ExtractorLinkType.INFER
+                ) {
+                    this.referer = "$playApiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
             )
         }
 
