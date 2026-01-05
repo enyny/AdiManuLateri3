@@ -10,6 +10,9 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+// Tambahkan import ini agar tidak error "Unresolved reference"
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://h5-api.aoneroom.com"
@@ -213,13 +216,15 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN: Menggunakan newExtractorLink dengan parameter yang benar
+                // PERBAIKAN: Menggunakan newExtractorLink dengan gaya lama (lambda block)
+                // dan menggunakan ExtractorLinkType.INFER agar tidak error "Unresolved reference"
                 newExtractorLink(
-                    this.name,
-                    "Server ${source.resolutions}p",
+                    this.name,                          
+                    this.name, // Name (bisa diset sama dengan source)   
                     source.url ?: return@forEach,
-                    ExtractorLinkType.INFER
+                    ExtractorLinkType.INFER // Tipe link eksplisit
                 ) {
+                    this.name = "Server ${source.resolutions}p"
                     this.referer = "$playApiUrl/"
                     this.quality = getQualityFromName(source.resolutions)
                 }
