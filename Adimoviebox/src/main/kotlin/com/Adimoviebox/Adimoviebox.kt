@@ -10,6 +10,9 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+// Import penting
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://h5-api.aoneroom.com"
@@ -38,6 +41,7 @@ class Adimoviebox : MainAPI() {
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
+    // Kategori Sesuai JSON
     override val mainPage: List<MainPageData> = mainPageOf(
         "Trending🔥" to "Trending🔥",
         "Trending Indonesian Movies" to "Trending Indonesian Movies",
@@ -81,7 +85,7 @@ class Adimoviebox : MainAPI() {
 
         val filmList = targetCategory?.subjects?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
+        } ?: throw ErrorLoadingException("No Data Found")
 
         return newHomePageResponse(request.name, filmList)
     }
@@ -136,6 +140,7 @@ class Adimoviebox : MainAPI() {
                     it.toSearchResponse(this)
                 }
 
+        // FIX: Menambahkan backgroundPosterUrl agar gambar besar muncul
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -156,7 +161,7 @@ class Adimoviebox : MainAPI() {
             }?.flatten() ?: emptyList()
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = poster
+                this.backgroundPosterUrl = poster // Gambar Besar
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -173,7 +178,7 @@ class Adimoviebox : MainAPI() {
                 LoadData(id, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = poster
+                this.backgroundPosterUrl = poster // Gambar Besar
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -208,7 +213,7 @@ class Adimoviebox : MainAPI() {
             "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
         )
 
-        // Path untuk Play (wefeed-h5-bff)
+        // Gunakan wefeed-h5-bff (tanpa api) untuk play
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
 
         val response = app.get(
@@ -217,21 +222,22 @@ class Adimoviebox : MainAPI() {
         ).parsedSafe<Media>()
 
         response?.data?.streams?.forEach { source ->
+            // FIX BUILD: Menggunakan Constructor + @Suppress untuk mematikan error deprecated
+            // Ini cara paling aman agar tidak kena error "too many arguments" atau "unresolved reference"
+            @Suppress("DEPRECATION")
             callback.invoke(
-                // PERBAIKAN: Menggunakan Positional Arguments murni agar aman dari error "No Parameter Found"
-                // Urutan standar: source, name, url, referer, quality, isM3u8
-                newExtractorLink(
-                    this.name,                          
-                    "Server ${source.resolutions}p",    
-                    source.url ?: return@forEach,
-                    "$playApiUrl/", // Referer
-                    getQualityFromName(source.resolutions), // Quality
-                    false // isM3u8 (false karena ini MP4)
+                ExtractorLink(
+                    source = this.name,
+                    name = "Server ${source.resolutions}p",
+                    url = source.url ?: return@forEach,
+                    referer = "$playApiUrl/",
+                    quality = getQualityFromName(source.resolutions),
+                    type = ExtractorLinkType.INFER
                 )
             )
         }
 
-        // Ambil Subtitle
+        // Subtitles
         val videoId = response?.data?.streams?.firstOrNull()?.id
         val format = response?.data?.streams?.firstOrNull()?.format
 
