@@ -12,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // URL API Baru sesuai temuan Network Inspector
+    // URL API Baru
     private val apiUrl = "https://h5-api.aoneroom.com"
     
     override val instantLinkLoading = true
@@ -27,15 +27,14 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header wajib yang diambil dari cURL. 
-    // Token ini berlaku lama (sampai 2026), jadi aman untuk sementara.
+    // PERBAIKAN: Menghapus header 'authority' karena menyebabkan error 'Canceled' di OkHttp
     private val commonHeaders = mapOf(
-        "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
         "referer" to "https://moviebox.ph/",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
+        // Token tetap sama
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
@@ -59,14 +58,15 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
+        // Menggunakan integer untuk page dan perPage agar sesuai format JSON asli
         val body = mapOf(
             "channelId" to params.first(),
             "page" to page,
-            "perPage" to "24",
+            "perPage" to 24,
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Update path: wefeed-h5api-bff
+        // Menggunakan path yang benar: /wefeed-h5api-bff/web/filter
         val home = app.post(
             "$apiUrl/wefeed-h5api-bff/web/filter", 
             requestBody = body,
@@ -81,12 +81,11 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Menggunakan endpoint 'search-suggest' sesuai cURL yang kamu berikan
         return app.post(
             "$apiUrl/wefeed-h5api-bff/subject/search-suggest", 
             requestBody = mapOf(
                 "keyword" to query,
-                "perPage" to 20 // Menggunakan integer sesuai cURL
+                "perPage" to 20
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
@@ -96,7 +95,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Update path: wefeed-h5api-bff
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
@@ -122,7 +120,6 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        // Update path: wefeed-h5api-bff
         val recommendations =
             app.get(
                 "$apiUrl/wefeed-h5api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -189,10 +186,9 @@ class Adimoviebox : MainAPI() {
         // Referer penting agar tidak diblokir
         val referer = "$mainUrl/"
 
-        // Update path: wefeed-h5api-bff
         val streams = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            headers = commonHeaders // Gunakan header lengkap
+            headers = commonHeaders
         ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
@@ -212,7 +208,6 @@ class Adimoviebox : MainAPI() {
         val id = streams?.first()?.id
         val format = streams?.first()?.format
 
-        // Update path: wefeed-h5api-bff
         app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             headers = commonHeaders
@@ -229,7 +224,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes (Tidak berubah banyak, hanya penyesuaian tempat) ---
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -290,7 +285,7 @@ data class MediaDetail(
 
 data class Items(
     @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("id") val id: String? = null, // Tambahan: kadang search-suggest pakai 'id', bukan 'subjectId'
+    @JsonProperty("id") val id: String? = null,
     @JsonProperty("subjectType") val subjectType: Int? = null,
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("description") val description: String? = null,
@@ -304,7 +299,6 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        // Fallback: Gunakan id jika subjectId null (karena search-suggest mungkin beda)
         val finalId = subjectId ?: id ?: ""
         val url = "${provider.mainUrl}/detail/${finalId}"
 
