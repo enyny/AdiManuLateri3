@@ -29,7 +29,7 @@ class Adimoviebox : MainAPI() {
     // API untuk Detail & Video (Search, Detail, Play)
     private val contentApi = "https://filmboom.top"
 
-    // Kita hanya perlu satu tab "Home" karena isinya sudah dinamis (banyak kategori)
+    // Tab halaman utama
     override val mainPage: List<MainPageData> = mainPageOf(
         "home" to "Home"
     )
@@ -39,7 +39,7 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         // Kita hanya ambil halaman 1 karena endpoint 'home' mengembalikan semua kategori sekaligus
-        if (page > 1) return HomePageResponse(emptyList())
+        if (page > 1) return newHomePageResponse(emptyList())
 
         // Mengambil data struktur Home Page
         val url = "$trendingApi/wefeed-h5api-bff/web/home?host=moviebox.ph"
@@ -61,7 +61,8 @@ class Adimoviebox : MainAPI() {
 
         if (homeLists.isEmpty()) throw ErrorLoadingException("No Data Found")
 
-        return HomePageResponse(homeLists)
+        // Perbaikan 1: Menggunakan newHomePageResponse yang menerima List<HomePageList>
+        return newHomePageResponse(homeLists)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -101,8 +102,11 @@ class Adimoviebox : MainAPI() {
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val trailer = subject?.trailer?.videoAddress?.url
 
+        // Perbaikan 2: Menggunakan ActorData(Actor(...))
         val actors = response.stars?.mapNotNull { star ->
-            Actor(star.name ?: return@mapNotNull null, star.avatarUrl)
+            val name = star.name ?: return@mapNotNull null
+            val image = star.avatarUrl
+            ActorData(Actor(name, image))
         }
 
         val recommendations = emptyList<SearchResponse>()
@@ -114,7 +118,7 @@ class Adimoviebox : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.score = rating
-                this.actors = actors
+                this.actors = actors // Sekarang tipe datanya sudah benar List<ActorData>
                 this.recommendations = recommendations
                 addTrailer(trailer)
             }
@@ -171,12 +175,13 @@ class Adimoviebox : MainAPI() {
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
             
+            // Perbaikan 3: Menggunakan ExtractorLink class langsung agar parameter dikenali
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    "MovieBox $qualityStr",
-                    stream.url ?: return@forEach,
-                    Referer = "$contentApi/",
+                ExtractorLink(
+                    source = this.name,
+                    name = "MovieBox $qualityStr",
+                    url = stream.url ?: return@forEach,
+                    referer = "$contentApi/", // Menggunakan huruf kecil 'referer'
                     quality = quality
                 )
             )
@@ -192,7 +197,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (Diperbarui untuk Dynamic Home) ---
+// --- DATA CLASSES ---
 
 data class LinkData(
     val id: String,
@@ -200,7 +205,6 @@ data class LinkData(
     val episode: Int
 )
 
-// Struktur Home Page
 data class HomeDataResponse(
     @JsonProperty("data") val data: HomeData? = null
 ) {
@@ -210,27 +214,25 @@ data class HomeDataResponse(
 }
 
 data class OperatingItem(
-    @JsonProperty("type") val type: String? = null, // "SUBJECTS_MOVIE", "FILTER", dll
+    @JsonProperty("type") val type: String? = null,
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("subjects") val subjects: List<SubjectItem>? = null
 )
 
-// Struktur Search Response
 data class MediaResponse(
     @JsonProperty("data") val data: DataList? = null
 ) {
     data class DataList(
         @JsonProperty("subjectList") val subjectList: List<SubjectItem>? = null,
-        @JsonProperty("items") val items: List<SubjectItem>? = null // Search kadang pakai items
+        @JsonProperty("items") val items: List<SubjectItem>? = null
     ) {
         val list get() = subjectList ?: items ?: emptyList()
     }
 }
 
-// Item Film (Dipakai di Home & Search)
 data class SubjectItem(
     @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType") val subjectType: Int? = null, // 1=Movie, 2=Series
+    @JsonProperty("subjectType") val subjectType: Int? = null,
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("description") val description: String? = null,
@@ -250,13 +252,12 @@ data class SubjectItem(
             if (isMovie) TvType.Movie else TvType.TvSeries,
         ) {
             this.posterUrl = cover?.url
-            this.plot = description
+            // Perbaikan 4: Menghapus 'this.plot' karena tidak ada di SearchResponse
             this.score = Score.from10(rating)
         }
     }
 }
 
-// Detail & Play Response (Sama seperti sebelumnya)
 data class DetailResponse(
     @JsonProperty("data") val data: DetailData? = null
 ) {
