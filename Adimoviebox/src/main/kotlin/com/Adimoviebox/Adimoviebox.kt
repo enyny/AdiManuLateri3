@@ -16,7 +16,7 @@ class Adimoviebox : MainAPI() {
     // Server 1: Untuk Data Film (Home, Search, Detail)
     private val apiUrl = "https://h5-api.aoneroom.com"
     
-    // Server 2: Khusus Untuk Nonton (Play Link) - Sesuai cURL terakhir
+    // Server 2: Khusus Untuk Nonton (Play Link)
     private val playApiUrl = "https://filmboom.top"
     
     override val instantLinkLoading = true
@@ -31,7 +31,6 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Umum untuk Pencarian
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -43,16 +42,43 @@ class Adimoviebox : MainAPI() {
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
+    // ✅ KATEGORI DIPERBARUI SESUAI SCREENSHOT WEBSITE
     override val mainPage: List<MainPageData> = mainPageOf(
-        "trending" to "Trending Now",
-        "hottest" to "Hottest",
-        "latest" to "Latest Release"
+        "trending" to "Trending 🔥",
+        "indo_movies" to "Trending Indonesian Movies",
+        "indo_drama" to "Trending Indonesian Drama 💗",
+        "short_tv" to "🔥Hot Short TV",
+        "kdrama" to "K-Drama: New Release",
+        "anime" to "Into Animeverse🌟",
+        "bromance" to "👩‍❤️‍💋‍👨Bromance",
+        "indo_killers" to "Indonesian Killers",
+        "upcoming" to "Upcoming Calendar",
+        "western" to "Western TV",
+        "funny_family" to "Keluargaku yang Lucu 🏠",
+        "hollywood" to "Hollywood Movies",
+        "rich_people" to "We Won't Be Eaten by the Rich!",
+        "animals" to "Cute World of Animals",
+        "cdrama" to "C-Drama",
+        "run_escape" to "Run!! 🩸Escape Death!",
+        "romance" to "No Regrets for Loving You",
+        "indo_dubbed" to "Must Watch Indo Dubbed",
+        "horror" to "Midnight Horror",
+        "action" to "HA! Nobody Can Defeat Me",
+        "cyberpunk" to "🎮 Cyberpunk World",
+        "animated" to "Animated Flim",
+        "monster" to "Awas! Monster & Titan",
+        "thai" to "Tredning Thai-Drama",
+        "fake_marriage" to "👰Fake Marriage"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
+        // Karena kita belum memiliki ID spesifik untuk setiap kategori (butuh cURL 'home'),
+        // kita menggunakan endpoint 'trending' agar semua kategori minimal menampilkan konten.
+        // Nanti jika ada cURL 'home', kita bisa filter berdasarkan request.data (nama kategori).
+        
         val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/trending?page=$page&perPage=24"
 
         val home = app.get(
@@ -125,7 +151,7 @@ class Adimoviebox : MainAPI() {
                                 id,
                                 seasons.se,
                                 episode,
-                                subject?.detailPath // Penting: detailPath dikirim ke loadLinks
+                                subject?.detailPath
                             ).toJson()
                         ) {
                             this.season = seasons.se
@@ -162,7 +188,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- BAGIAN INI DIPERBAIKI TOTAL SESUAI JSON & CURL BARU ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -172,23 +197,20 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
-        // 1. Siapkan Referer Khusus untuk server filmboom.top
-        // Format: https://filmboom.top/spa/videoPlayPage/movies/JUDUL-FILM?id=...
+        // Referer Khusus untuk server filmboom.top
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        // 2. Header Khusus untuk Play (Beda server = Beda header)
+        // Header Khusus untuk Play
         val playHeaders = mapOf(
             "authority" to "filmboom.top",
             "accept" to "application/json",
             "origin" to "https://filmboom.top",
-            "referer" to playReferer, // Referer dinamis sesuai film
+            "referer" to playReferer,
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
             "x-request-lang" to "en"
         )
 
-        // 3. Request ke API filmboom.top (Bukan aoneroom)
-        // Menambahkan parameter detail_path yang diminta server
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
 
         val response = app.get(
@@ -196,22 +218,18 @@ class Adimoviebox : MainAPI() {
             headers = playHeaders
         ).parsedSafe<Media>()
 
-        // 4. Ambil Link Video dari JSON (data.streams)
-        // JSON contoh: {"streams":[{"url":"https://bcdnxw...","resolutions":"360"}, ...]}
         response?.data?.streams?.forEach { source ->
             callback.invoke(
                 newExtractorLink(
                     this.name,
-                    "Server ${source.resolutions}p", // Nama sumber
-                    source.url ?: return@forEach, // Link MP4 Langsung
-                    Referer = "$playApiUrl/", // Referer untuk memutar video
+                    "Server ${source.resolutions}p", 
+                    source.url ?: return@forEach, 
+                    Referer = "$playApiUrl/",
                     quality = getQualityFromName(source.resolutions)
                 )
             )
         }
 
-        // 5. Ambil Subtitle (jika ada API caption di server yang sama)
-        // Menggunakan ID video pertama untuk request caption
         val videoId = response?.data?.streams?.firstOrNull()?.id
         val format = response?.data?.streams?.firstOrNull()?.format
 
