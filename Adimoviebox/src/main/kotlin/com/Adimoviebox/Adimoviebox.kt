@@ -10,8 +10,8 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// Import Enum Type
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
+// ✅ PENTING: Import ini wajib ada agar INFER_TYPE dikenali
+import com.lagradost.cloudstream3.utils.INFER_TYPE 
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -84,7 +84,7 @@ class Adimoviebox : MainAPI() {
 
         val filmList = targetCategory?.subjects?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
 
         return newHomePageResponse(request.name, filmList)
     }
@@ -100,7 +100,7 @@ class Adimoviebox : MainAPI() {
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed")
+            ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -159,7 +159,10 @@ class Adimoviebox : MainAPI() {
             }?.flatten() ?: emptyList()
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = poster
+                
+                // ✅ UPDATE GAMBAR BESAR (Backdrop)
+                this.backgroundPosterUrl = poster 
+                
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -176,7 +179,10 @@ class Adimoviebox : MainAPI() {
                 LoadData(id, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = poster
+
+                // ✅ UPDATE GAMBAR BESAR (Backdrop)
+                this.backgroundPosterUrl = poster 
+                
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -206,8 +212,7 @@ class Adimoviebox : MainAPI() {
             "referer" to playReferer,
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
-            "x-request-lang" to "en",
-            "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
+            "x-request-lang" to "en"
         )
 
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
@@ -219,17 +224,15 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // ✅ FIX FINAL: Menggunakan newExtractorLink paling dasar.
-                // 1. Tidak pakai lambda { ... } karena 'val' referer tidak bisa diubah.
-                // 2. Tidak pakai referer parameter karena fungsi ini tidak menerimanya.
-                // 3. Menggunakan ExtractorLinkType.VIDEO agar 'INFER' tidak error.
-                // Note: Link MP4 ini punya token, jadi kemungkinan besar tidak butuh referer untuk play.
                 newExtractorLink(
-                    source = this.name,                          
-                    name = "Server ${source.resolutions}p",    
-                    url = source.url ?: return@forEach,
-                    type = ExtractorLinkType.VIDEO
-                )
+                    this.name,
+                    this.name,
+                    source.url ?: return@forEach,
+                    INFER_TYPE
+                ) {
+                    this.referer = "$playApiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
             )
         }
 
@@ -350,6 +353,11 @@ data class Items(
             false
         ) {
             this.posterUrl = cover?.url
+            
+            // ✅ UPDATE GAMBAR BESAR (Backdrop)
+            // Ini akan memaksa gambar muncul di slider Home/Top Page
+            this.backgroundPosterUrl = cover?.url 
+            
             this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
