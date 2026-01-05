@@ -1,6 +1,6 @@
 import com.lagradost.cloudstream3.gradle.CloudstreamExtension
 
-version = 5 // Versi diperbarui karena perubahan besar pada API
+version = 6 // Versi diperbarui karena perubahan besar pada API
 
 cloudstream {
     description = "Nonton sampe biji mata kaluar"
