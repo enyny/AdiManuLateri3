@@ -213,18 +213,16 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN TOTAL:
-                // 1. Menggunakan Constructor ExtractorLink langsung (bukan newExtractorLink) agar lebih aman.
-                // 2. Menggunakan 'referer' (huruf kecil) sebagai named argument.
-                // 3. Menggunakan INFER_TYPE untuk tipe link.
-                ExtractorLink(
-                    source = this.name,
-                    name = "Server ${source.resolutions}p",
-                    url = source.url ?: return@forEach,
-                    referer = "$playApiUrl/",
-                    quality = getQualityFromName(source.resolutions),
-                    type = INFER_TYPE
-                )
+                // PERBAIKAN: Menggunakan newExtractorLink dengan parameter yang benar
+                newExtractorLink(
+                    this.name,
+                    "Server ${source.resolutions}p",
+                    source.url ?: return@forEach,
+                    ExtractorLinkType.INFER
+                ) {
+                    this.referer = "$playApiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
             )
         }
 
