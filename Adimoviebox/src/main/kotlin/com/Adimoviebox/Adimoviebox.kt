@@ -213,14 +213,14 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN: Menggunakan struktur (source, name, url, type, block)
+                // PERBAIKAN: Menggunakan INFER_TYPE agar lolos compile
                 newExtractorLink(
                     this.name,                          
                     "Server ${source.resolutions}p",    
                     source.url ?: return@forEach,
-                    ExtractorLinkType.INFER
+                    Referer = "$playApiUrl/",
+                    type = INFER_TYPE
                 ) {
-                    this.referer = "$playApiUrl/"
                     this.quality = getQualityFromName(source.resolutions)
                 }
             )
