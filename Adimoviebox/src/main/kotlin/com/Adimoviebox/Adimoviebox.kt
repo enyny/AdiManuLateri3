@@ -10,12 +10,11 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// ✅ PENTING: Import ini wajib ada agar INFER_TYPE dikenali
-import com.lagradost.cloudstream3.utils.INFER_TYPE 
-
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    // Server 1: Untuk Data (Home, Search, Detail) -> Pakai 'h5api'
     private val apiUrl = "https://h5-api.aoneroom.com"
+    // Server 2: Untuk Nonton (Play) -> Pakai 'filmboom.top'
     private val playApiUrl = "https://filmboom.top"
     
     override val instantLinkLoading = true
@@ -73,18 +72,20 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
+        // Ambil Data Home
         val response = app.get(
             "$apiUrl/wefeed-h5api-bff/home?host=moviebox.ph", 
             headers = commonHeaders
         ).parsedSafe<HomeResponse>()
 
+        // Cari kategori yang sesuai
         val targetCategory = response?.data?.operatingList?.find { 
             it.title?.trim() == request.name.trim() 
         }
 
         val filmList = targetCategory?.subjects?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
+        } ?: throw ErrorLoadingException("No Data Found")
 
         return newHomePageResponse(request.name, filmList)
     }
@@ -92,6 +93,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Search pakai wefeed-h5api-bff (Ada 'api')
         return app.post(
             "$apiUrl/wefeed-h5api-bff/subject/search-suggest", 
             requestBody = mapOf(
@@ -100,12 +102,13 @@ class Adimoviebox : MainAPI() {
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed or returned no results.")
+            ?: throw ErrorLoadingException("Search failed")
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
+        // Detail pakai wefeed-h5api-bff (Ada 'api')
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
@@ -159,6 +162,7 @@ class Adimoviebox : MainAPI() {
             }?.flatten() ?: emptyList()
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = poster // ✅ FIX: Biar gambar besar muncul
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -175,6 +179,7 @@ class Adimoviebox : MainAPI() {
                 LoadData(id, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = poster // ✅ FIX: Biar gambar besar muncul
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -195,6 +200,7 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
+        // Referer Khusus Play
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
         val playHeaders = mapOf(
@@ -204,9 +210,11 @@ class Adimoviebox : MainAPI() {
             "referer" to playReferer,
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
-            "x-request-lang" to "en"
+            "x-request-lang" to "en",
+            "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
         )
 
+        // ✅ FIX PATH: Play URL pakai 'wefeed-h5-bff' (TANPA API di tengah)
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
 
         val response = app.get(
@@ -216,24 +224,23 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // ✅ PERBAIKAN: Menggunakan format asli dari file awal Anda
-                // Urutan: (source, name, url, type, lambda)
+                // ✅ FIX BUILD: Menggunakan format newExtractorLink paling dasar (aman untuk semua versi)
                 newExtractorLink(
-                    this.name,
-                    this.name,
+                    this.name,                          
+                    "Server ${source.resolutions}p",    
                     source.url ?: return@forEach,
-                    INFER_TYPE
-                ) {
-                    this.referer = "$playApiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
+                    "$playApiUrl/", // Referer
+                    getQualityFromName(source.resolutions)
+                )
             )
         }
 
+        // Ambil Subtitle
         val videoId = response?.data?.streams?.firstOrNull()?.id
         val format = response?.data?.streams?.firstOrNull()?.format
 
         if (videoId != null) {
+            // Caption juga pakai 'wefeed-h5-bff'
             val captionUrl = "$playApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$videoId&subjectId=${media.id}"
             app.get(captionUrl, headers = playHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
                 subtitleCallback.invoke(
