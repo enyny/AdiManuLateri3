@@ -38,8 +38,6 @@ class Adimoviebox : MainAPI() {
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
-    // ✅ DAFTAR KATEGORI SESUAI JSON ASLI
-    // Key dan Value sama agar mudah dicocokkan dengan "title" di JSON
     override val mainPage: List<MainPageData> = mainPageOf(
         "Trending🔥" to "Trending🔥",
         "Trending Indonesian Movies" to "Trending Indonesian Movies",
@@ -72,18 +70,15 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // 1. Ambil data mentah dari API Home (yang isinya campur aduk semua kategori)
         val response = app.get(
             "$apiUrl/wefeed-h5api-bff/home?host=moviebox.ph", 
             headers = commonHeaders
         ).parsedSafe<HomeResponse>()
 
-        // 2. Cari bagian yang judulnya (title) SAMA dengan kategori yang sedang diminta Cloudstream
         val targetCategory = response?.data?.operatingList?.find { 
             it.title?.trim() == request.name.trim() 
         }
 
-        // 3. Ambil daftar film (subjects) dari kategori tersebut
         val filmList = targetCategory?.subjects?.map {
             it.toSearchResponse(this)
         } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
@@ -102,7 +97,7 @@ class Adimoviebox : MainAPI() {
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Pencarian gagal atau tidak ada hasil.")
+            ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -197,10 +192,8 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
-        // Referer Khusus untuk server filmboom.top
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        // Header Khusus untuk Play
         val playHeaders = mapOf(
             "authority" to "filmboom.top",
             "accept" to "application/json",
@@ -220,12 +213,13 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
+                // PERBAIKAN: Menggunakan argumen posisi (urutan) untuk menghindari error "No parameter named..."
                 newExtractorLink(
-                    this.name,
-                    "Server ${source.resolutions}p", 
-                    source.url ?: return@forEach, 
-                    Referer = "$playApiUrl/",
-                    quality = getQualityFromName(source.resolutions)
+                    this.name,                          // source
+                    "Server ${source.resolutions}p",    // name
+                    source.url ?: return@forEach,       // url
+                    "$playApiUrl/",                     // referer
+                    getQualityFromName(source.resolutions) // quality
                 )
             )
         }
@@ -249,7 +243,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes Terbaru ---
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -258,7 +252,6 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
-// Struktur Data untuk Respon Home Page
 data class HomeResponse(
     @JsonProperty("data") val data: HomeData? = null
 )
@@ -272,7 +265,6 @@ data class HomeModule(
     @JsonProperty("subjects") val subjects: ArrayList<Items>? = arrayListOf()
 )
 
-// Struktur Data Umum
 data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
