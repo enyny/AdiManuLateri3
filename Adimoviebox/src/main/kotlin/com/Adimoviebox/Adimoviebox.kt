@@ -10,7 +10,7 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// Tambahkan import ini agar tidak error "Unresolved reference"
+// Import tipe link secara spesifik agar tidak error
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
 class Adimoviebox : MainAPI() {
@@ -216,18 +216,20 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN: Menggunakan newExtractorLink dengan gaya lama (lambda block)
-                // dan menggunakan ExtractorLinkType.INFER agar tidak error "Unresolved reference"
+                // PERBAIKAN: 
+                // 1. Menggunakan Named Arguments (name=, url=, etc) agar tidak salah urutan.
+                // 2. TIDAK menggunakan blok lambda {} agar tidak error "val cannot be reassigned".
+                // 3. Menggunakan referer huruf kecil.
+                // 4. Tidak memaksa tipe INFER jika tidak dikenali, biarkan default atau gunakan VIDEO.
                 newExtractorLink(
-                    this.name,                          
-                    this.name, // Name (bisa diset sama dengan source)   
-                    source.url ?: return@forEach,
-                    ExtractorLinkType.INFER // Tipe link eksplisit
-                ) {
-                    this.name = "Server ${source.resolutions}p"
-                    this.referer = "$playApiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
+                    source = this.name,
+                    name = "Server ${source.resolutions}p",
+                    url = source.url ?: return@forEach,
+                    referer = "$playApiUrl/",
+                    quality = getQualityFromName(source.resolutions)
+                    // Jika INFER error lagi, hapus baris type di bawah ini
+                    // type = ExtractorLinkType.INFER 
+                )
             )
         }
 
