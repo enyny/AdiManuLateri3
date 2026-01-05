@@ -12,7 +12,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    
+    // Server 1: Untuk Data Film (Home, Search, Detail)
     private val apiUrl = "https://h5-api.aoneroom.com"
+    
+    // Server 2: Khusus Untuk Nonton (Play Link) - Sesuai cURL terakhir
+    private val playApiUrl = "https://filmboom.top"
     
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -26,22 +31,18 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header disesuaikan dengan cURL 'trending' yang kamu kirim
+    // Header Umum untuk Pencarian
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
         "referer" to "https://moviebox.ph/",
-        // User-Agent penting agar request GET tidak diblokir
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
         "content-type" to "application/json",
-        // Token otentikasi
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
-    // Kita tetap menggunakan kategori ini, tapi karena endpoint 'trending' 
-    // mungkin tidak mendukung filter kategori, isinya mungkin akan sama semua untuk sementara.
     override val mainPage: List<MainPageData> = mainPageOf(
         "trending" to "Trending Now",
         "hottest" to "Hottest",
@@ -52,11 +53,6 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // MENGUBAH LOGIKA: Dari POST ke GET sesuai cURL 'trending'
-        // cURL asli: .../subject/trending?page=0&perPage=18
-        
-        // Catatan: Cloudstream mulai page dari 1, API mungkin mulai dari 0. 
-        // Kita coba kirim 'page' langsung dulu.
         val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/trending?page=$page&perPage=24"
 
         val home = app.get(
@@ -72,7 +68,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Fitur Search tetap menggunakan POST (search-suggest) karena terbukti jalan sebelumnya
         return app.post(
             "$apiUrl/wefeed-h5api-bff/subject/search-suggest", 
             requestBody = mapOf(
@@ -87,7 +82,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Request Detail (GET)
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
@@ -131,7 +125,7 @@ class Adimoviebox : MainAPI() {
                                 id,
                                 seasons.se,
                                 episode,
-                                subject?.detailPath
+                                subject?.detailPath // Penting: detailPath dikirim ke loadLinks
                             ).toJson()
                         ) {
                             this.season = seasons.se
@@ -168,6 +162,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    // --- BAGIAN INI DIPERBAIKI TOTAL SESUAI JSON & CURL BARU ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -176,40 +171,60 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        val referer = "$mainUrl/"
+        
+        // 1. Siapkan Referer Khusus untuk server filmboom.top
+        // Format: https://filmboom.top/spa/videoPlayPage/movies/JUDUL-FILM?id=...
+        val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        val streams = app.get(
-            "$apiUrl/wefeed-h5api-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.streams
+        // 2. Header Khusus untuk Play (Beda server = Beda header)
+        val playHeaders = mapOf(
+            "authority" to "filmboom.top",
+            "accept" to "application/json",
+            "origin" to "https://filmboom.top",
+            "referer" to playReferer, // Referer dinamis sesuai film
+            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+            "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
+            "x-request-lang" to "en"
+        )
 
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
+        // 3. Request ke API filmboom.top (Bukan aoneroom)
+        // Menambahkan parameter detail_path yang diminta server
+        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+
+        val response = app.get(
+            targetUrl,
+            headers = playHeaders
+        ).parsedSafe<Media>()
+
+        // 4. Ambil Link Video dari JSON (data.streams)
+        // JSON contoh: {"streams":[{"url":"https://bcdnxw...","resolutions":"360"}, ...]}
+        response?.data?.streams?.forEach { source ->
             callback.invoke(
                 newExtractorLink(
                     this.name,
-                    this.name,
-                    source.url ?: return@map,
-                    INFER_TYPE
-                ) {
-                    this.referer = referer
-                    this.quality = getQualityFromName(source.resolutions)
-                }
+                    "Server ${source.resolutions}p", // Nama sumber
+                    source.url ?: return@forEach, // Link MP4 Langsung
+                    Referer = "$playApiUrl/", // Referer untuk memutar video
+                    quality = getQualityFromName(source.resolutions)
+                )
             )
         }
 
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
+        // 5. Ambil Subtitle (jika ada API caption di server yang sama)
+        // Menggunakan ID video pertama untuk request caption
+        val videoId = response?.data?.streams?.firstOrNull()?.id
+        val format = response?.data?.streams?.firstOrNull()?.format
 
-        app.get(
-            "$apiUrl/wefeed-h5api-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
+        if (videoId != null) {
+            val captionUrl = "$playApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$videoId&subjectId=${media.id}"
+            app.get(captionUrl, headers = playHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        subtitle.lanName ?: "Unknown",
+                        subtitle.url ?: return@forEach
+                    )
                 )
-            )
+            }
         }
 
         return true
@@ -291,7 +306,6 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        // Fallback: Gunakan id jika subjectId null (karena search-suggest mungkin beda dengan trending)
         val finalId = subjectId ?: id ?: ""
         val url = "${provider.mainUrl}/detail/${finalId}"
 
