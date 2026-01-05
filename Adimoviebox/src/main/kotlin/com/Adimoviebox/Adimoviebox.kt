@@ -88,6 +88,7 @@ class Adimoviebox : MainAPI() {
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val trailer = subject?.trailer?.videoAddress?.url
 
+        // Menggunakan ActorData untuk kompatibilitas
         val actors = response.stars?.mapNotNull { star ->
             val name = star.name ?: return@mapNotNull null
             val image = star.avatarUrl
@@ -155,22 +156,22 @@ class Adimoviebox : MainAPI() {
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
         
         response?.streams?.forEach { stream ->
+            val url = stream.url ?: return@forEach
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
-            val streamUrl = stream.url ?: return@forEach
             
-            // Deteksi tipe link (M3U8 atau MP4/Video Biasa)
-            val type = if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+            // Fix: Menggunakan boolean standar isM3u8, bukan ExtractorLinkType
+            val isM3u8 = url.contains(".m3u8")
 
-            // Menggunakan Named Arguments agar tidak error urutan parameter
             callback.invoke(
-                ExtractorLink(
-                    source = this.name,
-                    name = "MovieBox $qualityStr",
-                    url = streamUrl,
-                    referer = "$contentApi/",
-                    quality = quality,
-                    type = type
+                // Menggunakan parameter posisi standar agar kompatibel dengan versi Stable
+                newExtractorLink(
+                    this.name,
+                    "MovieBox $qualityStr",
+                    url,
+                    "$contentApi/",
+                    quality,
+                    isM3u8
                 )
             )
         }
