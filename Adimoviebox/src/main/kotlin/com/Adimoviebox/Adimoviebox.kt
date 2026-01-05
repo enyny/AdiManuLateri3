@@ -160,7 +160,7 @@ class Adimoviebox : MainAPI() {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 
-                // ✅ UPDATE GAMBAR BESAR (Backdrop)
+                // ✅ FITUR GAMBAR BESAR: Hanya bisa di halaman Load (Detail)
                 this.backgroundPosterUrl = poster 
                 
                 this.year = year
@@ -180,7 +180,7 @@ class Adimoviebox : MainAPI() {
             ) {
                 this.posterUrl = poster
 
-                // ✅ UPDATE GAMBAR BESAR (Backdrop)
+                // ✅ FITUR GAMBAR BESAR: Hanya bisa di halaman Load (Detail)
                 this.backgroundPosterUrl = poster 
                 
                 this.year = year
@@ -354,9 +354,8 @@ data class Items(
         ) {
             this.posterUrl = cover?.url
             
-            // ✅ UPDATE GAMBAR BESAR (Backdrop)
-            // Ini akan memaksa gambar muncul di slider Home/Top Page
-            this.backgroundPosterUrl = cover?.url 
+            // ❌ BAGIAN INI SUDAH DIHAPUS AGAR BUILD BERHASIL
+            // Cloudstream otomatis menangani gambar besar di Home
             
             this.score = Score.from10(imdbRatingValue?.toString())
         }
