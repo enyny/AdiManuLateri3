@@ -26,7 +26,7 @@ class Adimoviebox : MainAPI() {
     private val trendingApi = "https://h5-api.aoneroom.com"
     private val contentApi = "https://filmboom.top"
 
-    // ✅ KEMBALI KE KATEGORI LAMA
+    // Mengembalikan kategori lama sesuai permintaan
     override val mainPage: List<MainPageData> = mainPageOf(
         "1,ForYou" to "Movie ForYou",
         "1,Hottest" to "Movie Hottest",
@@ -46,12 +46,9 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Memecah parameter data (contoh: "1,ForYou" -> id=1, sort=ForYou)
         val params = request.data.split(",")
         val channelId = params.first()
         val sort = params.last()
-        
-        // API baru menggunakan index halaman mulai dari 0 (Page 1 = 0)
         val pageNum = if (page <= 1) 0 else page - 1
 
         val body = mapOf(
@@ -61,8 +58,6 @@ class Adimoviebox : MainAPI() {
             "sort" to sort
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Menggunakan endpoint filter pada API baru (filmboom.top)
-        // Kita asumsikan path-nya mirip dengan API lama tapi di domain baru
         val url = "$contentApi/wefeed-h5-bff/web/filter"
         
         val response = app.post(url, requestBody = body).parsedSafe<MediaResponse>()
@@ -175,21 +170,25 @@ class Adimoviebox : MainAPI() {
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
         
         response?.streams?.forEach { stream ->
-            val url = stream.url ?: return@forEach
+            val streamUrl = stream.url ?: return@forEach
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
             
-            val isM3u8 = url.contains(".m3u8")
-
+            // PERBAIKAN FINAL:
+            // 1. Menggunakan newExtractorLink(source, name, url, type, lambda)
+            // 2. Type di-set NULL agar tidak error "Prerelease API"
+            // 3. Referer dan Quality di-set di dalam lambda
+            
             callback.invoke(
                 newExtractorLink(
                     this.name,
                     "MovieBox $qualityStr",
-                    url,
-                    "$contentApi/",
-                    quality,
-                    isM3u8
-                )
+                    streamUrl,
+                    null // Type null agar aman
+                ) {
+                    this.referer = "$contentApi/"
+                    this.quality = quality
+                }
             )
         }
 
@@ -209,20 +208,6 @@ data class LinkData(
     val id: String,
     val season: Int,
     val episode: Int
-)
-
-data class HomeDataResponse(
-    @JsonProperty("data") val data: HomeData? = null
-) {
-    data class HomeData(
-        @JsonProperty("operatingList") val operatingList: List<OperatingItem>? = null
-    )
-}
-
-data class OperatingItem(
-    @JsonProperty("type") val type: String? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("subjects") val subjects: List<SubjectItem>? = null
 )
 
 data class MediaResponse(
