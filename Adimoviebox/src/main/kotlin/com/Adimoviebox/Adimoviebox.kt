@@ -12,7 +12,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // URL API Baru
     private val apiUrl = "https://h5-api.aoneroom.com"
     
     override val instantLinkLoading = true
@@ -27,53 +26,45 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // PERBAIKAN: Menghapus header 'authority' karena menyebabkan error 'Canceled' di OkHttp
+    // Header disesuaikan dengan cURL 'trending' yang kamu kirim
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
         "referer" to "https://moviebox.ph/",
+        // User-Agent penting agar request GET tidak diblokir
+        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
-        // Token tetap sama
+        "content-type" to "application/json",
+        // Token otentikasi
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
+    // Kita tetap menggunakan kategori ini, tapi karena endpoint 'trending' 
+    // mungkin tidak mendukung filter kategori, isinya mungkin akan sama semua untuk sementara.
     override val mainPage: List<MainPageData> = mainPageOf(
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "1,Rating" to "Movie Rating",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "2,Rating" to "TVShow Rating",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest",
-        "1006,Rating" to "Animation Rating",
+        "trending" to "Trending Now",
+        "hottest" to "Hottest",
+        "latest" to "Latest Release"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val params = request.data.split(",")
-        // Menggunakan integer untuk page dan perPage agar sesuai format JSON asli
-        val body = mapOf(
-            "channelId" to params.first(),
-            "page" to page,
-            "perPage" to 24,
-            "sort" to params.last()
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        // MENGUBAH LOGIKA: Dari POST ke GET sesuai cURL 'trending'
+        // cURL asli: .../subject/trending?page=0&perPage=18
+        
+        // Catatan: Cloudstream mulai page dari 1, API mungkin mulai dari 0. 
+        // Kita coba kirim 'page' langsung dulu.
+        val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/trending?page=$page&perPage=24"
 
-        // Menggunakan path yang benar: /wefeed-h5api-bff/web/filter
-        val home = app.post(
-            "$apiUrl/wefeed-h5api-bff/web/filter", 
-            requestBody = body,
+        val home = app.get(
+            targetUrl, 
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        } ?: throw ErrorLoadingException("No Data Found on Home Page")
 
         return newHomePageResponse(request.name, home)
     }
@@ -81,6 +72,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Fitur Search tetap menggunakan POST (search-suggest) karena terbukti jalan sebelumnya
         return app.post(
             "$apiUrl/wefeed-h5api-bff/subject/search-suggest", 
             requestBody = mapOf(
@@ -95,6 +87,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
+        // Request Detail (GET)
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
@@ -183,7 +176,6 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer penting agar tidak diblokir
         val referer = "$mainUrl/"
 
         val streams = app.get(
@@ -299,6 +291,7 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+        // Fallback: Gunakan id jika subjectId null (karena search-suggest mungkin beda dengan trending)
         val finalId = subjectId ?: id ?: ""
         val url = "${provider.mainUrl}/detail/${finalId}"
 
