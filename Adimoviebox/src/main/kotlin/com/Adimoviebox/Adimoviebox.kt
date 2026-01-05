@@ -10,8 +10,8 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// Import tipe link secara spesifik agar tidak error
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
+// ✅ PENTING: Import ini wajib ada agar INFER_TYPE dikenali
+import com.lagradost.cloudstream3.utils.INFER_TYPE 
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -216,20 +216,17 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { source ->
             callback.invoke(
-                // PERBAIKAN: 
-                // 1. Menggunakan Named Arguments (name=, url=, etc) agar tidak salah urutan.
-                // 2. TIDAK menggunakan blok lambda {} agar tidak error "val cannot be reassigned".
-                // 3. Menggunakan referer huruf kecil.
-                // 4. Tidak memaksa tipe INFER jika tidak dikenali, biarkan default atau gunakan VIDEO.
+                // ✅ PERBAIKAN: Menggunakan format asli dari file awal Anda
+                // Urutan: (source, name, url, type, lambda)
                 newExtractorLink(
-                    source = this.name,
-                    name = "Server ${source.resolutions}p",
-                    url = source.url ?: return@forEach,
-                    referer = "$playApiUrl/",
-                    quality = getQualityFromName(source.resolutions)
-                    // Jika INFER error lagi, hapus baris type di bawah ini
-                    // type = ExtractorLinkType.INFER 
-                )
+                    this.name,
+                    this.name,
+                    source.url ?: return@forEach,
+                    INFER_TYPE
+                ) {
+                    this.referer = "$playApiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
             )
         }
 
