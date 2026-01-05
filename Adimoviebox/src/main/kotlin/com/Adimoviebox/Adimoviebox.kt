@@ -224,4 +224,165 @@ class Adimoviebox : MainAPI() {
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
         val playHeaders = mapOf(
-            "authority
+            "authority" to "filmboom.top",
+            "accept" to "application/json",
+            "origin" to "https://filmboom.top",
+            "referer" to playReferer,
+            "user-agent" to (commonHeaders["user-agent"] ?: ""),
+            "x-request-lang" to "en"
+        )
+
+        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+
+        val response = app.get(targetUrl, headers = playHeaders).parsedSafe<Media>()
+
+        response?.data?.streams?.forEach { source ->
+            val streamUrl = source.url ?: return@forEach
+            callback.invoke(
+                newExtractorLink(
+                    this.name,
+                    this.name,
+                    streamUrl,
+                    INFER_TYPE
+                ) {
+                    this.referer = "$playApiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
+            )
+        }
+
+        val firstStream = response?.data?.streams?.firstOrNull()
+        val videoId = firstStream?.id
+        val format = firstStream?.format
+
+        if (videoId != null && format != null) {
+            val captionUrl = "$playApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$videoId&subjectId=${media.id}"
+            app.get(captionUrl, headers = playHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        subtitle.lanName ?: "Unknown",
+                        subtitle.url ?: return@forEach
+                    )
+                )
+            }
+        }
+
+        return true
+    }
+
+} 
+
+// --- Data Classes ---
+
+data class LoadData(
+    val id: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val detailPath: String? = null,
+)
+
+data class HomeResponse(
+    @JsonProperty("data") val data: HomeData? = null
+)
+
+data class HomeData(
+    @JsonProperty("operatingList") val operatingList: ArrayList<HomeModule>? = arrayListOf()
+)
+
+data class HomeModule(
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("subjects") val subjects: ArrayList<Items>? = arrayListOf()
+)
+
+data class Media(
+    @JsonProperty("data") val data: Data? = null,
+) {
+    data class Data(
+        @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+        @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
+        @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
+    ) {
+        data class Streams(
+            @JsonProperty("id") val id: String? = null,
+            @JsonProperty("format") val format: String? = null,
+            @JsonProperty("url") val url: String? = null,
+            @JsonProperty("resolutions") val resolutions: String? = null,
+        )
+
+        data class Captions(
+            @JsonProperty("lan") val lan: String? = null,
+            @JsonProperty("lanName") val lanName: String? = null,
+            @JsonProperty("url") val url: String? = null,
+        )
+    }
+}
+
+data class MediaDetail(
+    @JsonProperty("data") val data: Data? = null,
+) {
+    data class Data(
+        @JsonProperty("subject") val subject: Items? = null,
+        @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
+        @JsonProperty("resource") val resource: Resource? = null,
+    ) {
+        data class Stars(
+            @JsonProperty("name") val name: String? = null,
+            @JsonProperty("character") val character: String? = null,
+            @JsonProperty("avatarUrl") val avatarUrl: String? = null,
+        )
+
+        data class Resource(
+            @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+        ) {
+            data class Seasons(
+                @JsonProperty("se") val se: Int? = null,
+                @JsonProperty("maxEp") val maxEp: Int? = null,
+                @JsonProperty("allEp") val allEp: String? = null,
+            )
+        }
+    }
+}
+
+data class Items(
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("duration") val duration: Long? = null,
+    @JsonProperty("genre") val genre: String? = null,
+    @JsonProperty("cover") val cover: Cover? = null,
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("countryName") val countryName: String? = null,
+    @JsonProperty("trailer") val trailer: Trailer? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null,
+) {
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
+        val finalId = subjectId ?: id ?: return null
+        val url = "${provider.mainUrl}/detail/${finalId}"
+
+        return provider.newMovieSearchResponse(
+            title ?: "No Title",
+            url,
+            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
+            false
+        ) {
+            this.posterUrl = cover?.url
+            this.score = Score.from10(imdbRatingValue)
+        }
+    }
+
+    data class Cover(
+        @JsonProperty("url") val url: String? = null,
+    )
+
+    data class Trailer(
+        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+    ) {
+        data class VideoAddress(
+            @JsonProperty("url") val url: String? = null,
+        )
+    }
+}
