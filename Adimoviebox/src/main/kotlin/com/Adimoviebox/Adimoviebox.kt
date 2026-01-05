@@ -26,47 +26,34 @@ class Adimoviebox : MainAPI() {
     private val trendingApi = "https://h5-api.aoneroom.com"
     private val contentApi = "https://filmboom.top"
 
-    // Mengembalikan kategori lama sesuai permintaan
+    // Menggunakan Dynamic Home karena Manual Filter (/web/filter) terbukti ERROR di logcat
     override val mainPage: List<MainPageData> = mainPageOf(
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "1,Rating" to "Movie Rating",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "2,Rating" to "TVShow Rating",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest",
-        "1006,Rating" to "Animation Rating",
+        "home" to "Home"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val params = request.data.split(",")
-        val channelId = params.first()
-        val sort = params.last()
-        val pageNum = if (page <= 1) 0 else page - 1
+        if (page > 1) return HomePageResponse(emptyList())
 
-        val body = mapOf(
-            "channelId" to channelId,
-            "page" to pageNum,
-            "perPage" to 24,
-            "sort" to sort
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        // Mengambil data kategori otomatis dari server (Satu-satunya cara yang terbukti ada datanya)
+        val url = "$trendingApi/wefeed-h5api-bff/web/home?host=moviebox.ph"
+        val response = app.get(url).parsedSafe<HomeDataResponse>()
 
-        val url = "$contentApi/wefeed-h5-bff/web/filter"
-        
-        val response = app.post(url, requestBody = body).parsedSafe<MediaResponse>()
-            ?: throw ErrorLoadingException("No Data Found")
-            
-        val films = response.data?.itemsList?.map { it.toSearchResponse(this) } 
-            ?: throw ErrorLoadingException("Empty List")
+        val homeLists = ArrayList<HomePageList>()
 
-        return newHomePageResponse(request.name, films, true)
+        response?.data?.operatingList?.forEach { section ->
+            if (!section.subjects.isNullOrEmpty()) {
+                val title = section.title ?: "Featured"
+                val films = section.subjects.map { it.toSearchResponse(this) }
+                homeLists.add(HomePageList(title, films))
+            }
+        }
+
+        if (homeLists.isEmpty()) throw ErrorLoadingException("No Data Found")
+
+        return HomePageResponse(homeLists)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -103,6 +90,7 @@ class Adimoviebox : MainAPI() {
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val trailer = subject?.trailer?.videoAddress?.url
 
+        // Menggunakan ActorData manual
         val actors = response.stars?.mapNotNull { star ->
             val name = star.name ?: return@mapNotNull null
             val image = star.avatarUrl
@@ -170,25 +158,22 @@ class Adimoviebox : MainAPI() {
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
         
         response?.streams?.forEach { stream ->
-            val streamUrl = stream.url ?: return@forEach
+            val url = stream.url ?: return@forEach
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
-            
-            // PERBAIKAN FINAL:
-            // 1. Menggunakan newExtractorLink(source, name, url, type, lambda)
-            // 2. Type di-set NULL agar tidak error "Prerelease API"
-            // 3. Referer dan Quality di-set di dalam lambda
-            
+            val isM3u8 = url.contains(".m3u8")
+
+            // PERBAIKAN: Menggunakan Constructor langsung, bukan fungsi pembantu
+            // Ini menghindari error "Too many arguments" atau "Deprecated"
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    "MovieBox $qualityStr",
-                    streamUrl,
-                    null // Type null agar aman
-                ) {
-                    this.referer = "$contentApi/"
-                    this.quality = quality
-                }
+                ExtractorLink(
+                    source = this.name,
+                    name = "MovieBox $qualityStr",
+                    url = url,
+                    referer = "$contentApi/",
+                    quality = quality,
+                    isM3u8 = isM3u8
+                )
             )
         }
 
@@ -208,6 +193,20 @@ data class LinkData(
     val id: String,
     val season: Int,
     val episode: Int
+)
+
+data class HomeDataResponse(
+    @JsonProperty("data") val data: HomeData? = null
+) {
+    data class HomeData(
+        @JsonProperty("operatingList") val operatingList: List<OperatingItem>? = null
+    )
+}
+
+data class OperatingItem(
+    @JsonProperty("type") val type: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("subjects") val subjects: List<SubjectItem>? = null
 )
 
 data class MediaResponse(
