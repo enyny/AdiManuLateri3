@@ -12,11 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    
-    // Server 1: Untuk Data Film (Home, Search, Detail)
     private val apiUrl = "https://h5-api.aoneroom.com"
-    
-    // Server 2: Khusus Untuk Nonton (Play Link)
     private val playApiUrl = "https://filmboom.top"
     
     override val instantLinkLoading = true
@@ -42,53 +38,57 @@ class Adimoviebox : MainAPI() {
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
-    // ✅ KATEGORI DIPERBARUI SESUAI SCREENSHOT WEBSITE
+    // ✅ DAFTAR KATEGORI SESUAI JSON ASLI
+    // Key dan Value sama agar mudah dicocokkan dengan "title" di JSON
     override val mainPage: List<MainPageData> = mainPageOf(
-        "trending" to "Trending 🔥",
-        "indo_movies" to "Trending Indonesian Movies",
-        "indo_drama" to "Trending Indonesian Drama 💗",
-        "short_tv" to "🔥Hot Short TV",
-        "kdrama" to "K-Drama: New Release",
-        "anime" to "Into Animeverse🌟",
-        "bromance" to "👩‍❤️‍💋‍👨Bromance",
-        "indo_killers" to "Indonesian Killers",
-        "upcoming" to "Upcoming Calendar",
-        "western" to "Western TV",
-        "funny_family" to "Keluargaku yang Lucu 🏠",
-        "hollywood" to "Hollywood Movies",
-        "rich_people" to "We Won't Be Eaten by the Rich!",
-        "animals" to "Cute World of Animals",
-        "cdrama" to "C-Drama",
-        "run_escape" to "Run!! 🩸Escape Death!",
-        "romance" to "No Regrets for Loving You",
-        "indo_dubbed" to "Must Watch Indo Dubbed",
-        "horror" to "Midnight Horror",
-        "action" to "HA! Nobody Can Defeat Me",
-        "cyberpunk" to "🎮 Cyberpunk World",
-        "animated" to "Animated Flim",
-        "monster" to "Awas! Monster & Titan",
-        "thai" to "Tredning Thai-Drama",
-        "fake_marriage" to "👰Fake Marriage"
+        "Trending🔥" to "Trending🔥",
+        "Trending Indonesian Movies" to "Trending Indonesian Movies",
+        "Trending Indonesian Drama💗" to "Trending Indonesian Drama💗",
+        "🔥Hot Short TV" to "🔥Hot Short TV",
+        "K-Drama: New Release" to "K-Drama: New Release",
+        "Into Animeverse🌟" to "Into Animeverse🌟",
+        "👨‍❤️‍👨 Bromance" to "👨‍❤️‍👨 Bromance",
+        "Indonesian Killers" to "Indonesian Killers",
+        "Upcoming Calendar" to "Upcoming Calendar",
+        "Western TV" to "Western TV",
+        "Keluargaku yang Lucu 🏠" to "Keluargaku yang Lucu 🏠",
+        "Hollywood Movies" to "Hollywood Movies",
+        "We Won’t Be Eaten by the Rich!" to "We Won’t Be Eaten by the Rich!",
+        "Cute World of Animals" to "Cute World of Animals",
+        "C-Drama" to "C-Drama",
+        "Run!! 🩸Escape Death!" to "Run!! 🩸Escape Death!",
+        "No Regrets for Loving You" to "No Regrets for Loving You",
+        "Must Watch Indo Dubbed" to "Must Watch Indo Dubbed",
+        "Midnight Horror" to "Midnight Horror",
+        "HA！Nobody Can Defeat Me" to "HA！Nobody Can Defeat Me",
+        "🎮 Cyberpunk World" to "🎮 Cyberpunk World",
+        "Animated Flim" to "Animated Flim",
+        "Awas! Monster & Titan" to "Awas! Monster & Titan",
+        "Tredning Thai-Drama" to "Tredning Thai-Drama",
+        "👰Fake Marriage" to "👰Fake Marriage"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Karena kita belum memiliki ID spesifik untuk setiap kategori (butuh cURL 'home'),
-        // kita menggunakan endpoint 'trending' agar semua kategori minimal menampilkan konten.
-        // Nanti jika ada cURL 'home', kita bisa filter berdasarkan request.data (nama kategori).
-        
-        val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/trending?page=$page&perPage=24"
-
-        val home = app.get(
-            targetUrl, 
+        // 1. Ambil data mentah dari API Home (yang isinya campur aduk semua kategori)
+        val response = app.get(
+            "$apiUrl/wefeed-h5api-bff/home?host=moviebox.ph", 
             headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.items?.map {
-            it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found on Home Page")
+        ).parsedSafe<HomeResponse>()
 
-        return newHomePageResponse(request.name, home)
+        // 2. Cari bagian yang judulnya (title) SAMA dengan kategori yang sedang diminta Cloudstream
+        val targetCategory = response?.data?.operatingList?.find { 
+            it.title?.trim() == request.name.trim() 
+        }
+
+        // 3. Ambil daftar film (subjects) dari kategori tersebut
+        val filmList = targetCategory?.subjects?.map {
+            it.toSearchResponse(this)
+        } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
+
+        return newHomePageResponse(request.name, filmList)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -102,7 +102,7 @@ class Adimoviebox : MainAPI() {
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed or returned no results.")
+            ?: throw ErrorLoadingException("Pencarian gagal atau tidak ada hasil.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -249,7 +249,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes ---
+// --- Data Classes Terbaru ---
 
 data class LoadData(
     val id: String? = null,
@@ -258,6 +258,21 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
+// Struktur Data untuk Respon Home Page
+data class HomeResponse(
+    @JsonProperty("data") val data: HomeData? = null
+)
+
+data class HomeData(
+    @JsonProperty("operatingList") val operatingList: ArrayList<HomeModule>? = arrayListOf()
+)
+
+data class HomeModule(
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("subjects") val subjects: ArrayList<Items>? = arrayListOf()
+)
+
+// Struktur Data Umum
 data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
