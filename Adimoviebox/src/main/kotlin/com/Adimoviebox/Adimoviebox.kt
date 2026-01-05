@@ -23,34 +23,45 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Domain untuk Halaman Utama (Trending) ditemukan dari screenshot 1002113717.jpg
+    // API untuk Halaman Utama (Home/Trending)
     private val trendingApi = "https://h5-api.aoneroom.com"
     
-    // Domain untuk Detail dan Play ditemukan dari screenshot 1002113731.jpg & 1002113741.jpg
+    // API untuk Detail & Video (Search, Detail, Play)
     private val contentApi = "https://filmboom.top"
 
+    // Kita hanya perlu satu tab "Home" karena isinya sudah dinamis (banyak kategori)
     override val mainPage: List<MainPageData> = mainPageOf(
-        "trending" to "Trending",
-        "hottest" to "Hottest",
-        "latest" to "Latest"
+        "home" to "Home"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Menggunakan domain h5-api.aoneroom.com sesuai log network
-        // URL: .../wefeed-h5api-bff/subject/trending?page=0&perPage=18
-        val endpoint = if (request.data == "trending") "trending" else "search"
-        val url = "$trendingApi/wefeed-h5api-bff/subject/trending?page=${page - 1}&perPage=18"
-        
-        val response = app.get(url).parsedSafe<MediaResponse>()
-        
-        val home = response?.data?.subjectList?.map {
-            it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        // Kita hanya ambil halaman 1 karena endpoint 'home' mengembalikan semua kategori sekaligus
+        if (page > 1) return HomePageResponse(emptyList())
 
-        return newHomePageResponse(request.name, home)
+        // Mengambil data struktur Home Page
+        val url = "$trendingApi/wefeed-h5api-bff/web/home?host=moviebox.ph"
+        val response = app.get(url).parsedSafe<HomeDataResponse>()
+
+        val homeLists = ArrayList<HomePageList>()
+
+        // Loop melalui 'operatingList' untuk mencari kategori film (SUBJECTS_MOVIE)
+        response?.data?.operatingList?.forEach { section ->
+            // Filter hanya tipe SUBJECTS_MOVIE yang punya daftar film
+            if (section.type == "SUBJECTS_MOVIE" && !section.subjects.isNullOrEmpty()) {
+                val title = section.title ?: "Untitled"
+                val films = section.subjects.map { it.toSearchResponse(this) }
+                
+                // Tambahkan sebagai baris baru di halaman utama
+                homeLists.add(HomePageList(title, films))
+            }
+        }
+
+        if (homeLists.isEmpty()) throw ErrorLoadingException("No Data Found")
+
+        return HomePageResponse(homeLists)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -62,19 +73,18 @@ class Adimoviebox : MainAPI() {
             "perPage" to 20
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Menggunakan contentApi karena search biasanya ada di domain utama aplikasi
+        // Search menggunakan contentApi (filmboom.top)
         val searchUrl = "$contentApi/wefeed-h5-bff/web/subject/everyone-search"
         
-        return app.post(searchUrl, requestBody = body).parsedSafe<MediaResponse>()?.data?.subjectList?.map {
+        return app.post(searchUrl, requestBody = body).parsedSafe<MediaResponse>()?.data?.items?.map {
             it.toSearchResponse(this)
         } ?: emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Mengambil ID dari URL dummy yang kita buat
         val id = url.substringAfter("id=")
         
-        // Menggunakan domain filmboom.top untuk detail
+        // Detail menggunakan contentApi
         val detailUrl = "$contentApi/wefeed-h5-bff/web/subject/detail?subjectId=$id"
         val response = app.get(detailUrl).parsedSafe<DetailResponse>()?.data 
             ?: throw ErrorLoadingException("Failed to load details")
@@ -85,9 +95,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         
-        // subjectType 1 = Movie, 2 = Series (Berdasarkan data JSON sebelumnya)
         val isMovie = subject?.subjectType == 1
-        val tvType = if (isMovie) TvType.Movie else TvType.TvSeries
         
         val rating = Score.from10(subject?.imdbRatingValue)
         val tags = subject?.genre?.split(",")?.map { it.trim() }
@@ -113,10 +121,8 @@ class Adimoviebox : MainAPI() {
         } else {
             val episodes = ArrayList<Episode>()
             
-            // Mengelola Episode Serial TV
             response.resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
-                // Jika allEp null, buat range dari 1 sampai maxEp
                 val epList = if (!season.allEp.isNullOrEmpty()) {
                     season.allEp.split(",").mapNotNull { it.toIntOrNull() }
                 } else {
@@ -156,13 +162,11 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val loadData = parseJson<LinkData>(data)
         
-        // Menggunakan domain filmboom.top untuk Play
-        // URL: .../web/subject/play?subjectId=...
+        // Play menggunakan contentApi
         val playUrl = "$contentApi/wefeed-h5-bff/web/subject/play?subjectId=${loadData.id}&se=${loadData.season}&ep=${loadData.episode}"
         
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
         
-        // Parsing link stream dari JSON response
         response?.streams?.forEach { stream ->
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
@@ -170,7 +174,7 @@ class Adimoviebox : MainAPI() {
             callback.invoke(
                 newExtractorLink(
                     this.name,
-                    "MovieBox $qualityStr", // Menampilkan resolusi (360, 480, 1080)
+                    "MovieBox $qualityStr",
                     stream.url ?: return@forEach,
                     Referer = "$contentApi/",
                     quality = quality
@@ -178,7 +182,6 @@ class Adimoviebox : MainAPI() {
             )
         }
 
-        // Parsing subtitle jika tersedia
         response?.captions?.forEach { sub ->
             subtitleCallback.invoke(
                 SubtitleFile(sub.lanName ?: "Unknown", sub.url ?: return@forEach)
@@ -189,7 +192,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (Disesuaikan dengan struktur JSON di screenshot) ---
+// --- DATA CLASSES (Diperbarui untuk Dynamic Home) ---
 
 data class LinkData(
     val id: String,
@@ -197,18 +200,37 @@ data class LinkData(
     val episode: Int
 )
 
+// Struktur Home Page
+data class HomeDataResponse(
+    @JsonProperty("data") val data: HomeData? = null
+) {
+    data class HomeData(
+        @JsonProperty("operatingList") val operatingList: List<OperatingItem>? = null
+    )
+}
+
+data class OperatingItem(
+    @JsonProperty("type") val type: String? = null, // "SUBJECTS_MOVIE", "FILTER", dll
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("subjects") val subjects: List<SubjectItem>? = null
+)
+
+// Struktur Search Response
 data class MediaResponse(
     @JsonProperty("data") val data: DataList? = null
 ) {
     data class DataList(
         @JsonProperty("subjectList") val subjectList: List<SubjectItem>? = null,
-        @JsonProperty("items") val items: List<SubjectItem>? = null
-    )
+        @JsonProperty("items") val items: List<SubjectItem>? = null // Search kadang pakai items
+    ) {
+        val list get() = subjectList ?: items ?: emptyList()
+    }
 }
 
+// Item Film (Dipakai di Home & Search)
 data class SubjectItem(
     @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("subjectType") val subjectType: Int? = null, // 1=Movie, 2=Series
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("description") val description: String? = null,
@@ -234,6 +256,7 @@ data class SubjectItem(
     }
 }
 
+// Detail & Play Response (Sama seperti sebelumnya)
 data class DetailResponse(
     @JsonProperty("data") val data: DetailData? = null
 ) {
@@ -279,7 +302,6 @@ data class Resource(
     )
 }
 
-// Class khusus untuk menangani JSON Play dari screenshot 1002113743.jpg
 data class PlayResponse(
     @JsonProperty("data") val data: PlayData? = null
 ) {
@@ -289,7 +311,7 @@ data class PlayResponse(
     ) {
         data class Stream(
             @JsonProperty("url") val url: String? = null,
-            @JsonProperty("resolutions") val resolutions: String? = null, // "360", "1080", dll
+            @JsonProperty("resolutions") val resolutions: String? = null,
             @JsonProperty("format") val format: String? = null
         )
 
