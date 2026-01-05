@@ -88,7 +88,6 @@ class Adimoviebox : MainAPI() {
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val trailer = subject?.trailer?.videoAddress?.url
 
-        // Perbaikan: Menggunakan ActorData agar sesuai dengan tipe data Cloudstream terbaru
         val actors = response.stars?.mapNotNull { star ->
             val name = star.name ?: return@mapNotNull null
             val image = star.avatarUrl
@@ -158,16 +157,20 @@ class Adimoviebox : MainAPI() {
         response?.streams?.forEach { stream ->
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
+            val streamUrl = stream.url ?: return@forEach
             
-            // Perbaikan: Menggunakan newExtractorLink dengan urutan parameter standar
-            // (source, name, url, referer, quality)
+            // Deteksi tipe link (M3U8 atau MP4/Video Biasa)
+            val type = if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+
+            // Menggunakan Named Arguments agar tidak error urutan parameter
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    "MovieBox $qualityStr",
-                    stream.url ?: return@forEach,
-                    "$contentApi/",
-                    quality
+                ExtractorLink(
+                    source = this.name,
+                    name = "MovieBox $qualityStr",
+                    url = streamUrl,
+                    referer = "$contentApi/",
+                    quality = quality,
+                    type = type
                 )
             )
         }
