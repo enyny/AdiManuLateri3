@@ -26,32 +26,52 @@ class Adimoviebox : MainAPI() {
     private val trendingApi = "https://h5-api.aoneroom.com"
     private val contentApi = "https://filmboom.top"
 
+    // ✅ KEMBALI KE KATEGORI LAMA
     override val mainPage: List<MainPageData> = mainPageOf(
-        "home" to "Home"
+        "1,ForYou" to "Movie ForYou",
+        "1,Hottest" to "Movie Hottest",
+        "1,Latest" to "Movie Latest",
+        "1,Rating" to "Movie Rating",
+        "2,ForYou" to "TVShow ForYou",
+        "2,Hottest" to "TVShow Hottest",
+        "2,Latest" to "TVShow Latest",
+        "2,Rating" to "TVShow Rating",
+        "1006,ForYou" to "Animation ForYou",
+        "1006,Hottest" to "Animation Hottest",
+        "1006,Latest" to "Animation Latest",
+        "1006,Rating" to "Animation Rating",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        if (page > 1) return newHomePageResponse(emptyList())
+        // Memecah parameter data (contoh: "1,ForYou" -> id=1, sort=ForYou)
+        val params = request.data.split(",")
+        val channelId = params.first()
+        val sort = params.last()
+        
+        // API baru menggunakan index halaman mulai dari 0 (Page 1 = 0)
+        val pageNum = if (page <= 1) 0 else page - 1
 
-        val url = "$trendingApi/wefeed-h5api-bff/web/home?host=moviebox.ph"
-        val response = app.get(url).parsedSafe<HomeDataResponse>()
+        val body = mapOf(
+            "channelId" to channelId,
+            "page" to pageNum,
+            "perPage" to 24,
+            "sort" to sort
+        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        val homeLists = ArrayList<HomePageList>()
+        // Menggunakan endpoint filter pada API baru (filmboom.top)
+        // Kita asumsikan path-nya mirip dengan API lama tapi di domain baru
+        val url = "$contentApi/wefeed-h5-bff/web/filter"
+        
+        val response = app.post(url, requestBody = body).parsedSafe<MediaResponse>()
+            ?: throw ErrorLoadingException("No Data Found")
+            
+        val films = response.data?.itemsList?.map { it.toSearchResponse(this) } 
+            ?: throw ErrorLoadingException("Empty List")
 
-        response?.data?.operatingList?.forEach { section ->
-            if (section.type == "SUBJECTS_MOVIE" && !section.subjects.isNullOrEmpty()) {
-                val title = section.title ?: "Untitled"
-                val films = section.subjects.map { it.toSearchResponse(this) }
-                homeLists.add(HomePageList(title, films))
-            }
-        }
-
-        if (homeLists.isEmpty()) throw ErrorLoadingException("No Data Found")
-
-        return newHomePageResponse(homeLists)
+        return newHomePageResponse(request.name, films, true)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -155,26 +175,21 @@ class Adimoviebox : MainAPI() {
         val response = app.get(playUrl).parsedSafe<PlayResponse>()?.data
         
         response?.streams?.forEach { stream ->
-            val streamUrl = stream.url ?: return@forEach
+            val url = stream.url ?: return@forEach
             val qualityStr = stream.resolutions ?: ""
             val quality = getQualityFromName(qualityStr)
             
-            // Logika Penentuan Tipe Link
-            val type = if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+            val isM3u8 = url.contains(".m3u8")
 
-            // PERBAIKAN UTAMA DI SINI:
-            // Referer dan Quality dimasukkan ke dalam blok lambda {} 
-            // Type dimasukkan sebagai parameter ke-4
             callback.invoke(
                 newExtractorLink(
-                    source = this.name,
-                    name = "MovieBox $qualityStr",
-                    url = streamUrl,
-                    type = type
-                ) {
-                    this.referer = "$contentApi/"
-                    this.quality = quality
-                }
+                    this.name,
+                    "MovieBox $qualityStr",
+                    url,
+                    "$contentApi/",
+                    quality,
+                    isM3u8
+                )
             )
         }
 
@@ -217,7 +232,7 @@ data class MediaResponse(
         @JsonProperty("subjectList") val subjectList: List<SubjectItem>? = null,
         @JsonProperty("items") val items: List<SubjectItem>? = null
     ) {
-        val list get() = subjectList ?: items ?: emptyList()
+        val itemsList get() = subjectList ?: items ?: emptyList()
     }
 }
 
