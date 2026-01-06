@@ -1,6 +1,5 @@
 package com.Adimoviebox
 
-// ❌ HAPUS: import android.util.Log (Ini penyebab error build)
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -19,8 +18,8 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // TAG untuk memfilter Logcat.
-    private val TAG = "AdimovieboxDebug"
+    // TAG untuk pencarian di Logcat. Cari kata: "AdimovieboxDebug"
+    private val DEBUG_TAG = "AdimovieboxDebug"
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -42,9 +41,14 @@ class Adimoviebox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
         "content-type" to "application/json",
-        // Peringatan: Token hardcoded bisa kedaluwarsa.
+        // HATI-HATI: Token statis ini mungkin kadaluwarsa.
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
+
+    // Fungsi bantuan untuk logging aman (System.out)
+    private fun debugLog(message: String) {
+        println("$DEBUG_TAG: $message")
+    }
 
     override val mainPage: List<MainPageData> = mainPageOf(
         "Trending🔥" to "Trending🔥",
@@ -64,14 +68,13 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val url = "$apiUrl/wefeed-h5api-bff/home?host=moviebox.ph"
-        // ✅ GANTI Log.d dengan println agar lolos check CrossPlatform
-        println("$TAG: === GET MAIN PAGE ===")
-        println("$TAG: Requesting: ${request.name} from URL: $url")
+        debugLog("=== GET MAIN PAGE ===")
+        debugLog("Requesting: ${request.name} from URL: $url")
 
         try {
             val responseText = app.get(url, headers = commonHeaders).text
-            // Log sebagian response
-            println("$TAG: Raw Response (First 500 chars): ${responseText.take(500)}")
+            // Log 500 karakter pertama untuk memastikan data masuk
+            debugLog("Raw Response (Partial): ${responseText.take(500)}")
 
             val response = parseJson<HomeResponse>(responseText)
             
@@ -80,9 +83,9 @@ class Adimoviebox : MainAPI() {
             }
 
             if (targetCategory == null) {
-                println("$TAG: [ERROR] Category '${request.name}' NOT FOUND in response operatingList.")
+                debugLog("[ERROR] Category '${request.name}' NOT FOUND.")
                 val availableTitles = response.data?.operatingList?.map { it.title }?.joinToString()
-                println("$TAG: Available categories: $availableTitles")
+                debugLog("Available categories: $availableTitles")
                 throw ErrorLoadingException("Kategori ${request.name} tidak ditemukan")
             }
 
@@ -90,12 +93,12 @@ class Adimoviebox : MainAPI() {
                 it.toSearchResponse(this)
             } ?: emptyList()
 
-            println("$TAG: Found ${filmList.size} items for category ${request.name}")
+            debugLog("Found ${filmList.size} items for category ${request.name}")
             
             return newHomePageResponse(request.name, filmList)
 
         } catch (e: Exception) {
-            println("$TAG: [ERROR] Error in getMainPage: ${e.message}")
+            debugLog("[CRITICAL ERROR] getMainPage: ${e.message}")
             e.printStackTrace()
             throw ErrorLoadingException("Error loading Main Page: ${e.message}")
         }
@@ -105,8 +108,8 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/wefeed-h5api-bff/subject/search-suggest"
-        println("$TAG: === SEARCH ===")
-        println("$TAG: Query: $query -> URL: $url")
+        debugLog("=== SEARCH ===")
+        debugLog("Query: $query -> URL: $url")
 
         try {
             val rawJson = app.post(
@@ -118,43 +121,45 @@ class Adimoviebox : MainAPI() {
                 headers = commonHeaders
             ).text
 
-            println("$TAG: Search Raw Response: $rawJson")
+            debugLog("Search Raw Response: $rawJson")
 
             val parsed = parseJson<Media>(rawJson)
             val items = parsed.data?.items?.map { it.toSearchResponse(this) }
             
-            println("$TAG: Search result count: ${items?.size ?: 0}")
+            debugLog("Search result count: ${items?.size ?: 0}")
             
             return items ?: throw ErrorLoadingException("Search failed or returned no results.")
         } catch (e: Exception) {
-            println("$TAG: [ERROR] Search Error: ${e.message}")
+            debugLog("[ERROR] Search Error: ${e.message}")
             return emptyList()
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        println("$TAG: === LOAD ===")
-        println("$TAG: Loading URL: $url")
+        debugLog("=== LOAD ===")
+        debugLog("Loading URL: $url")
         val id = url.substringAfterLast("/")
-        println("$TAG: Extracted ID: $id")
+        debugLog("Extracted ID: $id")
 
         try {
             val detailUrl = "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id"
             val rawResponse = app.get(detailUrl, headers = commonHeaders).text
-            println("$TAG: Detail Raw Response (First 500): ${rawResponse.take(500)}")
+            debugLog("Detail Raw Response (Partial): ${rawResponse.take(500)}")
 
             val document = parseJson<MediaDetail>(rawResponse).data
             val subject = document?.subject
 
             if (subject == null) {
-                println("$TAG: [ERROR] Subject data is NULL. Parsing failed or API changed.")
+                debugLog("[ERROR] Subject data is NULL. Parsing failed.")
                 throw ErrorLoadingException("Failed to parse movie details")
             }
 
             val title = subject.title ?: ""
-            println("$TAG: Title found: $title")
+            debugLog("Title found: $title")
             
             val poster = subject.cover?.url
+            debugLog("Poster URL found: $poster") // Cek apakah poster null di sini
+            
             val tags = subject.genre?.split(",")?.map { it.trim() }
             val year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
             val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie
@@ -175,12 +180,12 @@ class Adimoviebox : MainAPI() {
                     headers = commonHeaders
                 ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             } catch (e: Exception) {
-                println("$TAG: [WARN] Failed to load recommendations: ${e.message}")
+                debugLog("[WARN] Failed to load recommendations: ${e.message}")
                 null
             }
 
             if (tvType == TvType.TvSeries) {
-                println("$TAG: Processing as TV Series")
+                debugLog("Processing as TV Series")
                 val episode = document.resource?.seasons?.map { seasons ->
                     (if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 0)) else seasons.allEp.split(",")
                         .map { it.toInt() })
@@ -210,7 +215,7 @@ class Adimoviebox : MainAPI() {
                     addTrailer(trailer, addRaw = true)
                 }
             } else {
-                println("$TAG: Processing as Movie")
+                debugLog("Processing as Movie")
                 return newMovieLoadResponse(
                     title,
                     url,
@@ -228,7 +233,7 @@ class Adimoviebox : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            println("$TAG: [CRITICAL] Error in LOAD: ${e.message}")
+            debugLog("[CRITICAL] Error in LOAD: ${e.message}")
             e.printStackTrace()
             throw ErrorLoadingException("Load Error: ${e.message}")
         }
@@ -240,8 +245,8 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        println("$TAG: === LOAD LINKS ===")
-        println("$TAG: Input Data: $data")
+        debugLog("=== LOAD LINKS ===")
+        debugLog("Input Data: $data")
 
         try {
             val media = parseJson<LoadData>(data)
@@ -260,25 +265,23 @@ class Adimoviebox : MainAPI() {
 
             val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
             
-            println("$TAG: Fetching Stream URL: $targetUrl")
-            println("$TAG: With Referer: $playReferer")
-
-            // Fetching Raw to debug errors
+            debugLog("Fetching Stream URL: $targetUrl")
+            
             val rawResponse = app.get(targetUrl, headers = playHeaders).text
-            println("$TAG: Stream Raw Response: $rawResponse")
+            debugLog("Stream Raw Response: $rawResponse")
 
             val response = parseJson<Media>(rawResponse)
             val streams = response.data?.streams
 
             if (streams.isNullOrEmpty()) {
-                println("$TAG: [ERROR] No streams found in response!")
+                debugLog("[ERROR] No streams found in response! Check Authorization or Headers.")
                 return false
             }
 
-            println("$TAG: Found ${streams.size} streams. Processing...")
+            debugLog("Found ${streams.size} streams. Processing...")
 
             streams.forEach { source ->
-                println("$TAG: Processing source: ${source.resolutions}, URL: ${source.url}")
+                debugLog("Source: ${source.resolutions}, URL: ${source.url}")
                 callback.invoke(
                     newExtractorLink(
                         this.name,
@@ -296,7 +299,7 @@ class Adimoviebox : MainAPI() {
             val format = streams.firstOrNull()?.format
 
             if (videoId != null) {
-                println("$TAG: Fetching captions for VideoID: $videoId")
+                debugLog("Fetching captions for VideoID: $videoId")
                 val captionUrl = "$playApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$videoId&subjectId=${media.id}"
                 app.get(captionUrl, headers = playHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
                     subtitleCallback.invoke(
@@ -310,7 +313,7 @@ class Adimoviebox : MainAPI() {
 
             return true
         } catch (e: Exception) {
-            println("$TAG: [ERROR] Error in LoadLinks: ${e.message}")
+            debugLog("[ERROR] Error in LoadLinks: ${e.message}")
             e.printStackTrace()
             return false
         }
@@ -407,7 +410,10 @@ data class Items(
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val finalId = subjectId ?: id ?: ""
         val url = "${provider.mainUrl}/detail/${finalId}"
-
+        
+        // Debugging poster di sini tidak ideal karena akan spam log,
+        // tapi kita pastikan cover?.url digunakan.
+        
         return provider.newMovieSearchResponse(
             title ?: "",
             url,
