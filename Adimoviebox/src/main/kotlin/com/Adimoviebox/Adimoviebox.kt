@@ -10,6 +10,9 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+// Wajib import ini agar INFER_TYPE dikenali
+import com.lagradost.cloudstream3.utils.INFER_TYPE 
+
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://h5-api.aoneroom.com"
@@ -27,7 +30,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header wajib untuk API baru (Menggabungkan kebutuhan autentikasi Baru)
+    // Header lengkap dengan Authorization
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -80,8 +83,8 @@ class Adimoviebox : MainAPI() {
             it.title?.trim() == request.name.trim() 
         }
 
+        // Menggunakan mapNotNull untuk menghindari item null yang bikin crash
         val filmList = targetCategory?.subjects?.mapNotNull {
-            // Menggunakan mapNotNull untuk menghindari item crash jika data rusak
             it.toSearchResponse(this)
         } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
 
@@ -99,7 +102,7 @@ class Adimoviebox : MainAPI() {
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
         ).parsedSafe<Media>()?.data?.items?.mapNotNull { 
-             // mapNotNull untuk keamanan
+            // Menggunakan mapNotNull untuk keamanan
             it.toSearchResponse(this) 
         } ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
@@ -115,7 +118,7 @@ class Adimoviebox : MainAPI() {
         val subject = document?.subject
         val title = subject?.title ?: ""
         
-        // FIX: Pastikan poster tidak null untuk mencegah Coil Error
+        // PENTING: Ambil poster dengan aman
         val poster = subject?.cover?.url
         
         val tags = subject?.genre?.split(",")?.map { it.trim() }
@@ -143,7 +146,6 @@ class Adimoviebox : MainAPI() {
                     it.toSearchResponse(this)
                 }
 
-        // Struktur Load Response diadaptasi dari AdimovieboxLama agar lebih rapi
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -201,9 +203,13 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
+        // --- LOGGING DEBUG START (Cari 'ADILOG' di Logcat) ---
+        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+        System.out.println("ADILOG_TARGET: $targetUrl")
+        // --- LOGGING DEBUG END ---
+
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        // Headers khusus untuk Player (mengikuti struktur Baru tapi logic lama)
         val playHeaders = mapOf(
             "authority" to "filmboom.top",
             "accept" to "application/json",
@@ -214,16 +220,28 @@ class Adimoviebox : MainAPI() {
             "x-request-lang" to "en"
         )
 
-        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+        // Kita ambil response sebagai TEXT dulu untuk melihat isinya di Logcat jika error
+        val responseText = try {
+            app.get(targetUrl, headers = playHeaders).text
+        } catch (e: Exception) {
+            System.out.println("ADILOG_CONN_ERROR: ${e.message}")
+            return false
+        }
 
-        val streams = app.get(
-            targetUrl,
-            headers = playHeaders
-        ).parsedSafe<Media>()?.data?.streams
+        // --- LOGGING RESPONSE ---
+        System.out.println("ADILOG_RESPONSE: $responseText")
+        // ------------------------
 
-        // ✅ LOGIC LAMA DITERAPKAN DI SINI:
-        // Menggunakan reversed() dan distinctBy() seperti di AdimovieboxLama
-        // Ini membantu memastikan kualitas terbaik dipilih dan tidak ada duplikat
+        val response = try {
+             parseJson<Media>(responseText)
+        } catch (e: Exception) {
+            System.out.println("ADILOG_PARSE_ERROR: ${e.message}")
+            null
+        }
+
+        val streams = response?.data?.streams
+        System.out.println("ADILOG_STREAM_COUNT: ${streams?.size ?: 0}")
+
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
                 newExtractorLink(
@@ -257,7 +275,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes ---
+// --- DATA CLASSES ---
 
 data class LoadData(
     val id: String? = null,
@@ -345,8 +363,8 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
-        // Mencegah SearchResponse dibuat jika ID kosong, menghindari crash
         val finalId = subjectId ?: id
+        // Jika ID kosong, skip item ini (return null)
         if (finalId.isNullOrEmpty()) return null
 
         val url = "${provider.mainUrl}/detail/${finalId}"
@@ -357,10 +375,8 @@ data class Items(
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
-            // FIX: Mengatasi error Coil NullRequestDataException
-            // Jika cover.url null, jangan set posterUrl atau set string kosong
+            // FIX: Jangan set posterUrl jika cover null
             this.posterUrl = cover?.url
-            
             this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
