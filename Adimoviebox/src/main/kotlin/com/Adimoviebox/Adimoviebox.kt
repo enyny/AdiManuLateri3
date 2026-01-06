@@ -2,7 +2,6 @@ package com.Adimoviebox
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -11,7 +10,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-// Import wajib
+// --- IMPORT DARI CONTOH ADICINEMAX21 ---
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.utils.INFER_TYPE 
 
 class Adimoviebox : MainAPI() {
@@ -19,8 +21,8 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // API Key diambil dari Adicinemax21.kt
-    private val tmdbApiKey = "b030404650f279792a8d3287232358e3" 
+    // API Key TMDB dari file Adicinemax21.kt
+    private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     
     override val instantLinkLoading = true
@@ -95,7 +97,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // 1. Ambil Data ASLI MovieBox (Wajib untuk Link)
+        // 1. Ambil Data ASLI MovieBox (Wajib untuk Player)
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
             headers = commonHeaders
@@ -107,7 +109,7 @@ class Adimoviebox : MainAPI() {
         val isSeries = subject?.subjectType == 2
         val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
         
-        // --- 2. LOGIKA HYBRID TMDB ---
+        // --- 2. LOGIKA HYBRID TMDB (Seperti Adicinemax21) ---
         var finalPoster = subject?.cover?.url
         var finalPlot = subject?.description
         var finalBackground: String? = null
@@ -115,15 +117,17 @@ class Adimoviebox : MainAPI() {
         var finalTags = subject?.genre?.split(",")?.map { it.trim() }
         var finalActors: List<ActorData>? = null
         var finalRecommendations: List<SearchResponse>? = null
+        var tmdbIdFound: Int? = null
         
         try {
-            // A. Cari ID TMDB berdasarkan Judul & Tahun
+            // A. Cari ID TMDB
             val searchType = if (isSeries) "tv" else "movie"
             val query = URLEncoder.encode(originalTitle, "UTF-8")
             val searchUrl = "$tmdbBaseUrl/search/$searchType?api_key=$tmdbApiKey&query=$query"
             
             val tmdbSearch = app.get(searchUrl).parsedSafe<TmdbSearchResponse>()
             
+            // Cocokkan Judul & Tahun (+/- 1 tahun toleransi)
             val match = tmdbSearch?.results?.find { 
                 val releaseDate = it.release_date ?: it.first_air_date
                 val year = releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -131,11 +135,14 @@ class Adimoviebox : MainAPI() {
             } ?: tmdbSearch?.results?.firstOrNull()
 
             if (match != null) {
+                tmdbIdFound = match.id
+                
                 // B. Ambil Detail Lengkap TMDB
                 val detailUrl = "$tmdbBaseUrl/$searchType/${match.id}?api_key=$tmdbApiKey&append_to_response=credits,recommendations,images"
                 val tmdbDetail = app.get(detailUrl).parsedSafe<TmdbDetailResponse>()
 
                 if (tmdbDetail != null) {
+                    // Update Metadata
                     finalPoster = "https://image.tmdb.org/t/p/w500${tmdbDetail.poster_path}"
                     if (tmdbDetail.backdrop_path != null) {
                         finalBackground = "https://image.tmdb.org/t/p/original${tmdbDetail.backdrop_path}"
@@ -154,10 +161,10 @@ class Adimoviebox : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            // Fallback silent ke data MovieBox jika TMDB error
+            // Jika error TMDB, diam saja dan gunakan data MovieBox
         }
 
-        // --- 3. REKOMENDASI ASLI MOVIEBOX ---
+        // --- 3. REKOMENDASI ASLI MOVIEBOX (Fallback) ---
         if (finalRecommendations == null) {
             finalRecommendations = app.get(
                 "$apiUrl/wefeed-h5api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -167,6 +174,7 @@ class Adimoviebox : MainAPI() {
             }
         }
 
+        // Fallback Actor
         if (finalActors == null) {
             finalActors = document.stars?.mapNotNull { cast ->
                 ActorData(
@@ -205,7 +213,12 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                addTrailer(trailer, addRaw = true)
+                
+                // Tambahkan ID TMDB jika ditemukan (Cara Adicinemax21)
+                if (tmdbIdFound != null) {
+                    addTMDbId(tmdbIdFound.toString())
+                }
+                addTrailer(subject?.trailer?.videoAddress?.url)
             }
         } else {
             newMovieLoadResponse(
@@ -222,7 +235,12 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                addTrailer(trailer, addRaw = true)
+                
+                // Tambahkan ID TMDB jika ditemukan (Cara Adicinemax21)
+                if (tmdbIdFound != null) {
+                    addTMDbId(tmdbIdFound.toString())
+                }
+                addTrailer(subject?.trailer?.videoAddress?.url)
             }
         }
     }
@@ -238,7 +256,6 @@ class Adimoviebox : MainAPI() {
         // --- LOGGING DEBUG START ---
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
         System.out.println("ADILOG_TARGET: $targetUrl")
-        // --- LOGGING DEBUG END ---
 
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
