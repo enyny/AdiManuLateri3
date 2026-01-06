@@ -10,9 +10,6 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// ✅ PENTING: Import ini wajib ada agar INFER_TYPE dikenali
-import com.lagradost.cloudstream3.utils.INFER_TYPE 
-
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://h5-api.aoneroom.com"
@@ -30,6 +27,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // Header wajib untuk API baru (Menggabungkan kebutuhan autentikasi Baru)
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -82,7 +80,8 @@ class Adimoviebox : MainAPI() {
             it.title?.trim() == request.name.trim() 
         }
 
-        val filmList = targetCategory?.subjects?.map {
+        val filmList = targetCategory?.subjects?.mapNotNull {
+            // Menggunakan mapNotNull untuk menghindari item crash jika data rusak
             it.toSearchResponse(this)
         } ?: throw ErrorLoadingException("Kategori tidak ditemukan atau kosong")
 
@@ -99,8 +98,10 @@ class Adimoviebox : MainAPI() {
                 "perPage" to 20
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull()),
             headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed or returned no results.")
+        ).parsedSafe<Media>()?.data?.items?.mapNotNull { 
+             // mapNotNull untuk keamanan
+            it.toSearchResponse(this) 
+        } ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -113,14 +114,17 @@ class Adimoviebox : MainAPI() {
 
         val subject = document?.subject
         val title = subject?.title ?: ""
+        
+        // FIX: Pastikan poster tidak null untuk mencegah Coil Error
         val poster = subject?.cover?.url
+        
         val tags = subject?.genre?.split(",")?.map { it.trim() }
-
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
+        
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -135,10 +139,11 @@ class Adimoviebox : MainAPI() {
             app.get(
                 "$apiUrl/wefeed-h5api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
                 headers = commonHeaders
-            ).parsedSafe<Media>()?.data?.items?.map {
+            ).parsedSafe<Media>()?.data?.items?.mapNotNull {
                     it.toSearchResponse(this)
                 }
 
+        // Struktur Load Response diadaptasi dari AdimovieboxLama agar lebih rapi
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -157,6 +162,7 @@ class Adimoviebox : MainAPI() {
                         }
                     }
             }?.flatten() ?: emptyList()
+            
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 this.year = year
@@ -197,6 +203,7 @@ class Adimoviebox : MainAPI() {
         
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
+        // Headers khusus untuk Player (mengikuti struktur Baru tapi logic lama)
         val playHeaders = mapOf(
             "authority" to "filmboom.top",
             "accept" to "application/json",
@@ -209,19 +216,20 @@ class Adimoviebox : MainAPI() {
 
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
 
-        val response = app.get(
+        val streams = app.get(
             targetUrl,
             headers = playHeaders
-        ).parsedSafe<Media>()
+        ).parsedSafe<Media>()?.data?.streams
 
-        response?.data?.streams?.forEach { source ->
+        // ✅ LOGIC LAMA DITERAPKAN DI SINI:
+        // Menggunakan reversed() dan distinctBy() seperti di AdimovieboxLama
+        // Ini membantu memastikan kualitas terbaik dipilih dan tidak ada duplikat
+        streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
-                // ✅ PERBAIKAN: Menggunakan format asli dari file awal Anda
-                // Urutan: (source, name, url, type, lambda)
                 newExtractorLink(
                     this.name,
                     this.name,
-                    source.url ?: return@forEach,
+                    source.url ?: return@map,
                     INFER_TYPE
                 ) {
                     this.referer = "$playApiUrl/"
@@ -230,8 +238,8 @@ class Adimoviebox : MainAPI() {
             )
         }
 
-        val videoId = response?.data?.streams?.firstOrNull()?.id
-        val format = response?.data?.streams?.firstOrNull()?.format
+        val videoId = streams?.firstOrNull()?.id
+        val format = streams?.firstOrNull()?.format
 
         if (videoId != null) {
             val captionUrl = "$playApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$videoId&subjectId=${media.id}"
@@ -336,17 +344,23 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
-    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        val finalId = subjectId ?: id ?: ""
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
+        // Mencegah SearchResponse dibuat jika ID kosong, menghindari crash
+        val finalId = subjectId ?: id
+        if (finalId.isNullOrEmpty()) return null
+
         val url = "${provider.mainUrl}/detail/${finalId}"
 
         return provider.newMovieSearchResponse(
-            title ?: "",
+            title ?: "Unknown",
             url,
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
+            // FIX: Mengatasi error Coil NullRequestDataException
+            // Jika cover.url null, jangan set posterUrl atau set string kosong
             this.posterUrl = cover?.url
+            
             this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
