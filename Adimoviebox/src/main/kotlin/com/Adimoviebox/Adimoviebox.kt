@@ -10,10 +10,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-// Import wajib untuk fitur TMDB & Trailer
+// Import wajib
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.utils.INFER_TYPE 
 
 class Adimoviebox : MainAPI() {
@@ -21,7 +20,7 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // API Key TMDB (Dari Adicinemax21)
+    // API Key TMDB
     private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     
@@ -37,7 +36,6 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Authorization dikembalikan karena server menolak jika kosong
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -97,10 +95,11 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        val targetUrl = "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id"
+        
+        // FIX: Menambahkan &host=moviebox.ph agar server mengenali request
+        val targetUrl = "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id&host=moviebox.ph"
         
         // --- ADILOG DEBUG START ---
-        // Kita ambil response text mentah untuk melihat pesan error server
         System.out.println("ADILOG_LOAD_URL: $targetUrl")
         
         val responseText = try {
@@ -110,13 +109,11 @@ class Adimoviebox : MainAPI() {
             throw ErrorLoadingException("Koneksi Error: ${e.message}")
         }
 
-        // Cetak isi response ke Logcat
         System.out.println("ADILOG_LOAD_RES: $responseText")
         // --- ADILOG DEBUG END ---
 
-        // Cek manual jika token expired
-        if (responseText.contains("401") || responseText.contains("Unauthorized")) {
-             throw ErrorLoadingException("Token Expired. Silakan lapor pembuat plugin.")
+        if (responseText.contains("404 page not found")) {
+             throw ErrorLoadingException("Halaman tidak ditemukan (404). URL Salah.")
         }
 
         val document = try {
@@ -264,7 +261,6 @@ class Adimoviebox : MainAPI() {
         
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        // Menggunakan Header lengkap (Auth) untuk link juga, untuk jaga-jaga
         val playHeaders = commonHeaders + mapOf(
             "authority" to "filmboom.top",
             "referer" to playReferer
