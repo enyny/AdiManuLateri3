@@ -10,7 +10,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-// --- IMPORT DARI CONTOH ADICINEMAX21 ---
+// Import wajib
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
@@ -21,8 +21,8 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // API Key TMDB dari file Adicinemax21.kt
-    private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
+    // API Key TMDB
+    private val tmdbApiKey = "b030404650f279792a8d3287232358e3" 
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     
     override val instantLinkLoading = true
@@ -37,6 +37,8 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // FIX: Menghapus Authorization Token yang expired.
+    // Menggunakan header minimalis seperti AdimovieboxLama.
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -44,8 +46,7 @@ class Adimoviebox : MainAPI() {
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
-        "content-type" to "application/json",
-        "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
+        "content-type" to "application/json"
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -96,12 +97,29 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
+        val targetUrl = "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id"
         
-        // 1. Ambil Data ASLI MovieBox (Wajib untuk Player)
-        val document = app.get(
-            "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id",
-            headers = commonHeaders
-        ).parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Gagal memuat data MovieBox")
+        // --- LOGGING DEBUG UNTUK LOAD ---
+        // Kita gunakan try-catch manual untuk melihat error aslinya di Logcat
+        val responseText = try {
+            app.get(targetUrl, headers = commonHeaders).text
+        } catch (e: Exception) {
+            System.out.println("ADILOG_LOAD_ERROR: ${e.message}")
+            throw ErrorLoadingException("Koneksi Gagal: ${e.message}")
+        }
+
+        // Cek apakah response valid JSON
+        if (responseText.contains("\"code\":401") || responseText.contains("Unauthorized")) {
+            System.out.println("ADILOG_AUTH_FAIL: Token Expired")
+            throw ErrorLoadingException("Token Expired - Update Plugin")
+        }
+
+        val document = try {
+            parseJson<MediaDetail>(responseText).data 
+        } catch (e: Exception) {
+            System.out.println("ADILOG_PARSE_FAIL: $responseText")
+            null
+        } ?: throw ErrorLoadingException("Gagal memuat data MovieBox (Data Null)")
 
         val subject = document.subject
         val originalTitle = subject?.title ?: ""
@@ -109,7 +127,7 @@ class Adimoviebox : MainAPI() {
         val isSeries = subject?.subjectType == 2
         val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
         
-        // --- 2. LOGIKA HYBRID TMDB (Seperti Adicinemax21) ---
+        // --- 2. LOGIKA HYBRID TMDB ---
         var finalPoster = subject?.cover?.url
         var finalPlot = subject?.description
         var finalBackground: String? = null
@@ -120,14 +138,12 @@ class Adimoviebox : MainAPI() {
         var tmdbIdFound: Int? = null
         
         try {
-            // A. Cari ID TMDB
             val searchType = if (isSeries) "tv" else "movie"
             val query = URLEncoder.encode(originalTitle, "UTF-8")
             val searchUrl = "$tmdbBaseUrl/search/$searchType?api_key=$tmdbApiKey&query=$query"
             
             val tmdbSearch = app.get(searchUrl).parsedSafe<TmdbSearchResponse>()
             
-            // Cocokkan Judul & Tahun (+/- 1 tahun toleransi)
             val match = tmdbSearch?.results?.find { 
                 val releaseDate = it.release_date ?: it.first_air_date
                 val year = releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -136,13 +152,10 @@ class Adimoviebox : MainAPI() {
 
             if (match != null) {
                 tmdbIdFound = match.id
-                
-                // B. Ambil Detail Lengkap TMDB
                 val detailUrl = "$tmdbBaseUrl/$searchType/${match.id}?api_key=$tmdbApiKey&append_to_response=credits,recommendations,images"
                 val tmdbDetail = app.get(detailUrl).parsedSafe<TmdbDetailResponse>()
 
                 if (tmdbDetail != null) {
-                    // Update Metadata
                     finalPoster = "https://image.tmdb.org/t/p/w500${tmdbDetail.poster_path}"
                     if (tmdbDetail.backdrop_path != null) {
                         finalBackground = "https://image.tmdb.org/t/p/original${tmdbDetail.backdrop_path}"
@@ -161,10 +174,9 @@ class Adimoviebox : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            // Jika error TMDB, diam saja dan gunakan data MovieBox
+            // Silent fallback
         }
 
-        // --- 3. REKOMENDASI ASLI MOVIEBOX (Fallback) ---
         if (finalRecommendations == null) {
             finalRecommendations = app.get(
                 "$apiUrl/wefeed-h5api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -174,7 +186,6 @@ class Adimoviebox : MainAPI() {
             }
         }
 
-        // Fallback Actor
         if (finalActors == null) {
             finalActors = document.stars?.mapNotNull { cast ->
                 ActorData(
@@ -184,7 +195,6 @@ class Adimoviebox : MainAPI() {
             }?.distinctBy { it.actor }
         }
 
-        // --- 4. RETURN LOAD RESPONSE ---
         return if (tvType == TvType.TvSeries) {
             val episode = document.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -213,11 +223,7 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                
-                // Tambahkan ID TMDB jika ditemukan (Cara Adicinemax21)
-                if (tmdbIdFound != null) {
-                    addTMDbId(tmdbIdFound.toString())
-                }
+                if (tmdbIdFound != null) addTMDbId(tmdbIdFound.toString())
                 addTrailer(subject?.trailer?.videoAddress?.url)
             }
         } else {
@@ -235,11 +241,7 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                
-                // Tambahkan ID TMDB jika ditemukan (Cara Adicinemax21)
-                if (tmdbIdFound != null) {
-                    addTMDbId(tmdbIdFound.toString())
-                }
+                if (tmdbIdFound != null) addTMDbId(tmdbIdFound.toString())
                 addTrailer(subject?.trailer?.videoAddress?.url)
             }
         }
@@ -253,12 +255,14 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // --- LOGGING DEBUG START ---
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
         System.out.println("ADILOG_TARGET: $targetUrl")
 
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
+        // Headers untuk Player mungkin MASIH butuh Authorization?
+        // Kita coba pakai commonHeaders (tanpa auth) dulu.
+        // Jika gagal, berarti player butuh token fresh.
         val playHeaders = mapOf(
             "authority" to "filmboom.top",
             "accept" to "application/json",
@@ -385,7 +389,7 @@ data class Items(
     }
 }
 
-// --- DATA CLASSES TMDB (Simple) ---
+// --- DATA CLASSES TMDB ---
 data class TmdbSearchResponse(val results: List<TmdbResult>?)
 data class TmdbResult(val id: Int, val title: String?, val name: String?, val release_date: String?, val first_air_date: String?)
 data class TmdbDetailResponse(val id: Int, val poster_path: String?, val backdrop_path: String?, val overview: String?, val vote_average: Double?, val genres: List<TmdbGenre>?, val credits: TmdbCredits?)
