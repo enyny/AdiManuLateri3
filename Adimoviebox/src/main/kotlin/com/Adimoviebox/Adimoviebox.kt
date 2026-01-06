@@ -19,12 +19,12 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // API Key TMDB (Public/Shared Key - Sebaiknya ganti dengan milik sendiri jika limit habis)
-    private val tmdbApiKey = "95f089a42da44321946c96562092d6e6" 
+    // API Key diambil dari Adicinemax21.kt
+    private val tmdbApiKey = "b030404650f279792a8d3287232358e3" 
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     
     override val instantLinkLoading = true
-    override var name = "Adimoviebox (TMDB)"
+    override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
@@ -92,7 +92,6 @@ class Adimoviebox : MainAPI() {
         } ?: throw ErrorLoadingException("Search failed")
     }
 
-    // --- FUNGSI LOAD MODIFIKASI (TMDB INTEGRATION) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
@@ -116,8 +115,7 @@ class Adimoviebox : MainAPI() {
         var finalTags = subject?.genre?.split(",")?.map { it.trim() }
         var finalActors: List<ActorData>? = null
         var finalRecommendations: List<SearchResponse>? = null
-        var tmdbId: Int? = null
-
+        
         try {
             // A. Cari ID TMDB berdasarkan Judul & Tahun
             val searchType = if (isSeries) "tv" else "movie"
@@ -126,23 +124,18 @@ class Adimoviebox : MainAPI() {
             
             val tmdbSearch = app.get(searchUrl).parsedSafe<TmdbSearchResponse>()
             
-            // Cari hasil yang paling cocok (match Title & Year)
             val match = tmdbSearch?.results?.find { 
                 val releaseDate = it.release_date ?: it.first_air_date
                 val year = releaseDate?.substringBefore("-")?.toIntOrNull()
-                // Toleransi tahun +/- 1 karena kadang tanggal rilis beda negara
                 year == originalYear || year == (originalYear?.plus(1)) || year == (originalYear?.minus(1))
-            } ?: tmdbSearch?.results?.firstOrNull() // Fallback ke hasil pertama jika tidak ada match tahun
+            } ?: tmdbSearch?.results?.firstOrNull()
 
             if (match != null) {
-                tmdbId = match.id
-                
-                // B. Ambil Detail Lengkap TMDB (Credits, Recommendations, Images)
+                // B. Ambil Detail Lengkap TMDB
                 val detailUrl = "$tmdbBaseUrl/$searchType/${match.id}?api_key=$tmdbApiKey&append_to_response=credits,recommendations,images"
                 val tmdbDetail = app.get(detailUrl).parsedSafe<TmdbDetailResponse>()
 
                 if (tmdbDetail != null) {
-                    // Update Metadata dengan Data TMDB
                     finalPoster = "https://image.tmdb.org/t/p/w500${tmdbDetail.poster_path}"
                     if (tmdbDetail.backdrop_path != null) {
                         finalBackground = "https://image.tmdb.org/t/p/original${tmdbDetail.backdrop_path}"
@@ -151,7 +144,6 @@ class Adimoviebox : MainAPI() {
                     finalScore = Score.from10(tmdbDetail.vote_average?.toString())
                     finalTags = tmdbDetail.genres?.map { it.name ?: "" }
 
-                    // Actors dari TMDB
                     finalActors = tmdbDetail.credits?.cast?.mapNotNull { 
                         if (it.profile_path == null) return@mapNotNull null
                         ActorData(
@@ -159,20 +151,13 @@ class Adimoviebox : MainAPI() {
                             roleString = it.character
                         )
                     }
-
-                    // Rekomendasi dari TMDB (Perlu dimapping ulang ke SearchResponse dummy karena linknya tidak bisa diklik lgsg ke MovieBox)
-                    // *Catatan: Rekomendasi TMDB sulit di-link ke MovieBox tanpa searching ulang.
-                    // Jadi sebaiknya kita tetap pakai rekomendasi MovieBox agar bisa diklik.
-                    // Namun, jika ingin tampilan saja, bisa pakai TMDB.
-                    // KEPUTUSAN: Tetap pakai rekomendasi MovieBox agar UX lancar.
                 }
             }
         } catch (e: Exception) {
-            System.out.println("TMDB_ERROR: ${e.message}")
-            // Jika error TMDB, biarkan menggunakan data MovieBox (Fallback)
+            // Fallback silent ke data MovieBox jika TMDB error
         }
 
-        // --- 3. PROSES REKOMENDASI ASLI MOVIEBOX (Agar bisa diklik) ---
+        // --- 3. REKOMENDASI ASLI MOVIEBOX ---
         if (finalRecommendations == null) {
             finalRecommendations = app.get(
                 "$apiUrl/wefeed-h5api-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
@@ -182,7 +167,6 @@ class Adimoviebox : MainAPI() {
             }
         }
 
-        // Fallback aktor dari MovieBox jika TMDB gagal
         if (finalActors == null) {
             finalActors = document.stars?.mapNotNull { cast ->
                 ActorData(
@@ -193,9 +177,6 @@ class Adimoviebox : MainAPI() {
         }
 
         // --- 4. RETURN LOAD RESPONSE ---
-        // Kita menggunakan Metadata (Poster, Plot, dll) dari TMDB (variable 'final...')
-        // TAPI Data LoadData (String JSON) MENGGUNAKAN ID MOVIEBOX ASLI
-        
         return if (tvType == TvType.TvSeries) {
             val episode = document.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -203,7 +184,7 @@ class Adimoviebox : MainAPI() {
                     .map { episode ->
                         newEpisode(
                             LoadData(
-                                id, // ID Asli MovieBox
+                                id,
                                 seasons.se,
                                 episode,
                                 subject?.detailPath
@@ -211,8 +192,6 @@ class Adimoviebox : MainAPI() {
                         ) {
                             this.season = seasons.se
                             this.episode = episode
-                            // Jika mau thumbnail episode dari TMDB, butuh request tambahan per season.
-                            // Untuk efisiensi, biarkan default atau tambah logika nanti.
                         }
                     }
             }?.flatten() ?: emptyList()
@@ -226,7 +205,7 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                this.tmdbId = tmdbId // Memberitahu CloudStream ID TMDB-nya (berguna untuk fitur tracking)
+                addTrailer(trailer, addRaw = true)
             }
         } else {
             newMovieLoadResponse(
@@ -243,7 +222,7 @@ class Adimoviebox : MainAPI() {
                 this.score = finalScore
                 this.actors = finalActors
                 this.recommendations = finalRecommendations
-                this.tmdbId = tmdbId
+                addTrailer(trailer, addRaw = true)
             }
         }
     }
@@ -254,10 +233,13 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Logika Link TETAP SAMA dengan yang sudah diperbaiki (Debug Version atau Clean Version)
-        // Karena kita mengirim 'LoadData' yang berisi ID MovieBox, fungsi ini akan bekerja normal.
-
         val media = parseJson<LoadData>(data)
+        
+        // --- LOGGING DEBUG START ---
+        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+        System.out.println("ADILOG_TARGET: $targetUrl")
+        // --- LOGGING DEBUG END ---
+
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
         val playHeaders = mapOf(
@@ -270,22 +252,18 @@ class Adimoviebox : MainAPI() {
             "x-request-lang" to "en"
         )
 
-        val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
-
-        // Debug Log
-        System.out.println("ADILOG_TARGET: $targetUrl")
-
         val responseText = try {
             app.get(targetUrl, headers = playHeaders).text
         } catch (e: Exception) {
-            System.out.println("ADILOG_ERR: ${e.message}")
+            System.out.println("ADILOG_CONN_ERROR: ${e.message}")
             return false
         }
-        
-        System.out.println("ADILOG_RES: $responseText")
+
+        System.out.println("ADILOG_RESPONSE: $responseText")
 
         val response = try { parseJson<Media>(responseText) } catch (e: Exception) { null }
         val streams = response?.data?.streams
+        System.out.println("ADILOG_STREAM_COUNT: ${streams?.size ?: 0}")
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
@@ -319,7 +297,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES MOVIEBOX ---
+// --- DATA CLASSES ---
 
 data class LoadData(
     val id: String? = null,
@@ -391,28 +369,9 @@ data class Items(
 }
 
 // --- DATA CLASSES TMDB (Simple) ---
-data class TmdbSearchResponse(
-    val results: List<TmdbResult>?
-)
-
-data class TmdbResult(
-    val id: Int,
-    val title: String?,
-    val name: String?, // TV Series uses 'name'
-    val release_date: String?,
-    val first_air_date: String? // TV Series
-)
-
-data class TmdbDetailResponse(
-    val id: Int,
-    val poster_path: String?,
-    val backdrop_path: String?,
-    val overview: String?,
-    val vote_average: Double?,
-    val genres: List<TmdbGenre>?,
-    val credits: TmdbCredits?
-)
-
+data class TmdbSearchResponse(val results: List<TmdbResult>?)
+data class TmdbResult(val id: Int, val title: String?, val name: String?, val release_date: String?, val first_air_date: String?)
+data class TmdbDetailResponse(val id: Int, val poster_path: String?, val backdrop_path: String?, val overview: String?, val vote_average: Double?, val genres: List<TmdbGenre>?, val credits: TmdbCredits?)
 data class TmdbGenre(val name: String?)
 data class TmdbCredits(val cast: List<TmdbCast>?)
 data class TmdbCast(val name: String?, val character: String?, val profile_path: String?)
