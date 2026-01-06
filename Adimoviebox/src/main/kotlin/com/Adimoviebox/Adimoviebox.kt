@@ -10,7 +10,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-// Import wajib
+// Import wajib untuk fitur TMDB & Trailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
@@ -21,8 +21,8 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://h5-api.aoneroom.com"
     private val playApiUrl = "https://filmboom.top"
     
-    // API Key TMDB
-    private val tmdbApiKey = "b030404650f279792a8d3287232358e3" 
+    // API Key TMDB (Dari Adicinemax21)
+    private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     
     override val instantLinkLoading = true
@@ -37,8 +37,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // FIX: Menghapus Authorization Token yang expired.
-    // Menggunakan header minimalis seperti AdimovieboxLama.
+    // Header Authorization dikembalikan karena server menolak jika kosong
     private val commonHeaders = mapOf(
         "accept" to "application/json",
         "origin" to "https://moviebox.ph",
@@ -46,7 +45,8 @@ class Adimoviebox : MainAPI() {
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en",
-        "content-type" to "application/json"
+        "content-type" to "application/json",
+        "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgwOTI1MjM4NzUxMDUzOTI2NTYsImF0cCI6MywiZXh0IjoiMTc2NzYxNTY5MCIsImV4cCI6MTc3NTM5MTY5MCwiaWF0IjoxNzY3NjE1MzkwfQ.p_U5qrxe_tQyI5RZJxZYcQD3SLqY-mUHVJd00M3vWU0"
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -99,27 +99,32 @@ class Adimoviebox : MainAPI() {
         val id = url.substringAfterLast("/")
         val targetUrl = "$apiUrl/wefeed-h5api-bff/web/subject/detail?subjectId=$id"
         
-        // --- LOGGING DEBUG UNTUK LOAD ---
-        // Kita gunakan try-catch manual untuk melihat error aslinya di Logcat
+        // --- ADILOG DEBUG START ---
+        // Kita ambil response text mentah untuk melihat pesan error server
+        System.out.println("ADILOG_LOAD_URL: $targetUrl")
+        
         val responseText = try {
             app.get(targetUrl, headers = commonHeaders).text
         } catch (e: Exception) {
-            System.out.println("ADILOG_LOAD_ERROR: ${e.message}")
-            throw ErrorLoadingException("Koneksi Gagal: ${e.message}")
+            System.out.println("ADILOG_LOAD_CONN_ERR: ${e.message}")
+            throw ErrorLoadingException("Koneksi Error: ${e.message}")
         }
 
-        // Cek apakah response valid JSON
-        if (responseText.contains("\"code\":401") || responseText.contains("Unauthorized")) {
-            System.out.println("ADILOG_AUTH_FAIL: Token Expired")
-            throw ErrorLoadingException("Token Expired - Update Plugin")
+        // Cetak isi response ke Logcat
+        System.out.println("ADILOG_LOAD_RES: $responseText")
+        // --- ADILOG DEBUG END ---
+
+        // Cek manual jika token expired
+        if (responseText.contains("401") || responseText.contains("Unauthorized")) {
+             throw ErrorLoadingException("Token Expired. Silakan lapor pembuat plugin.")
         }
 
         val document = try {
             parseJson<MediaDetail>(responseText).data 
         } catch (e: Exception) {
-            System.out.println("ADILOG_PARSE_FAIL: $responseText")
+            System.out.println("ADILOG_PARSE_ERR: ${e.message}")
             null
-        } ?: throw ErrorLoadingException("Gagal memuat data MovieBox (Data Null)")
+        } ?: throw ErrorLoadingException("Gagal parsing data MovieBox")
 
         val subject = document.subject
         val originalTitle = subject?.title ?: ""
@@ -127,7 +132,7 @@ class Adimoviebox : MainAPI() {
         val isSeries = subject?.subjectType == 2
         val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
         
-        // --- 2. LOGIKA HYBRID TMDB ---
+        // --- LOGIKA HYBRID TMDB ---
         var finalPoster = subject?.cover?.url
         var finalPlot = subject?.description
         var finalBackground: String? = null
@@ -174,7 +179,7 @@ class Adimoviebox : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            // Silent fallback
+            System.out.println("ADILOG_TMDB_ERR: ${e.message}")
         }
 
         if (finalRecommendations == null) {
@@ -256,35 +261,24 @@ class Adimoviebox : MainAPI() {
         val media = parseJson<LoadData>(data)
         
         val targetUrl = "$playApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
-        System.out.println("ADILOG_TARGET: $targetUrl")
-
+        
         val playReferer = "$playApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
-        // Headers untuk Player mungkin MASIH butuh Authorization?
-        // Kita coba pakai commonHeaders (tanpa auth) dulu.
-        // Jika gagal, berarti player butuh token fresh.
-        val playHeaders = mapOf(
+        // Menggunakan Header lengkap (Auth) untuk link juga, untuk jaga-jaga
+        val playHeaders = commonHeaders + mapOf(
             "authority" to "filmboom.top",
-            "accept" to "application/json",
-            "origin" to "https://filmboom.top",
-            "referer" to playReferer,
-            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-            "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
-            "x-request-lang" to "en"
+            "referer" to playReferer
         )
 
         val responseText = try {
             app.get(targetUrl, headers = playHeaders).text
         } catch (e: Exception) {
-            System.out.println("ADILOG_CONN_ERROR: ${e.message}")
+            System.out.println("ADILOG_LINK_ERR: ${e.message}")
             return false
         }
 
-        System.out.println("ADILOG_RESPONSE: $responseText")
-
         val response = try { parseJson<Media>(responseText) } catch (e: Exception) { null }
         val streams = response?.data?.streams
-        System.out.println("ADILOG_STREAM_COUNT: ${streams?.size ?: 0}")
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
