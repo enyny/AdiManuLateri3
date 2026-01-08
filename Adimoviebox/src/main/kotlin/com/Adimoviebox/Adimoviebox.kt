@@ -1,5 +1,6 @@
 package com.Adimoviebox
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -45,7 +46,6 @@ class Adimoviebox : MainAPI() {
         "x-request-lang" to "en"
     )
 
-    // Kita hanya butuh satu menu "Home" karena API akan memuat semua kategori
     override val mainPage = mainPageOf(
         "home" to "Home"
     )
@@ -54,12 +54,19 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse? {
+        // API Home memuat semua data sekaligus di halaman 1
         if (page > 1) return newHomePageResponse(emptyList(), hasNext = false)
 
-        val response = app.get(homeApiUrl, headers = headers).parsedSafe<HomeResponse>()
+        val response = try {
+            app.get(homeApiUrl, headers = headers).parsedSafe<HomeResponse>()
+        } catch (e: Exception) {
+            throw ErrorLoadingException("Gagal memuat Home: ${e.message}")
+        }
+
         val homePageList = ArrayList<HomePageList>()
 
         response?.data?.operatingList?.forEach { section ->
+            // Filter section yang tidak perlu
             if (section.type == "FILTER" || section.type == "SPORT_LIVE" || section.type == "CUSTOM_VIP") return@forEach
 
             val items = ArrayList<SearchResponse>()
@@ -72,6 +79,7 @@ class Adimoviebox : MainAPI() {
 
             sourceList?.forEach { item ->
                 val title = item.title ?: item.subject?.title
+                // Prioritas ID: subjectId > id
                 val id = item.subjectId ?: item.id
                 val coverUrl = item.image?.url ?: item.cover?.url ?: item.subject?.cover?.url
                 
@@ -87,7 +95,7 @@ class Adimoviebox : MainAPI() {
 
             if (items.isNotEmpty()) {
                 val sectionTitle = section.title ?: "Featured"
-                val isHorizontal = section.type == "BANNER" 
+                val isHorizontal = section.type == "BANNER"
                 
                 homePageList.add(
                     HomePageList(
@@ -98,6 +106,8 @@ class Adimoviebox : MainAPI() {
                 )
             }
         }
+
+        if (homePageList.isEmpty()) throw ErrorLoadingException("No Data Found (Token Expired?)")
 
         return newHomePageResponse(homePageList, hasNext = false)
     }
@@ -118,7 +128,7 @@ class Adimoviebox : MainAPI() {
             requestBody = body,
             headers = mapOf("Content-Type" to "application/json")
         ).parsedSafe<SearchData>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed or returned no results.")
+            ?: throw ErrorLoadingException("Pencarian gagal atau tidak ada hasil.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -126,17 +136,20 @@ class Adimoviebox : MainAPI() {
         val detailUrl = "$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id"
         
         val document = app.get(detailUrl).parsedSafe<MediaDetail>()?.data
-        val subject = document?.subject
-        
+            ?: throw ErrorLoadingException("Gagal memuat detail film")
+
+        val subject = document.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue?.toString())
         
-        val actors = document?.stars?.mapNotNull { cast ->
+        // Fix Rating/Score
+        val scoreVal = Score.from10(subject?.imdbRatingValue?.toString())
+        
+        val actors = document.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
                 roleString = cast.character
@@ -150,14 +163,14 @@ class Adimoviebox : MainAPI() {
         
         if (isTv) {
             val episodes = ArrayList<Episode>()
-            val seasonList = document?.resource?.seasons
+            val seasonList = document.resource?.seasons
             
             if (!seasonList.isNullOrEmpty()) {
                 seasonList.forEach { seasonData ->
                     val epList = if (seasonData.allEp.isNullOrEmpty()) {
                         (1..(seasonData.maxEp ?: 1)).toList()
                     } else {
-                        seasonData.allEp.split(",").mapNotNull { it.toIntOrNull() }
+                        seasonData.allEp?.split(",")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
                     }
                     
                     epList.forEach { epNum ->
@@ -181,7 +194,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // PERBAIKAN: Menggunakan this.score
+                this.score = scoreVal // PERBAIKAN: Menggunakan variable scoreVal
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -193,7 +206,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // PERBAIKAN: Menggunakan this.score
+                this.score = scoreVal // PERBAIKAN: Menggunakan variable scoreVal
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -210,6 +223,7 @@ class Adimoviebox : MainAPI() {
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
+        // Menggunakan apiUrl (fmoviesunblocked) untuk play
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -249,9 +263,13 @@ class Adimoviebox : MainAPI() {
 
     // ================= DATA CLASSES =================
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class HomeResponse(@JsonProperty("data") val data: HomeData? = null)
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingList>? = null)
     
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class OperatingList(
         @JsonProperty("type") val type: String? = null,
         @JsonProperty("title") val title: String? = null,
@@ -259,53 +277,72 @@ class Adimoviebox : MainAPI() {
         @JsonProperty("subjects") val subjects: List<HomeItem>? = null,
         @JsonProperty("customData") val customData: CustomDataSection? = null
     )
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class BannerSection(@JsonProperty("items") val items: List<HomeItem>? = null)
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class CustomDataSection(@JsonProperty("items") val items: List<HomeItem>? = null)
     
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class HomeItem(
         @JsonProperty("id") val id: String? = null,
         @JsonProperty("subjectId") val subjectId: String? = null,
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("image") val image: ImageObj? = null,
         @JsonProperty("cover") val cover: ImageObj? = null,
-        @JsonProperty("subject") val subject: Items? = null 
+        @JsonProperty("subject") val subject: Items? = null
     )
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class SearchData(@JsonProperty("data") val data: SearchInnerData? = null)
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class SearchInnerData(@JsonProperty("items") val items: List<Items>? = null)
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class Media(@JsonProperty("data") val data: MediaData? = null)
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class MediaData(
         @JsonProperty("items") val items: List<Items>? = null,
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf()
     ) {
+        @JsonIgnoreProperties(ignoreUnknown = true)
         data class Streams(
             @JsonProperty("id") val id: String? = null,
             @JsonProperty("format") val format: String? = null,
             @JsonProperty("url") val url: String? = null,
             @JsonProperty("resolutions") val resolutions: String? = null,
         )
+        @JsonIgnoreProperties(ignoreUnknown = true)
         data class Captions(
             @JsonProperty("lanName") val lanName: String? = null,
             @JsonProperty("url") val url: String? = null,
         )
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class MediaDetail(@JsonProperty("data") val data: MediaDetailData? = null)
+    
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class MediaDetailData(
         @JsonProperty("subject") val subject: Items? = null,
         @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
         @JsonProperty("resource") val resource: Resource? = null,
     ) {
+        @JsonIgnoreProperties(ignoreUnknown = true)
         data class Stars(
             @JsonProperty("name") val name: String? = null,
             @JsonProperty("character") val character: String? = null,
             @JsonProperty("avatarUrl") val avatarUrl: String? = null,
         )
+        @JsonIgnoreProperties(ignoreUnknown = true)
         data class Resource(
             @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
         ) {
+            @JsonIgnoreProperties(ignoreUnknown = true)
             data class Seasons(
                 @JsonProperty("se") val se: Int? = null,
                 @JsonProperty("maxEp") val maxEp: Int? = null,
@@ -314,6 +351,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class Items(
         @JsonProperty("subjectId") val subjectId: String? = null,
         @JsonProperty("id") val id: String? = null,
@@ -342,8 +380,10 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class ImageObj(@JsonProperty("url") val url: String? = null)
     
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class Trailer(
         @JsonProperty("videoAddress") val videoAddress: ImageObj? = null,
     )
