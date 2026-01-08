@@ -14,9 +14,8 @@ class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://fmoviesunblocked.net"
     
-    // URL API Baru
+    // URL API Baru (Sesuai dengan sumber data aplikasi asli di screenshot)
     private val homeApiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff/home?host=moviebox.ph"
-    private val trendingApiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff/subject/trending"
 
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -30,7 +29,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header lengkap dengan Authorization Token
+    // Token & Header
     private val headers = mapOf(
         "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
@@ -46,68 +45,25 @@ class Adimoviebox : MainAPI() {
         "x-request-lang" to "en"
     )
 
-    // Menu Utama Sederhana: Home (Dinamis) & Trending (API Khusus)
+    // Kita hanya butuh satu menu "Home" karena API akan memuat semua kategori
     override val mainPage = mainPageOf(
-        "home" to "Home (Sesuai Aplikasi)",
-        "trending" to "🔥 Semua Trending"
+        "home" to "Home"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse? {
-        val items = ArrayList<HomePageList>()
-
-        // === 1. LOGIKA HALAMAN TRENDING (OPSIONAL) ===
-        if (request.data == "trending") {
-            val pageNum = if (page <= 1) 0 else page - 1
-            val url = "$trendingApiUrl?page=$pageNum&perPage=18"
-            
-            val response = app.get(url, headers = headers).parsedSafe<TrendingResponse>()
-            val trendingItems = ArrayList<SearchResponse>()
-
-            response?.data?.subjectList?.forEach { item ->
-                val title = item.title ?: ""
-                val id = item.subjectId ?: ""
-                val coverUrl = item.cover?.url ?: ""
-                val type = if (item.subjectType == 2) TvType.TvSeries else TvType.Movie
-                
-                if (title.isNotEmpty() && id.isNotEmpty()) {
-                    val searchResponse = if (type == TvType.TvSeries) {
-                        newTvSeriesSearchResponse(title, "$mainUrl/detail/$id", TvType.TvSeries) {
-                            this.posterUrl = coverUrl
-                            this.quality = SearchQuality.HD
-                        }
-                    } else {
-                        newMovieSearchResponse(title, "$mainUrl/detail/$id", TvType.Movie) {
-                            this.posterUrl = coverUrl
-                            this.quality = SearchQuality.HD
-                        }
-                    }
-                    trendingItems.add(searchResponse)
-                }
-            }
-
-            if (trendingItems.isNotEmpty()) {
-                items.add(HomePageList("Trending Now", trendingItems, isHorizontalImages = false))
-            }
-            
-            return newHomePageResponse(items, hasNext = true)
-        }
-
-        // === 2. LOGIKA HALAMAN HOME (SESUAI SCREENSHOT) ===
         if (page > 1) return newHomePageResponse(emptyList(), hasNext = false)
 
-        // Mengambil data dari API Home yang berisi semua kategori (Bromance, Killers, dll)
         val response = app.get(homeApiUrl, headers = headers).parsedSafe<HomeResponse>()
-        
+        val homePageList = ArrayList<HomePageList>()
+
         response?.data?.operatingList?.forEach { section ->
-            // Filter tipe yang tidak ingin ditampilkan (misal: tombol filter atau iklan VIP)
             if (section.type == "FILTER" || section.type == "SPORT_LIVE" || section.type == "CUSTOM_VIP") return@forEach
 
-            val sectionItems = ArrayList<SearchResponse>()
+            val items = ArrayList<SearchResponse>()
             
-            // Ambil daftar film dari berbagai struktur JSON yang mungkin ada
             val sourceList = when (section.type) {
                 "BANNER" -> section.banner?.items
                 "CUSTOM" -> section.customData?.items
@@ -115,14 +71,12 @@ class Adimoviebox : MainAPI() {
             }
 
             sourceList?.forEach { item ->
-                // Fallback untuk judul dan gambar karena struktur JSON bisa berbeda-beda
                 val title = item.title ?: item.subject?.title
                 val id = item.subjectId ?: item.id
                 val coverUrl = item.image?.url ?: item.cover?.url ?: item.subject?.cover?.url
                 
-                // Pastikan item valid sebelum ditambahkan
                 if (!title.isNullOrEmpty() && !id.isNullOrEmpty() && id != "0") {
-                    sectionItems.add(
+                    items.add(
                         newMovieSearchResponse(title, "$mainUrl/detail/$id") {
                             this.posterUrl = coverUrl
                             this.quality = SearchQuality.HD
@@ -131,23 +85,21 @@ class Adimoviebox : MainAPI() {
                 }
             }
 
-            // Jika ada item, tambahkan sebagai kategori baru (Judul Kategori dari API)
-            if (sectionItems.isNotEmpty()) {
-                val categoryName = section.title ?: "Featured"
-                // Banner biasanya gambar lebar (horizontal)
+            if (items.isNotEmpty()) {
+                val sectionTitle = section.title ?: "Featured"
                 val isHorizontal = section.type == "BANNER" 
                 
-                items.add(
+                homePageList.add(
                     HomePageList(
-                        categoryName,
-                        sectionItems,
+                        sectionTitle,
+                        items,
                         isHorizontalImages = isHorizontal
                     )
                 )
             }
         }
 
-        return newHomePageResponse(items, hasNext = false)
+        return newHomePageResponse(homePageList, hasNext = false)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -171,8 +123,8 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        // Menggunakan endpoint detail lama (atau sesuaikan jika ada yang baru)
         val detailUrl = "$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id"
+        
         val document = app.get(detailUrl).parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
         
@@ -198,9 +150,8 @@ class Adimoviebox : MainAPI() {
         
         if (isTv) {
             val episodes = ArrayList<Episode>()
-            // Coba parsing episode dari struktur resource.seasons (logika lama)
-            // Jika kosong, buat dummy range
             val seasonList = document?.resource?.seasons
+            
             if (!seasonList.isNullOrEmpty()) {
                 seasonList.forEach { seasonData ->
                     val epList = if (seasonData.allEp.isNullOrEmpty()) {
@@ -210,8 +161,9 @@ class Adimoviebox : MainAPI() {
                     }
                     
                     epList.forEach { epNum ->
+                        val epData = LoadData(id, seasonData.se, epNum, subject?.detailPath).toJson()
                         episodes.add(
-                            newEpisode(LoadData(id, seasonData.se, epNum, subject?.detailPath).toJson()) {
+                            newEpisode(epData) {
                                 this.season = seasonData.se
                                 this.episode = epNum
                                 this.name = "Episode $epNum"
@@ -220,10 +172,8 @@ class Adimoviebox : MainAPI() {
                     }
                 }
             } else {
-                // Fallback jika tidak ada info season detail
-                episodes.add(newEpisode(LoadData(id, 1, 1, subject?.detailPath).toJson()) {
-                    this.name = "Episode 1"
-                })
+                val epData = LoadData(id, 1, 1, subject?.detailPath).toJson()
+                episodes.add(newEpisode(epData) { this.name = "Episode 1" })
             }
 
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
@@ -231,21 +181,19 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = score
+                this.score = score // PERBAIKAN: Menggunakan this.score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
             }
         } else {
-            return newMovieLoadResponse(
-                title, url, TvType.Movie, 
-                LoadData(id, detailPath = subject?.detailPath).toJson()
-            ) {
+            val movieData = LoadData(id, detailPath = subject?.detailPath).toJson()
+            return newMovieLoadResponse(title, url, TvType.Movie, movieData) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = score
+                this.score = score // PERBAIKAN: Menggunakan this.score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -260,10 +208,8 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        // Header referer penting agar tidak 403 Forbidden
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Menggunakan endpoint play yang lama (apiUrl = fmoviesunblocked)
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -283,7 +229,6 @@ class Adimoviebox : MainAPI() {
             )
         }
 
-        // Load Subtitles
         val id = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
         if (id != null && format != null) {
@@ -293,7 +238,7 @@ class Adimoviebox : MainAPI() {
             ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
                 subtitleCallback.invoke(
                     newSubtitleFile(
-                        subtitle.lanName ?: "",
+                        subtitle.lanName ?: "Unknown",
                         subtitle.url ?: return@map
                     )
                 )
@@ -304,7 +249,6 @@ class Adimoviebox : MainAPI() {
 
     // ================= DATA CLASSES =================
 
-    // --- Data Class untuk Home API Baru ---
     data class HomeResponse(@JsonProperty("data") val data: HomeData? = null)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingList>? = null)
     
@@ -318,21 +262,15 @@ class Adimoviebox : MainAPI() {
     data class BannerSection(@JsonProperty("items") val items: List<HomeItem>? = null)
     data class CustomDataSection(@JsonProperty("items") val items: List<HomeItem>? = null)
     
-    // Struktur item di Home bisa berbeda-beda
     data class HomeItem(
         @JsonProperty("id") val id: String? = null,
         @JsonProperty("subjectId") val subjectId: String? = null,
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("image") val image: ImageObj? = null,
         @JsonProperty("cover") val cover: ImageObj? = null,
-        @JsonProperty("subject") val subject: Items? = null // Reuse 'Items' class
+        @JsonProperty("subject") val subject: Items? = null 
     )
-    
-    // --- Data Class untuk Trending API ---
-    data class TrendingResponse(@JsonProperty("data") val data: TrendingData? = null)
-    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Items>? = null)
 
-    // --- Data Class Umum (Search & Detail) ---
     data class SearchData(@JsonProperty("data") val data: SearchInnerData? = null)
     data class SearchInnerData(@JsonProperty("items") val items: List<Items>? = null)
 
@@ -376,10 +314,9 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // Class utama untuk menampung properti film/serial
     data class Items(
         @JsonProperty("subjectId") val subjectId: String? = null,
-        @JsonProperty("id") val id: String? = null, // Kadang id ada di sini
+        @JsonProperty("id") val id: String? = null,
         @JsonProperty("subjectType") val subjectType: Int? = null,
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("description") val description: String? = null,
