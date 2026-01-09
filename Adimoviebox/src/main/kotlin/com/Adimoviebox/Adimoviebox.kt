@@ -29,31 +29,22 @@ class Adimoviebox : MainAPI() {
     // Mengubah nama kategori sesuai Screenshot
     override val mainPage: List<MainPageData> = mainPageOf(
         // Movie (Channel 1)
-        "Trending🔥" to "Trending🔥",
-        "Trending Indonesian Movies" to "Trending Indonesian Movies",
-        "Trending Indonesian Drama💗" to "Trending Indonesian Drama💗",
-        "🔥Hot Short TV" to "🔥Hot Short TV",
-        "K-Drama: New Release" to "K-Drama: New Release",
-        "Into Animeverse🌟" to "Into Animeverse🌟",
-        "👨‍❤️‍👨 Bromance" to "👨‍❤️‍👨 Bromance",
-        "Indonesian Killers" to "Indonesian Killers",
-        "Upcoming Calendar" to "Upcoming Calendar",
-        "Western TV" to "Western TV",
-        "Keluargaku yang Lucu 🏠" to "Keluargaku yang Lucu 🏠",
-        "Hollywood Movies" to "Hollywood Movies",
-        "We Won’t Be Eaten by the Rich!" to "We Won’t Be Eaten by the Rich!",
-        "Cute World of Animals" to "Cute World of Animals",
-        "C-Drama" to "C-Drama",
-        "Run!! 🩸Escape Death!" to "Run!! 🩸Escape Death!",
-        "No Regrets for Loving You" to "No Regrets for Loving You",
-        "Must Watch Indo Dubbed" to "Must Watch Indo Dubbed",
-        "Midnight Horror" to "Midnight Horror",
-        "HA！Nobody Can Defeat Me" to "HA！Nobody Can Defeat Me",
-        "🎮 Cyberpunk World" to "🎮 Cyberpunk World",
-        "Animated Flim" to "Animated Flim",
-        "Awas! Monster & Titan" to "Awas! Monster & Titan",
-        "Tredning Thai-Drama" to "Tredning Thai-Drama",
-        "👰Fake Marriage" to "👰Fake Marriage",
+        "1,Hottest" to "Hollywood Movies",
+        "1,Latest" to "Midnight Horror", // Mapping sementara ke Latest
+        "1,Rating" to "Indonesian Killers", // Mapping sementara ke Rating
+        "1,ForYou" to "We Won't Be Eaten by the Rich!",
+        
+        // TV Show (Channel 2)
+        "2,Hottest" to "Western TV",
+        "2,Latest" to "C-Drama",
+        "2,Rating" to "Trending Thai-Drama",
+        "2,ForYou" to "Run!! 🔥 Escape Death!",
+        
+        // Animation (Channel 1006)
+        "1006,Hottest" to "Animated Flim", // Sesuai typo di screenshot 'Flim'
+        "1006,Latest" to "Cute World of Animals",
+        "1006,Rating" to "Cyberpunk World",
+        "1006,ForYou" to "Awas! Monster & Titan",
     )
 
     override suspend fun getMainPage(
