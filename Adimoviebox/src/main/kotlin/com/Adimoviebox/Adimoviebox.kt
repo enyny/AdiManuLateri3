@@ -42,14 +42,14 @@ class Adimoviebox : MainAPI() {
     )
 
     // DAFTAR KATEGORI
-    // Kiri: Kata Kunci Pencarian (Untuk Cadangan)
-    // Kanan: Judul Tampilan di Aplikasi
+    // Kunci (Kiri) saya ubah menjadi TEKS UNIK yang pasti ada di judul asli.
+    // Saya HAPUS emoji di bagian Kunci agar pencocokan lebih akurat (Server kadang beda emoji).
     override val mainPage: List<MainPageData> = mainPageOf(
         "Trending" to "Trending🔥",
         "Indonesian Movies" to "Trending Indonesian Movies",
         "Indonesian Drama" to "Trending Indonesian Drama💗",
         "Short TV" to "🔥Hot Short TV",
-        "K-Drama" to "K-Drama: New Release",
+        "New Release" to "K-Drama: New Release", // Kunci: 'New Release' (lebih aman)
         "Animeverse" to "Into Animeverse🌟",
         "Bromance" to "👨‍❤️‍👨 Bromance",
         "Indonesian Killers" to "Indonesian Killers",
@@ -72,7 +72,7 @@ class Adimoviebox : MainAPI() {
         "Fake Marriage" to "👰Fake Marriage"
     )
 
-    // Cache sederhana untuk menyimpan data Home agar tidak request berulang-ulang
+    // Cache agar tidak spam request ke server
     private var homePageCache: List<Items> = emptyList()
 
     // Fungsi mengambil Data Home dari API Baru
@@ -80,8 +80,9 @@ class Adimoviebox : MainAPI() {
         if (homePageCache.isNotEmpty()) return homePageCache
 
         val allCategories = mutableListOf<Items>()
-        // Loop page 0-3 untuk memastikan semua kategori terambil
-        for (i in 0..3) {
+        // UPDATE: Scan lebih dalam sampai Page 4 (Total 5 Halaman)
+        // Ini memastikan kategori yang ada di bawah (seperti Thai-Drama) tetap ketemu.
+        for (i in 0..4) {
             try {
                 val response = app.get(
                     "$homeApiUrl/wefeed-h5api-bff/subject/trending?page=$i&perPage=20",
@@ -94,7 +95,10 @@ class Adimoviebox : MainAPI() {
             }
         }
         
-        homePageCache = allCategories
+        // Simpan ke cache jika berhasil dapat data
+        if (allCategories.isNotEmpty()) {
+            homePageCache = allCategories
+        }
         return allCategories
     }
 
@@ -102,34 +106,29 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // 1. Coba ambil data dari API Baru
+        // 1. Ambil data asli dari server
         val allData = fetchHomeCategories()
 
-        // 2. Cari kategori yang namanya MIRIP dengan request kita (Case Insensitive)
-        // Kita pakai request.data (Kata Kunci Kiri) untuk mencocokkan
-        var selectedCategory = allData.find { 
+        // 2. Cari kategori yang judulnya MENGANDUNG kata kunci kita
+        // Contoh: Judul Server "🔥Hot Short TV" mengandung Kunci "Short TV" -> MATCH!
+        val selectedCategory = allData.find { 
             val apiTitle = it.title?.lowercase() ?: ""
             val reqKey = request.data.lowercase()
-            apiTitle.contains(reqKey) || reqKey.contains(apiTitle)
+            apiTitle.contains(reqKey)
         }
 
-        // 3. LOGIKA CADANGAN (FALLBACK):
-        // Jika di API Baru tidak ketemu (kosong), kita cari manual pakai API Lama (Search)
-        // Ini menjamin film PASTI TAMPIL.
-        val movies = if (selectedCategory?.items.isNullOrEmpty()) {
-            // Panggil fungsi search() sebagai cadangan
-            search(request.data)
-        } else {
-            // Kalau ketemu di API Baru, pakai itu
-            selectedCategory?.items?.map { it.toSearchResponse(this) } ?: emptyList()
-        }
+        // 3. AMBIL DATA FILM
+        // PERBAIKAN: Saya HAPUS fallback search().
+        // Jika kategori tidak ketemu, biarkan kosong (Empty List).
+        // Ini mencegah munculnya film "SpongeBob" atau film acak lainnya.
+        val movies = selectedCategory?.items?.map { it.toSearchResponse(this) } ?: emptyList()
 
         return newHomePageResponse(request.name, movies)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
-    // Fungsi Search menggunakan API LAMA (Stabil)
+    // Fungsi Search tetap pakai API LAMA (Stabil)
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
             app.post(
