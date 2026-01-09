@@ -11,13 +11,13 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    // --- KONFIGURASI HYBRID ---
+    // --- KONFIGURASI UTAMA ---
     override var mainUrl = "https://moviebox.ph"
     
-    // 1. API LAMA (Tetap dipakai untuk Load & Play agar LANCAR)
+    // API LAMA (Stabil untuk Search, Detail, & Play)
     private val apiUrl = "https://filmboom.top" 
     
-    // 2. API BARU (Hanya dipakai untuk Home Page agar AKURAT)
+    // API BARU (Untuk Home Page agar Akurat)
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
@@ -32,62 +32,69 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Headers khusus untuk API Baru (Home) agar tidak diblokir
+    // Headers wajib untuk API Baru
     private val homeHeaders = mapOf(
         "Authority" to "h5-api.aoneroom.com",
         "Accept" to "application/json",
         "Origin" to "https://moviebox.ph",
         "Referer" to "https://moviebox.ph/",
-        "x-request-lang" to "en",
-        "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
+        "x-request-lang" to "en"
     )
 
     // DAFTAR KATEGORI
-    // Kita gunakan Nama Kategori sebagai ID, karena kita akan mencarinya di list "Trending"
+    // Kiri: Kata Kunci Pencarian (Untuk Cadangan)
+    // Kanan: Judul Tampilan di Aplikasi
     override val mainPage: List<MainPageData> = mainPageOf(
-        "Trending🔥" to "Trending🔥",
-        "Trending Indonesian Movies" to "Trending Indonesian Movies",
-        "Trending Indonesian Drama💗" to "Trending Indonesian Drama💗",
-        "🔥Hot Short TV" to "🔥Hot Short TV",
-        "K-Drama: New Release" to "K-Drama: New Release",
-        "Into Animeverse🌟" to "Into Animeverse🌟",
-        "👨‍❤️‍👨 Bromance" to "👨‍❤️‍👨 Bromance",
+        "Trending" to "Trending🔥",
+        "Indonesian Movies" to "Trending Indonesian Movies",
+        "Indonesian Drama" to "Trending Indonesian Drama💗",
+        "Short TV" to "🔥Hot Short TV",
+        "K-Drama" to "K-Drama: New Release",
+        "Animeverse" to "Into Animeverse🌟",
+        "Bromance" to "👨‍❤️‍👨 Bromance",
         "Indonesian Killers" to "Indonesian Killers",
-        "Upcoming Calendar" to "Upcoming Calendar",
+        "Upcoming" to "Upcoming Calendar",
         "Western TV" to "Western TV",
-        "Keluargaku yang Lucu 🏠" to "Keluargaku yang Lucu 🏠",
-        "Hollywood Movies" to "Hollywood Movies",
-        "We Won’t Be Eaten by the Rich!" to "We Won’t Be Eaten by the Rich!",
-        "Cute World of Animals" to "Cute World of Animals",
+        "Keluargaku yang Lucu" to "Keluargaku yang Lucu 🏠",
+        "Hollywood" to "Hollywood Movies",
+        "Eaten by the Rich" to "We Won’t Be Eaten by the Rich!",
+        "Animals" to "Cute World of Animals",
         "C-Drama" to "C-Drama",
-        "Run!! 🩸Escape Death!" to "Run!! 🩸Escape Death!",
-        "No Regrets for Loving You" to "No Regrets for Loving You",
-        "Must Watch Indo Dubbed" to "Must Watch Indo Dubbed",
-        "Midnight Horror" to "Midnight Horror",
-        "HA！Nobody Can Defeat Me" to "HA！Nobody Can Defeat Me",
-        "🎮 Cyberpunk World" to "🎮 Cyberpunk World",
-        "Animated Flim" to "Animated Flim",
-        "Awas! Monster & Titan" to "Awas! Monster & Titan",
-        "Tredning Thai-Drama" to "Tredning Thai-Drama",
-        "👰Fake Marriage" to "👰Fake Marriage"
+        "Escape Death" to "Run!! 🩸Escape Death!",
+        "No Regrets" to "No Regrets for Loving You",
+        "Indo Dubbed" to "Must Watch Indo Dubbed",
+        "Horror" to "Midnight Horror",
+        "Defeat Me" to "HA！Nobody Can Defeat Me",
+        "Cyberpunk" to "🎮 Cyberpunk World",
+        "Animated" to "Animated Flim",
+        "Monster" to "Awas! Monster & Titan",
+        "Thai-Drama" to "Tredning Thai-Drama",
+        "Fake Marriage" to "👰Fake Marriage"
     )
 
-    // Fungsi Pembantu: Mengambil Data Kategori dari API Baru (Home Only)
+    // Cache sederhana untuk menyimpan data Home agar tidak request berulang-ulang
+    private var homePageCache: List<Items> = emptyList()
+
+    // Fungsi mengambil Data Home dari API Baru
     private suspend fun fetchHomeCategories(): List<Items> {
+        if (homePageCache.isNotEmpty()) return homePageCache
+
         val allCategories = mutableListOf<Items>()
-        // Loop halaman 0 sampai 2 untuk mendapatkan semua section
-        for (i in 0..2) {
+        // Loop page 0-3 untuk memastikan semua kategori terambil
+        for (i in 0..3) {
             try {
                 val response = app.get(
-                    "$homeApiUrl/wefeed-h5api-bff/subject/trending?page=$i&perPage=18",
+                    "$homeApiUrl/wefeed-h5api-bff/subject/trending?page=$i&perPage=20",
                     headers = homeHeaders
                 ).parsedSafe<HomeMedia>()
                 
                 response?.data?.subjectList?.let { allCategories.addAll(it) }
             } catch (e: Exception) {
-                // Lanjut jika ada error di satu halaman
+                // Ignore error per page
             }
         }
+        
+        homePageCache = allCategories
         return allCategories
     }
 
@@ -95,44 +102,55 @@ class Adimoviebox : MainAPI() {
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Ambil semua kategori dari API BARU
+        // 1. Coba ambil data dari API Baru
         val allData = fetchHomeCategories()
 
-        // Cari kategori yang namanya SAMA dengan permintaan Cloudstream
-        val selectedCategory = allData.find { 
-            it.title?.trim() == request.name.trim() 
+        // 2. Cari kategori yang namanya MIRIP dengan request kita (Case Insensitive)
+        // Kita pakai request.data (Kata Kunci Kiri) untuk mencocokkan
+        var selectedCategory = allData.find { 
+            val apiTitle = it.title?.lowercase() ?: ""
+            val reqKey = request.data.lowercase()
+            apiTitle.contains(reqKey) || reqKey.contains(apiTitle)
         }
 
-        // Mapping film-film di dalamnya
-        val movies = selectedCategory?.items?.map {
-            // Kita pakai 'this' provider, jadi nanti detailnya akan pakai fungsi load() di bawah
-            it.toSearchResponse(this)
-        } ?: emptyList()
+        // 3. LOGIKA CADANGAN (FALLBACK):
+        // Jika di API Baru tidak ketemu (kosong), kita cari manual pakai API Lama (Search)
+        // Ini menjamin film PASTI TAMPIL.
+        val movies = if (selectedCategory?.items.isNullOrEmpty()) {
+            // Panggil fungsi search() sebagai cadangan
+            search(request.data)
+        } else {
+            // Kalau ketemu di API Baru, pakai itu
+            selectedCategory?.items?.map { it.toSearchResponse(this) } ?: emptyList()
+        }
 
         return newHomePageResponse(request.name, movies)
     }
 
-    // --- Search Tetap Pakai API Lama (Agar Stabil) ---
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
+    // Fungsi Search menggunakan API LAMA (Stabil)
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.post(
-            "$apiUrl/wefeed-h5-bff/web/subject/search", // API LAMA
-            requestBody = mapOf(
-                "keyword" to query,
-                "page" to "1",
-                "perPage" to "0",
-                "subjectType" to "0",
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Search failed")
+        return try {
+            app.post(
+                "$apiUrl/wefeed-h5-bff/web/subject/search",
+                requestBody = mapOf(
+                    "keyword" to query,
+                    "page" to "1",
+                    "perPage" to "20",
+                    "subjectType" to "0",
+                ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+                ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
-    // --- LOAD (Detail) Tetap Pakai API Lama (Sesuai Permintaan) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
 
-        // Request ke API LAMA ($apiUrl = filmboom.top)
+        // Detail menggunakan API LAMA
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
 
@@ -209,7 +227,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LOADLINKS (Player) Tetap Pakai API Lama (Sesuai Permintaan) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -218,10 +235,10 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer untuk API Lama
+        // Referer ke API Lama
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Request ke API LAMA
+        // Play menggunakan API LAMA
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -260,7 +277,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Class ---
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -269,7 +286,7 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
-// Data Class khusus untuk respons Home API Baru (Struktur beda dikit)
+// Struktur Data untuk API Baru (Home)
 data class HomeMedia(
     @JsonProperty("data") val data: Data? = null
 ) {
@@ -278,6 +295,7 @@ data class HomeMedia(
     )
 }
 
+// Struktur Data untuk API Lama (Search/Detail)
 data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
@@ -327,7 +345,7 @@ data class MediaDetail(
     }
 }
 
-// Items diperbarui agar bisa menampung Data dari API Lama DAN API Baru
+// Items Universal (Bisa dipakai API Baru & Lama)
 data class Items(
     @JsonProperty("subjectId") val subjectId: String? = null,
     @JsonProperty("subjectType") val subjectType: Int? = null,
@@ -342,7 +360,7 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
     
-    // Field Tambahan untuk API Home Baru (Nested Items)
+    // Field khusus API Baru (Nesting)
     @JsonProperty("items") val items: ArrayList<Items>? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
