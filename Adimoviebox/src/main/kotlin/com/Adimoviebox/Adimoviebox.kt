@@ -12,7 +12,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // Diperbarui berdasarkan cURL terbaru (filmboom.top)
     private val apiUrl = "https://filmboom.top"
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -26,42 +25,34 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // DAFTAR KATEGORI LENGKAP SESUAI SCREENSHOT
-    // Kita menggunakan ulang parameter API (Hottest/Latest/Rating/ForYou) 
-    // untuk menampilkan semua judul kategori unik dari situs asli.
+    // DAFTAR KATEGORI SESUAI URUTAN DAN JUDUL REQUEST KAMU
+    // Format: "ChannelID,Sort,Genre" to "Judul Tampilan"
     override val mainPage: List<MainPageData> = mainPageOf(
-        
-        // --- MOVIE SECTION (Channel 1) ---
-        "1,Hottest" to "Trending 🔥",
-        "1,Latest" to "Trending Indonesian Movies",
-        "1,Rating" to "Hollywood Movies",
-        "1,ForYou" to "Must Watch Indo Dubbed",
-        "1,Hottest" to "Indonesian Killers", // Reuse Hottest
-        "1,Latest" to "Midnight Horror",     // Reuse Latest
-        "1,Rating" to "We Won't Be Eaten by the Rich!", // Reuse Rating
-        "1,ForYou" to "No Regrets for Loving You",      // Reuse ForYou
-        "1,Hottest" to "Keluargaku yang Lucu 🏠",
-        "1,Latest" to "Most trending",
-
-        // --- TV SHOW / DRAMA SECTION (Channel 2) ---
-        "2,Hottest" to "Trending Indonesian Drama 💗",
-        "2,Latest" to "K-Drama: New Release",
-        "2,Rating" to "Western TV",
-        "2,ForYou" to "C-Drama",
-        "2,Hottest" to "Tredning Thai-Drama", // Typo 'Tredning' sesuai situs asli
-        "2,Latest" to "🔥Hot Short TV",
-        "2,Rating" to "👩‍❤️‍💋‍👩 Bromance",
-        "2,ForYou" to "👰Fake Marriage",
-        "2,Hottest" to "Run!! 🩸Escape Death!",
-        "2,Latest" to "Upcoming Calendar",
-
-        // --- ANIME & ANIMATION SECTION (Channel 1006) ---
-        "1006,Hottest" to "Into Animeverse 🌟",
-        "1006,Latest" to "Animated Flim", // Typo 'Flim' sesuai situs asli
-        "1006,Rating" to "HA! Nobody Can Defeat Me",
-        "1006,ForYou" to "Cyberpunk World",
-        "1006,Hottest" to "Cute World of Animals",
-        "1006,Latest" to "Awas! Monster & Titan"
+        "1,Hottest,All" to "Trending🔥",
+        "1,Latest,Drama" to "Trending Indonesian Movies",
+        "2,Hottest,Drama" to "Trending Indonesian Drama💗",
+        "2,Latest,All" to "🔥Hot Short TV",
+        "2,Latest,Romance" to "K-Drama: New Release",
+        "1006,Hottest,All" to "Into Animeverse🌟",
+        "2,Rating,Romance" to "👨‍❤️‍👨 Bromance",
+        "1,Hottest,Action" to "Indonesian Killers",
+        "2,Latest,Mystery" to "Upcoming Calendar",
+        "2,Rating,Action" to "Western TV",
+        "1,Hottest,Comedy" to "Keluargaku yang Lucu 🏠",
+        "1,Rating,All" to "Hollywood Movies",
+        "1,Rating,Thriller" to "We Won’t Be Eaten by the Rich!",
+        "1006,Hottest,Family" to "Cute World of Animals",
+        "2,ForYou,Drama" to "C-Drama",
+        "2,Hottest,Thriller" to "Run!! 🩸Escape Death!",
+        "1,ForYou,Romance" to "No Regrets for Loving You",
+        "1,ForYou,All" to "Must Watch Indo Dubbed",
+        "1,Latest,Horror" to "Midnight Horror",
+        "1006,Rating,Action" to "HA！Nobody Can Defeat Me",
+        "1006,ForYou,Sci-Fi" to "🎮 Cyberpunk World",
+        "1006,Latest,Adventure" to "Animated Flim",
+        "1006,Latest,Fantasy" to "Awas! Monster & Titan",
+        "2,Hottest,Romance" to "Tredning Thai-Drama",
+        "2,ForYou,Romance" to "👰Fake Marriage"
     )
 
     override suspend fun getMainPage(
@@ -69,13 +60,25 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        // Menggunakan endpoint /filter yang sama
-        val body = mapOf(
-            "channelId" to params.first(),
+        val channelId = params[0]
+        val sort = params[1]
+        // Jika parameternya "All", kita kirim null/kosong biar API ambil semua genre
+        val genre = if (params.size > 2 && params[2] != "All") params[2] else ""
+
+        // Membangun body request dengan filter Genre
+        val requestMap = mutableMapOf(
+            "channelId" to channelId,
             "page" to page,
             "perPage" to "24",
-            "sort" to params.last() // Mengambil parameter sort (Hottest/Latest/dll)
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            "sort" to sort
+        )
+        
+        // Hanya tambahkan genre jika tidak kosong
+        if (genre.isNotEmpty()) {
+            requestMap["genre"] = genre
+        }
+
+        val body = requestMap.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$apiUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items?.map {
@@ -103,7 +106,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
 
-        // Request Detail
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
 
