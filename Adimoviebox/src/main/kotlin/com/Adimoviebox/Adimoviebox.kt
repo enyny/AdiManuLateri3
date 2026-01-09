@@ -13,7 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     // Diperbarui berdasarkan cURL terbaru (filmboom.top)
-    private val apiUrl = "https://filmboom.top" 
+    private val apiUrl = "https://filmboom.top"
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -26,25 +26,42 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Mengubah nama kategori sesuai Screenshot
+    // DAFTAR KATEGORI LENGKAP SESUAI SCREENSHOT
+    // Kita menggunakan ulang parameter API (Hottest/Latest/Rating/ForYou) 
+    // untuk menampilkan semua judul kategori unik dari situs asli.
     override val mainPage: List<MainPageData> = mainPageOf(
-        // Movie (Channel 1)
-        "1,Hottest" to "Hollywood Movies",
-        "1,Latest" to "Midnight Horror", // Mapping sementara ke Latest
-        "1,Rating" to "Indonesian Killers", // Mapping sementara ke Rating
-        "1,ForYou" to "We Won't Be Eaten by the Rich!",
         
-        // TV Show (Channel 2)
-        "2,Hottest" to "Western TV",
-        "2,Latest" to "C-Drama",
-        "2,Rating" to "Trending Thai-Drama",
-        "2,ForYou" to "Run!! 🔥 Escape Death!",
-        
-        // Animation (Channel 1006)
-        "1006,Hottest" to "Animated Flim", // Sesuai typo di screenshot 'Flim'
-        "1006,Latest" to "Cute World of Animals",
-        "1006,Rating" to "Cyberpunk World",
-        "1006,ForYou" to "Awas! Monster & Titan",
+        // --- MOVIE SECTION (Channel 1) ---
+        "1,Hottest" to "Trending 🔥",
+        "1,Latest" to "Trending Indonesian Movies",
+        "1,Rating" to "Hollywood Movies",
+        "1,ForYou" to "Must Watch Indo Dubbed",
+        "1,Hottest" to "Indonesian Killers", // Reuse Hottest
+        "1,Latest" to "Midnight Horror",     // Reuse Latest
+        "1,Rating" to "We Won't Be Eaten by the Rich!", // Reuse Rating
+        "1,ForYou" to "No Regrets for Loving You",      // Reuse ForYou
+        "1,Hottest" to "Keluargaku yang Lucu 🏠",
+        "1,Latest" to "Most trending",
+
+        // --- TV SHOW / DRAMA SECTION (Channel 2) ---
+        "2,Hottest" to "Trending Indonesian Drama 💗",
+        "2,Latest" to "K-Drama: New Release",
+        "2,Rating" to "Western TV",
+        "2,ForYou" to "C-Drama",
+        "2,Hottest" to "Tredning Thai-Drama", // Typo 'Tredning' sesuai situs asli
+        "2,Latest" to "🔥Hot Short TV",
+        "2,Rating" to "👩‍❤️‍💋‍👩 Bromance",
+        "2,ForYou" to "👰Fake Marriage",
+        "2,Hottest" to "Run!! 🩸Escape Death!",
+        "2,Latest" to "Upcoming Calendar",
+
+        // --- ANIME & ANIMATION SECTION (Channel 1006) ---
+        "1006,Hottest" to "Into Animeverse 🌟",
+        "1006,Latest" to "Animated Flim", // Typo 'Flim' sesuai situs asli
+        "1006,Rating" to "HA! Nobody Can Defeat Me",
+        "1006,ForYou" to "Cyberpunk World",
+        "1006,Hottest" to "Cute World of Animals",
+        "1006,Latest" to "Awas! Monster & Titan"
     )
 
     override suspend fun getMainPage(
@@ -52,12 +69,12 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        // Menggunakan endpoint /filter yang sama, tapi dengan domain baru
+        // Menggunakan endpoint /filter yang sama
         val body = mapOf(
             "channelId" to params.first(),
             "page" to page,
             "perPage" to "24",
-            "sort" to params.last()
+            "sort" to params.last() // Mengambil parameter sort (Hottest/Latest/dll)
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$apiUrl/wefeed-h5-bff/web/filter", requestBody = body)
@@ -72,7 +89,7 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         return app.post(
-            "$apiUrl/wefeed-h5-bff/web/subject/search", 
+            "$apiUrl/wefeed-h5-bff/web/subject/search",
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
@@ -84,13 +101,12 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // url yang masuk adalah: https://moviebox.ph/detail/{id}
         val id = url.substringAfterLast("/")
-        
-        // Request Detail ke API Baru (filmboom.top)
+
+        // Request Detail
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
-        
+
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -100,7 +116,7 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue?.toString()) 
+        val score = Score.from10(subject?.imdbRatingValue?.toString())
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -172,10 +188,8 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Update Referer sesuai cURL
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Request Play ke API Baru
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
