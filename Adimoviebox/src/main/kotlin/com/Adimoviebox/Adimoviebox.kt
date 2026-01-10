@@ -12,8 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
-    // URL API disesuaikan dengan yang ada di log network kamu (bisa filmboom.top atau h5-api.aoneroom.com)
-    private val apiUrl = "https://filmboom.top" 
+    private val apiUrl = "https://filmboom.top"
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -26,12 +25,11 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // DAFTAR KATEGORI
-    // Format Ranking List: "ID_PANJANG" (Contoh: "6528093688173053896")
-    // Format Filter Biasa: "ChannelID,Sort,Genre" (Contoh: "1,Hottest,All")
+    // DAFTAR KATEGORI SESUAI URUTAN DAN JUDUL REQUEST KAMU
+    // Format: "ChannelID,Sort,Genre" to "Judul Tampilan"
     override val mainPage: List<MainPageData> = mainPageOf(
         "1,Hottest,All" to "Trending🔥",
-        "6528093688173053896" to "Trending Indonesian Movies", // <-- INI YANG KITA PERBAIKI
+        "1,Latest,Drama" to "Trending Indonesian Movies",
         "2,Hottest,Drama" to "Trending Indonesian Drama💗",
         "2,Latest,All" to "🔥Hot Short TV",
         "2,Latest,Romance" to "K-Drama: New Release",
@@ -62,47 +60,32 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        // Logika Pintar: Cek panjang ID untuk menentukan metode request
-        // ID Ranking List biasanya panjang (> 10 karakter), ID Channel biasanya pendek (1 digit atau 4 digit)
-        val isRankingList = params[0].length > 10 
+        val channelId = params[0]
+        val sort = params[1]
+        // Jika parameternya "All", kita kirim null/kosong biar API ambil semua genre
+        val genre = if (params.size > 2 && params[2] != "All") params[2] else ""
 
-        val home = if (isRankingList) {
-            // --- CARA BARU: UNTUK RANKING LIST (Pake GET) ---
-            val rankingId = params[0]
-            // Perhatikan path-nya sedikit berbeda: 'wefeed-h5api-bff' (dari log) vs 'wefeed-h5-bff' (biasa)
-            // Kita coba pakai struktur ranking-list
-            val url = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$rankingId&page=$page&perPage=12"
-            
-            app.get(url).parsedSafe<Media>()?.data?.subjectList?.map {
-                it.toSearchResponse(this)
-            }
-        } else {
-            // --- CARA LAMA: UNTUK FILTER BIASA (Pake POST) ---
-            val channelId = params[0]
-            val sort = params[1]
-            // Jika parameternya "All", kita kirim null/kosong biar API ambil semua genre
-            val genre = if (params.size > 2 && params[2] != "All") params[2] else ""
-
-            val requestMap = mutableMapOf(
-                "channelId" to channelId,
-                "page" to page,
-                "perPage" to "24",
-                "sort" to sort
-            )
-            
-            if (genre.isNotEmpty()) {
-                requestMap["genre"] = genre
-            }
-
-            val body = requestMap.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-
-            app.post("$apiUrl/wefeed-h5-bff/web/filter", requestBody = body)
-                .parsedSafe<Media>()?.data?.items?.map {
-                    it.toSearchResponse(this)
-                }
+        // Membangun body request dengan filter Genre
+        val requestMap = mutableMapOf(
+            "channelId" to channelId,
+            "page" to page,
+            "perPage" to "24",
+            "sort" to sort
+        )
+        
+        // Hanya tambahkan genre jika tidak kosong
+        if (genre.isNotEmpty()) {
+            requestMap["genre"] = genre
         }
 
-        return newHomePageResponse(request.name, home ?: throw ErrorLoadingException("No Data Found"))
+        val body = requestMap.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+
+        val home = app.post("$apiUrl/wefeed-h5-bff/web/filter", requestBody = body)
+            .parsedSafe<Media>()?.data?.items?.map {
+                it.toSearchResponse(this)
+            } ?: throw ErrorLoadingException("No Data Found")
+
+        return newHomePageResponse(request.name, home)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -260,9 +243,7 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        // 'subjectList' digunakan oleh response Ranking List
         @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-        // 'items' digunakan oleh response Filter Biasa
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
