@@ -29,22 +29,18 @@ class Adimoviebox : MainAPI() {
     // Mengubah nama kategori sesuai Screenshot
     override val mainPage: List<MainPageData> = mainPageOf(
         // Movie (Channel 1)
-        "1,Hottest" to "Hollywood Movies",
-        "1,Latest" to "Midnight Horror", // Mapping sementara ke Latest
-        "1,Rating" to "Indonesian Killers", // Mapping sementara ke Rating
-        "1,ForYou" to "We Won't Be Eaten by the Rich!",
-        
-        // TV Show (Channel 2)
-        "2,Hottest" to "Western TV",
-        "2,Latest" to "C-Drama",
-        "2,Rating" to "Trending Thai-Drama",
-        "2,ForYou" to "Run!! 🔥 Escape Death!",
-        
-        // Animation (Channel 1006)
-        "1006,Hottest" to "Animated Flim", // Sesuai typo di screenshot 'Flim'
-        "1006,Latest" to "Cute World of Animals",
-        "1006,Rating" to "Cyberpunk World",
-        "1006,ForYou" to "Awas! Monster & Titan",
+        "1,ForYou" to "Movie ForYou",
+        "1,Hottest" to "Movie Hottest",
+        "1,Latest" to "Movie Latest",
+        "1,Rating" to "Movie Rating",
+        "2,ForYou" to "TVShow ForYou",
+        "2,Hottest" to "TVShow Hottest",
+        "2,Latest" to "TVShow Latest",
+        "2,Rating" to "TVShow Rating",
+        "1006,ForYou" to "Animation ForYou",
+        "1006,Hottest" to "Animation Hottest",
+        "1006,Latest" to "Animation Latest",
+        "1006,Rating" to "Animation Rating",
     )
 
     override suspend fun getMainPage(
