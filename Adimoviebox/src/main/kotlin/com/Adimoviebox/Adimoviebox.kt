@@ -13,15 +13,17 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     
-    // NOTE: Ini API lama untuk Search/Load/Play. 
-    // Jika nanti Detail film error, kita mungkin perlu ubah ini ke 'h5-api.aoneroom.com' juga.
+    // API LAMA (Gudang): Untuk Search, Detail, dan Playback (Video)
     private val apiUrl = "https://filmboom.top" 
     
+    // API BARU (Etalase): Khusus untuk Halaman Depan / Kategori
+    private val homeApiUrl = "https://h5-api.aoneroom.com"
+
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "id" // Ubah ke ID karena konten Indonesia
+    override var lang = "id"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
@@ -29,35 +31,35 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN INI YANG DIPERBARUI SESUAI NETWORK LOG ---
+    // --- BAGIAN KATEGORI (Menggunakan ID dari Server Baru) ---
     override val mainPage: List<MainPageData> = mainPageOf(
-        // ID kategori dari URL yang Anda temukan
-        "5283462032510044280" to "Indonesian Movies"
+        "5283462032510044280" to "Indonesian Movies",
+        // Kamu bisa tambah ID lain di sini kalau nemu di Network Log, contoh:
+        // "ID_BARU_LAINNYA" to "Action",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val id = request.data // Mengambil ID 5283462032510044280
+        val id = request.data 
         
-        // Menggunakan API Baru (aoneroom) dengan metode GET
-        // Format: .../content?id=ID&page=PAGE&perPage=12
-        val targetUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        // Request ke API Baru (aoneroom) menggunakan GET
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
         val home = app.get(targetUrl)
             .parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("Gagal memuat kategori. Cek koneksi atau ID.")
+            } ?: throw ErrorLoadingException("Gagal memuat kategori. Cek ID atau koneksi.")
 
         return newHomePageResponse(request.name, home)
     }
-    // -----------------------------------------------------
+    // -----------------------------------------------------------
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Masih menggunakan API lama (filmboom). Jika error, perlu cari API Search baru.
+        // Tetap pakai API Lama (filmboom) karena search biasanya terpusat di database lama
         return app.post(
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
             requestBody = mapOf(
@@ -67,13 +69,13 @@ class Adimoviebox : MainAPI() {
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Pencarian gagal atau tidak ada hasil.")
+            ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Request Detail (Masih API lama)
+        // Request Detail ke API Lama
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         
@@ -105,7 +107,7 @@ class Adimoviebox : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
-                // PERBAIKAN: Menambahkan (?: 1) agar tidak crash jika maxEp null
+                // Fix: Tambahkan Elvis operator (?: 1) agar tidak crash jika maxEp null
                 (if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 1)) else seasons.allEp.split(",")
                     .map { it.toInt() })
                     .map { episode ->
@@ -159,9 +161,10 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
+        // Referer penting agar tidak ditolak server
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Request Play (Masih API lama)
+        // Request Play ke API Lama
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -200,7 +203,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Class (Tidak Berubah) ---
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -275,15 +278,19 @@ data class Items(
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${subjectId}"
+        
+        // AMAN: Pastikan url gambar tidak null. Jika null, ganti string kosong.
+        val posterImage = cover?.url ?: ""
 
         return provider.newMovieSearchResponse(
-            title ?: "",
+            title ?: "No Title",
             url,
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
-            this.posterUrl = cover?.url
+            this.posterUrl = posterImage
             this.score = Score.from10(imdbRatingValue?.toString())
+            this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
         }
     }
 
