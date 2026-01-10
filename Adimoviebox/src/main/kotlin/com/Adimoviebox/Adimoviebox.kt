@@ -33,8 +33,8 @@ class Adimoviebox : MainAPI() {
 
     // --- BAGIAN KATEGORI ---
     override val mainPage: List<MainPageData> = mainPageOf(
-        "5283462032510044280" to "Indonesian Movies",
-        // Kamu bisa tambah ID lain di sini nanti
+        // Sudah diubah namanya menjadi Indonesian Drama
+        "5283462032510044280" to "Indonesian Drama",
     )
 
     override suspend fun getMainPage(
@@ -46,8 +46,7 @@ class Adimoviebox : MainAPI() {
         // Request ke API Baru (aoneroom)
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
-        // PERBAIKAN UTAMA: Menggunakan 'subjectList' bukan 'items'
-        // Kita gunakan logika: Coba ambil subjectList, kalau null coba ambil items
+        // Logika Hybrid: Coba ambil 'subjectList' (API Baru), kalau null coba 'items' (Jaga-jaga)
         val responseData = app.get(targetUrl).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
@@ -202,7 +201,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES YANG DIPERBARUI ---
+// --- DATA CLASSES ---
 
 data class LoadData(
     val id: String? = null,
@@ -215,8 +214,9 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        // PERBAIKAN: Menambahkan field subjectList untuk API baru
+        // API Baru pakai subjectList
         @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        // API Lama (Search) pakai items
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
@@ -262,7 +262,6 @@ data class MediaDetail(
     }
 }
 
-// Data Class Items dengan struktur Cover yang aman
 data class Items(
     @JsonProperty("subjectId") val subjectId: String? = null,
     @JsonProperty("subjectType") val subjectType: Int? = null,
@@ -280,7 +279,6 @@ data class Items(
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${subjectId}"
         
-        // Ambil URL gambar dengan aman
         val posterImage = cover?.url
 
         return provider.newMovieSearchResponse(
