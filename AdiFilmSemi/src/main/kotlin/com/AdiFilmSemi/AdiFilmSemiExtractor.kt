@@ -144,7 +144,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         }
     }
 
-    // ================== ADIMOVIEBOX SOURCE ==================
+    // ================== ADIMOVIEBOX SOURCE (FIXED) ==================
     suspend fun invokeAdimoviebox(
         title: String,
         year: Int?,
@@ -153,18 +153,18 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val searchUrl = "https://moviebox.ph/wefeed-h5-bff/web/subject/search"
-        val streamApi = "https://fmoviesunblocked.net"
+        val apiUrl = "https://filmboom.top" // API Baru
+        val searchUrl = "$apiUrl/wefeed-h5-bff/web/subject/search"
         
         val searchBody = mapOf(
             "keyword" to title,
-            "page" to 1,
-            "perPage" to 10,
-            "subjectType" to 0
+            "page" to "1",
+            "perPage" to "0",
+            "subjectType" to "0"
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val searchRes = app.post(searchUrl, requestBody = searchBody).text
-        val items = tryParseJson<AdimovieboxSearch>(searchRes)?.data?.items ?: return
+        val items = tryParseJson<AdimovieboxResponse>(searchRes)?.data?.items ?: return
         
         val matchedMedia = items.find { item ->
             val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
@@ -173,16 +173,17 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         } ?: return
 
         val subjectId = matchedMedia.subjectId ?: return
+        val detailPath = matchedMedia.detailPath
         val se = if (season == null) 0 else season
         val ep = if (episode == null) 0 else episode
         
-        val playUrl = "$streamApi/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
-        val validReferer = "$streamApi/spa/videoPlayPage/movies/${matchedMedia.detailPath}?id=$subjectId&type=/movie/detail&lang=en"
+        val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
+        val validReferer = "$apiUrl/spa/videoPlayPage/movies/$detailPath?id=$subjectId&type=/movie/detail&lang=en"
 
         val playRes = app.get(playUrl, referer = validReferer).text
-        val streams = tryParseJson<AdimovieboxStreams>(playRes)?.data?.streams ?: return
+        val streams = tryParseJson<AdimovieboxResponse>(playRes)?.data?.streams ?: return
 
-        streams.reversed().forEach { source ->
+        streams.reversed().distinctBy { it.url }.forEach { source ->
              callback.invoke(
                 newExtractorLink(
                     "Adimoviebox",
@@ -190,7 +191,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                     source.url ?: return@forEach,
                     INFER_TYPE 
                 ) {
-                    this.referer = validReferer
+                    this.referer = "$apiUrl/"
                     this.quality = getQualityFromName(source.resolutions)
                 }
             )
@@ -199,8 +200,8 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         val id = streams.firstOrNull()?.id
         val format = streams.firstOrNull()?.format
         if (id != null) {
-            val subUrl = "$streamApi/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$subjectId"
-            app.get(subUrl, referer = validReferer).parsedSafe<AdimovieboxCaptions>()?.data?.captions?.forEach { sub ->
+            val subUrl = "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$subjectId"
+            app.get(subUrl, referer = validReferer).parsedSafe<AdimovieboxResponse>()?.data?.captions?.forEach { sub ->
                 subtitleCallback.invoke(
                     newSubtitleFile(
                         sub.lanName ?: "Unknown",
@@ -339,8 +340,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
 
     }
 
-    // ================== IDLIX SOURCE (UPDATED) ==================
-    // Diganti dengan logic dari IdlixProvider.kt
+    // ================== IDLIX SOURCE ==================
     suspend fun invokeIdlix(
         title: String? = null,
         year: Int? = null,
@@ -350,7 +350,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val fixTitle = title?.createSlug()
-        // Menggunakan idlixAPI dari AdiFilmSemi Companion (https://tv10.idlixku.com)
         val url = if (season == null) {
             "$idlixAPI/movie/$fixTitle-$year"
         } else {
@@ -362,14 +361,12 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
             val directUrl = getBaseUrl(response.url)
             val document = response.document
 
-            // 1. Ambil Nonce & Time dari Script
             val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
             val script = document.select("script:containsData(window.idlix)").toString()
             val match = scriptRegex.find(script)
             val idlixNonce = match?.groups?.get(1)?.value ?: ""
             val idlixTime = match?.groups?.get(2)?.value ?: ""
 
-            // 2. Loop Elements
             document.select("ul#playeroptionsul > li").map {
                 Triple(
                     it.attr("data-post"),
@@ -377,7 +374,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                     it.attr("data-type")
                 )
             }.amap { (id, nume, type) ->
-                // 3. POST ke Admin Ajax
                 val json = app.post(
                     url = "$directUrl/wp-admin/admin-ajax.php",
                     data = mapOf(
@@ -393,13 +389,11 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                     headers = mapOf("Accept" to "*/*", "X-Requested-With" to "XMLHttpRequest")
                 ).parsedSafe<IdlixResponseHash>() ?: return@amap
 
-                // 4. Dekripsi AES
                 val metrix = parseJson<IdlixAesData>(json.embed_url).m
                 val password = createIdlixKey(json.key, metrix)
                 val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
                         ?.fixBloat() ?: return@amap
 
-                // 5. Load Extractor / Jeniusplay
                 when {
                     decrypted.contains("jeniusplay", ignoreCase = true) -> {
                         Jeniusplay().getUrl(decrypted, directUrl, subtitleCallback, callback)
@@ -414,7 +408,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         }
     }
     
-    // --- IDLIX HELPERS ---
     private fun getBaseUrl(url: String): String {
         return URI(url).let {
             "${it.scheme}://${it.host}"
@@ -448,7 +441,6 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         return this.replace("\"", "").replace("\\", "")
     }
 
-    // Data classes khusus Idlix (Internal use)
     data class IdlixResponseHash(
         @JsonProperty("embed_url") val embed_url: String,
         @JsonProperty("key") val key: String,
