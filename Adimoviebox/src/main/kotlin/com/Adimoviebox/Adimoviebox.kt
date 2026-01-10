@@ -31,10 +31,10 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN KATEGORI ---
+    // --- BAGIAN KATEGORI (UPDATED) ---
     override val mainPage: List<MainPageData> = mainPageOf(
-        // Sudah diubah namanya menjadi Indonesian Drama
         "5283462032510044280" to "Indonesian Drama",
+        "6528093688173053896" to "Indonesian Movies"
     )
 
     override suspend fun getMainPage(
@@ -214,9 +214,7 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        // API Baru pakai subjectList
         @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-        // API Lama (Search) pakai items
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
