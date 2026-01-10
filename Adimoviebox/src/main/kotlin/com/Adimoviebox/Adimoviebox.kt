@@ -31,11 +31,10 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN KATEGORI (Menggunakan ID dari Server Baru) ---
+    // --- BAGIAN KATEGORI ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Movies",
-        // Kamu bisa tambah ID lain di sini kalau nemu di Network Log, contoh:
-        // "ID_BARU_LAINNYA" to "Action",
+        // Kamu bisa tambah ID lain di sini nanti
     )
 
     override suspend fun getMainPage(
@@ -44,13 +43,17 @@ class Adimoviebox : MainAPI() {
     ): HomePageResponse {
         val id = request.data 
         
-        // Request ke API Baru (aoneroom) menggunakan GET
+        // Request ke API Baru (aoneroom)
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
-        val home = app.get(targetUrl)
-            .parsedSafe<Media>()?.data?.items?.map {
-                it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("Gagal memuat kategori. Cek ID atau koneksi.")
+        // PERBAIKAN UTAMA: Menggunakan 'subjectList' bukan 'items'
+        // Kita gunakan logika: Coba ambil subjectList, kalau null coba ambil items
+        val responseData = app.get(targetUrl).parsedSafe<Media>()?.data
+        val listFilm = responseData?.subjectList ?: responseData?.items
+
+        val home = listFilm?.map {
+            it.toSearchResponse(this)
+        } ?: throw ErrorLoadingException("Gagal memuat kategori. Data kosong.")
 
         return newHomePageResponse(request.name, home)
     }
@@ -59,7 +62,7 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Tetap pakai API Lama (filmboom) karena search biasanya terpusat di database lama
+        // API Lama masih menggunakan wadah "items"
         return app.post(
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
             requestBody = mapOf(
@@ -75,7 +78,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Request Detail ke API Lama
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         
@@ -107,7 +109,6 @@ class Adimoviebox : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
-                // Fix: Tambahkan Elvis operator (?: 1) agar tidak crash jika maxEp null
                 (if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 1)) else seasons.allEp.split(",")
                     .map { it.toInt() })
                     .map { episode ->
@@ -161,10 +162,8 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer penting agar tidak ditolak server
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Request Play ke API Lama
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -203,7 +202,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes ---
+// --- DATA CLASSES YANG DIPERBARUI ---
 
 data class LoadData(
     val id: String? = null,
@@ -216,6 +215,7 @@ data class Media(
     @JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
+        // PERBAIKAN: Menambahkan field subjectList untuk API baru
         @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
         @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
@@ -262,6 +262,7 @@ data class MediaDetail(
     }
 }
 
+// Data Class Items dengan struktur Cover yang aman
 data class Items(
     @JsonProperty("subjectId") val subjectId: String? = null,
     @JsonProperty("subjectType") val subjectType: Int? = null,
@@ -279,8 +280,8 @@ data class Items(
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${subjectId}"
         
-        // AMAN: Pastikan url gambar tidak null. Jika null, ganti string kosong.
-        val posterImage = cover?.url ?: ""
+        // Ambil URL gambar dengan aman
+        val posterImage = cover?.url
 
         return provider.newMovieSearchResponse(
             title ?: "No Title",
