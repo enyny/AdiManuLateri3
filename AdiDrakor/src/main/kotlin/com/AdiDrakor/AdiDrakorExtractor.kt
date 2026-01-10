@@ -124,7 +124,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         return n
     }
 
-    // ================== ADIMOVIEBOX SOURCE ==================
+    // ================== ADIMOVIEBOX SOURCE (FIXED) ==================
     suspend fun invokeAdimoviebox(
         title: String,
         year: Int?,
@@ -133,18 +133,19 @@ object AdiDrakorExtractor : AdiDrakor() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val searchUrl = "https://moviebox.ph/wefeed-h5-bff/web/subject/search"
-        val streamApi = "https://fmoviesunblocked.net"
+        val apiUrl = "https://filmboom.top" // API Baru
+        val searchUrl = "$apiUrl/wefeed-h5-bff/web/subject/search"
         
         val searchBody = mapOf(
             "keyword" to title,
-            "page" to 1,
-            "perPage" to 10,
-            "subjectType" to 0
+            "page" to "1",
+            "perPage" to "0",
+            "subjectType" to "0"
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val searchRes = app.post(searchUrl, requestBody = searchBody).text
-        val items = tryParseJson<AdimovieboxSearch>(searchRes)?.data?.items ?: return
+        // Menggunakan AdimovieboxResponse dari Parser
+        val items = tryParseJson<AdimovieboxResponse>(searchRes)?.data?.items ?: return
         
         val matchedMedia = items.find { item ->
             val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
@@ -153,16 +154,17 @@ object AdiDrakorExtractor : AdiDrakor() {
         } ?: return
 
         val subjectId = matchedMedia.subjectId ?: return
+        val detailPath = matchedMedia.detailPath
         val se = if (season == null) 0 else season
         val ep = if (episode == null) 0 else episode
         
-        val playUrl = "$streamApi/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
-        val validReferer = "$streamApi/spa/videoPlayPage/movies/${matchedMedia.detailPath}?id=$subjectId&type=/movie/detail&lang=en"
+        val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
+        val validReferer = "$apiUrl/spa/videoPlayPage/movies/$detailPath?id=$subjectId&type=/movie/detail&lang=en"
 
         val playRes = app.get(playUrl, referer = validReferer).text
-        val streams = tryParseJson<AdimovieboxStreams>(playRes)?.data?.streams ?: return
+        val streams = tryParseJson<AdimovieboxResponse>(playRes)?.data?.streams ?: return
 
-        streams.reversed().forEach { source ->
+        streams.reversed().distinctBy { it.url }.forEach { source ->
              callback.invoke(
                 newExtractorLink(
                     "Adimoviebox",
@@ -170,7 +172,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                     source.url ?: return@forEach,
                     INFER_TYPE 
                 ) {
-                    this.referer = validReferer
+                    this.referer = "$apiUrl/"
                     this.quality = getQualityFromName(source.resolutions)
                 }
             )
@@ -179,8 +181,8 @@ object AdiDrakorExtractor : AdiDrakor() {
         val id = streams.firstOrNull()?.id
         val format = streams.firstOrNull()?.format
         if (id != null) {
-            val subUrl = "$streamApi/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$subjectId"
-            app.get(subUrl, referer = validReferer).parsedSafe<AdimovieboxCaptions>()?.data?.captions?.forEach { sub ->
+            val subUrl = "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$subjectId"
+            app.get(subUrl, referer = validReferer).parsedSafe<AdimovieboxResponse>()?.data?.captions?.forEach { sub ->
                 subtitleCallback.invoke(
                     newSubtitleFile(
                         sub.lanName ?: "Unknown",
@@ -190,16 +192,6 @@ object AdiDrakorExtractor : AdiDrakor() {
             }
         }
     }
-
-    data class AdimovieboxSearch(val data: AdimovieboxData?)
-    data class AdimovieboxData(val items: List<AdimovieboxItem>?)
-    data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
-    data class AdimovieboxStreams(val data: AdimovieboxStreamData?)
-    data class AdimovieboxStreamData(val streams: List<AdimovieboxStreamItem>?)
-    data class AdimovieboxStreamItem(val id: String?, val format: String?, val url: String?, val resolutions: String?)
-    data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
-    data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
-    data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
     
     // ================== GOMOVIES ==================
     suspend fun invokeGomovies(
@@ -1174,5 +1166,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     private data class KisskhKey(@JsonProperty("key") val key: String?)
     private data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
+
+}
 
 }
