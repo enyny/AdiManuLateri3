@@ -243,14 +243,32 @@ data class AdiDewasaItem(
     @JsonProperty("year") val year: String? = null 
 )
 
-// ================== ADIMOVIEBOX MODELS ==================
-// Classes ini diperlukan oleh AdiFilmSemiExtractor.kt
-data class AdimovieboxSearch(val data: AdimovieboxData?)
-data class AdimovieboxData(val items: List<AdimovieboxItem>?)
-data class AdimovieboxItem(val subjectId: String?, val title: String?, val releaseDate: String?, val detailPath: String?)
-data class AdimovieboxStreams(val data: AdimovieboxStreamData?)
-data class AdimovieboxStreamData(val streams: List<AdimovieboxStreamItem>?)
-data class AdimovieboxStreamItem(val id: String?, val format: String?, val url: String?, val resolutions: String?)
-data class AdimovieboxCaptions(val data: AdimovieboxCaptionData?)
-data class AdimovieboxCaptionData(val captions: List<AdimovieboxCaptionItem>?)
-data class AdimovieboxCaptionItem(val lanName: String?, val url: String?)
+// ================== ADIMOVIEBOX MODELS (NEW) ==================
+data class AdimovieboxResponse(
+    @JsonProperty("data") val data: AdimovieboxData? = null,
+)
+
+data class AdimovieboxData(
+    @JsonProperty("items") val items: ArrayList<AdimovieboxItem>? = arrayListOf(),
+    @JsonProperty("streams") val streams: ArrayList<AdimovieboxStreamItem>? = arrayListOf(),
+    @JsonProperty("captions") val captions: ArrayList<AdimovieboxCaptionItem>? = arrayListOf(),
+)
+
+data class AdimovieboxItem(
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null,
+)
+
+data class AdimovieboxStreamItem(
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("format") val format: String? = null,
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("resolutions") val resolutions: String? = null,
+)
+
+data class AdimovieboxCaptionItem(
+    @JsonProperty("lanName") val lanName: String? = null,
+    @JsonProperty("url") val url: String? = null,
+)
