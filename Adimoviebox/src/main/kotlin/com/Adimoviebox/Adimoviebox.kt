@@ -31,10 +31,19 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN KATEGORI (UPDATED) ---
+    // --- BAGIAN KATEGORI LENGKAP ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
-        "6528093688173053896" to "Indonesian Movies"
+        "6528093688173053896" to "Indonesian Movies",
+        "5848753831881965888" to "Indo Horror",
+        "997144265920760504" to "Hollywood Movies",
+        "4380734070238626200" to "K-Drama",
+        "8624142774394406504" to "C-Drama",
+        "3058742380078711608" to "Disney",
+        "8449223314756747760" to "Pinoy Drama",
+        "606779077307122552" to "Pinoy Movie",
+        "872031290915189720" to "Hot-Short",
+        "872031290915189720" to "Bad Ending Romance" 
     )
 
     override suspend fun getMainPage(
