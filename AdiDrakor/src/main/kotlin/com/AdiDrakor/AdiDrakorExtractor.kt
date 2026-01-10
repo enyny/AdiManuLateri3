@@ -1168,5 +1168,3 @@ object AdiDrakorExtractor : AdiDrakor() {
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
 
 }
-
-}
