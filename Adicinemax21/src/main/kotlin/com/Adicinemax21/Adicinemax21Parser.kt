@@ -495,3 +495,33 @@ data class RiveStreamSourceData(
     val source: String,
     val format: String,
 )
+
+// ================== ADIMOVIEBOX DATA CLASSES (NEW) ==================
+data class AdimovieboxResponse(
+    @JsonProperty("data") val data: AdimovieboxData? = null,
+)
+
+data class AdimovieboxData(
+    @JsonProperty("items") val items: ArrayList<AdimovieboxItem>? = arrayListOf(),
+    @JsonProperty("streams") val streams: ArrayList<AdimovieboxStreamItem>? = arrayListOf(),
+    @JsonProperty("captions") val captions: ArrayList<AdimovieboxCaptionItem>? = arrayListOf(),
+)
+
+data class AdimovieboxItem(
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null,
+)
+
+data class AdimovieboxStreamItem(
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("format") val format: String? = null,
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("resolutions") val resolutions: String? = null,
+)
+
+data class AdimovieboxCaptionItem(
+    @JsonProperty("lanName") val lanName: String? = null,
+    @JsonProperty("url") val url: String? = null,
+)
