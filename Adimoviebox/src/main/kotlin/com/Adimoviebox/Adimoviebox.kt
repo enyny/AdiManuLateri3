@@ -42,7 +42,6 @@ class Adimoviebox : MainAPI() {
         "3058742380078711608" to "Disney",
         "8449223314756747760" to "Pinoy Drama",
         "606779077307122552" to "Pinoy Movie",
-        "872031290915189720" to "Hot-Short",
         "872031290915189720" to "Bad Ending Romance" 
     )
 
