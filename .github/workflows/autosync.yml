@@ -1,4 +1,4 @@
-name: Autosync upstream (master + builds)
+name: Autosync upstream
 
 on:
   schedule:
