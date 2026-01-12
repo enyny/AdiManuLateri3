@@ -8,7 +8,7 @@ class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
     override var name                 = "MissAV"
     override val hasMainPage          = true
-    override var lang                 = "en"
+    override var lang                 = "id"
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
@@ -23,7 +23,7 @@ class MissAVProvider : MainAPI() {
             "/dm256/en/monthly-hot" to "Most Viewed by Month",
             "/dm97/en/fc2" to "Uncensored FC2 AV",
             "/dm34/en/madou" to "Madou AV",
-            "/dm620/en/uncensored-leak" to "Uncensored Leak",
+            "/dm628/id/uncensored-leak" to "Uncensored Leak",
             "/en/klive" to "Korean Live AV"
         )
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
