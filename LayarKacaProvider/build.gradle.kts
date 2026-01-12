@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 5
+version = 6
 
 
 cloudstream {
@@ -7,7 +7,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove them
 
     // description = "Lorem Ipsum"
-    authors = listOf("Hexated,Phisher98")
+    authors = listOf("aldry88")
 
     /**
      * Status int as the following:
