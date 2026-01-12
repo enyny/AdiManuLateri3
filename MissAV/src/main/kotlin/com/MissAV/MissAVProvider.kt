@@ -8,7 +8,7 @@ class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
     override var name                 = "MissAV"
     override val hasMainPage          = true
-    override var lang                 = "id"
+    override var lang                 = "en"
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
