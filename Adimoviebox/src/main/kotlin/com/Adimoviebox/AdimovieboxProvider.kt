@@ -1,4 +1,4 @@
-package com.Adimoviebox
+package com.Adimoviebo
 
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
