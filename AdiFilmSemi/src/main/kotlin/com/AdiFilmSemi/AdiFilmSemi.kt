@@ -100,7 +100,6 @@ open class AdiFilmSemi : TmdbProvider() {
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=207767&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Erotic Thriller (Top Rated)",
 
         // GROUP 3: Infidelity / Perselingkuhan (Keyword 1326)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=primary_release_date.desc&include_adult=true" to "Infidelity/Selingkuh (New)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=popularity.desc&include_adult=true" to "Infidelity/Selingkuh (Popular)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=1326&sort_by=vote_average.desc&vote_count.gte=20&include_adult=true" to "Infidelity/Selingkuh (Top Rated)",
 
@@ -172,7 +171,7 @@ open class AdiFilmSemi : TmdbProvider() {
             }
         } catch (e: Exception) {
             throw ErrorLoadingException("Invalid URL or JSON data: ${e.message}")
-        } ?: throw ErrorLoadingException("Invalid data format")
+        }
 
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
