@@ -1399,7 +1399,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
     }
 
-    // ================== ADIMOVIEBOX 2 SOURCE (FIXED 2004) ==================
+    // ================== ADIMOVIEBOX 2 SOURCE (FIXED SIGNCOOKIE) ==================
     suspend fun invokeAdimoviebox2(
         title: String,
         year: Int?,
@@ -1427,7 +1427,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             val subjectYear = subject.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
             val isTitleMatch = subject.title?.contains(title, true) == true
             val isYearMatch = year == null || subjectYear == year
-            // FIX: Tambahkan Type 3 untuk konten Variety/Adult agar terdeteksi
+            // Filter tipe konten (Movie=1, Series=2, Variety/Adult=3)
             val isTypeMatch = if (season != null) subject.subjectType == 2 else (subject.subjectType == 1 || subject.subjectType == 3)
             
             isTitleMatch && isYearMatch && isTypeMatch
@@ -1447,9 +1447,16 @@ object Adicinemax21Extractor : Adicinemax21() {
         streams.forEach { stream ->
             val streamUrl = stream.url ?: return@forEach
             val quality = getQualityFromName(stream.resolutions)
+            val signCookie = stream.signCookie
+
+            // FIX UTAMA (Error 2004):
+            // Ambil header dasar (User-Agent, dll)
+            val baseHeaders = Adimoviebox2Helper.getHeaders(streamUrl, null, "GET").toMutableMap()
             
-            // FIX PENTING: Ambil headers untuk Player (termasuk User-Agent)
-            val playerHeaders = Adimoviebox2Helper.getHeaders(streamUrl, null, "GET")
+            // Jika ada signCookie dari respon JSON, tambahkan ke Header "Cookie"
+            if (!signCookie.isNullOrEmpty()) {
+                baseHeaders["Cookie"] = signCookie
+            }
 
             callback.invoke(
                 newExtractorLink(
@@ -1459,8 +1466,8 @@ object Adicinemax21Extractor : Adicinemax21() {
                     if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
                 ) {
                     this.quality = quality
-                    // INJECT HEADER DI SINI UNTUK MENGHINDARI ERROR 2004
-                    this.headers = playerHeaders
+                    // Inject header + cookie yang sudah disiapkan
+                    this.headers = baseHeaders
                 }
             )
 
