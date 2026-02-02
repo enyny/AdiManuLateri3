@@ -308,8 +308,6 @@ object Adicinemax21Extractor : Adicinemax21() {
     private data class KisskhKey(@JsonProperty("key") val key: String?)
     private data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
-
-
     // ================== ADIMOVIEBOX SOURCE (FIXED) ==================
     suspend fun invokeAdimoviebox(
         title: String,
@@ -817,7 +815,6 @@ object Adicinemax21Extractor : Adicinemax21() {
             )
         }
     }
-
     // ================== VIDLINK SOURCE ==================
     suspend fun invokeVidlink(
         tmdbId: Int?,
@@ -1402,7 +1399,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         }
     }
 
-    // ================== ADIMOVIEBOX 2 SOURCE (NEW) ==================
+    // ================== ADIMOVIEBOX 2 SOURCE (FIXED 2004) ==================
     suspend fun invokeAdimoviebox2(
         title: String,
         year: Int?,
@@ -1430,8 +1427,8 @@ object Adicinemax21Extractor : Adicinemax21() {
             val subjectYear = subject.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
             val isTitleMatch = subject.title?.contains(title, true) == true
             val isYearMatch = year == null || subjectYear == year
-            // Jika Series, tipe harus 2, jika Movie tipe 1
-            val isTypeMatch = if (season != null) subject.subjectType == 2 else subject.subjectType == 1
+            // FIX: Tambahkan Type 3 untuk konten Variety/Adult agar terdeteksi
+            val isTypeMatch = if (season != null) subject.subjectType == 2 else (subject.subjectType == 1 || subject.subjectType == 3)
             
             isTitleMatch && isYearMatch && isTypeMatch
         } ?: return
@@ -1451,6 +1448,9 @@ object Adicinemax21Extractor : Adicinemax21() {
             val streamUrl = stream.url ?: return@forEach
             val quality = getQualityFromName(stream.resolutions)
             
+            // FIX PENTING: Ambil headers untuk Player (termasuk User-Agent)
+            val playerHeaders = Adimoviebox2Helper.getHeaders(streamUrl, null, "GET")
+
             callback.invoke(
                 newExtractorLink(
                     "Adimoviebox2",
@@ -1459,6 +1459,8 @@ object Adicinemax21Extractor : Adicinemax21() {
                     if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
                 ) {
                     this.quality = quality
+                    // INJECT HEADER DI SINI UNTUK MENGHINDARI ERROR 2004
+                    this.headers = playerHeaders
                 }
             )
 
