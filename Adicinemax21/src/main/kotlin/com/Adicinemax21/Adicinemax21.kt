@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
 import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 // Update: Import Provider Baru
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -331,6 +332,17 @@ open class Adicinemax21 : TmdbProvider() {
             {
                 invokeIdlix(
                     res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
+            {
+                invokeAdimoviebox2(
+                    res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
                     res.episode,
