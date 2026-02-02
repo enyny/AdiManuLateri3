@@ -141,8 +141,6 @@ data class GpressSources(
 )
 
 // ================== IDLIX INTERNAL DATA CLASSES ==================
-// Note: IdlixResponseHash & IdlixAesData are defined inside the Extractor file or can be added here if needed.
-// For now, they are handled locally in Extractor or mapped here if reused.
 
 data class KisskhEpisodes(
     @JsonProperty("id") val id: Int?,
@@ -310,6 +308,7 @@ data class Adimoviebox2Stream(
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("format") val format: String? = null,
     @JsonProperty("resolutions") val resolutions: String? = null,
+    @JsonProperty("signCookie") val signCookie: String? = null // Penambahan Wajib
 )
 
 data class Adimoviebox2SubtitleResponse(
