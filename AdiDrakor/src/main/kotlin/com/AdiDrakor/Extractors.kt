@@ -11,6 +11,10 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
+// ==============================
+// NEW JENIUSPLAY EXTRACTOR (FROM IDLIXPROVIDER)
+// ==============================
+
 class Jeniusplay : ExtractorApi() {
     override var name = "Jeniusplay"
     override var mainUrl = "https://jeniusplay.com"
