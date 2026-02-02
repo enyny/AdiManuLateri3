@@ -485,7 +485,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             subtitleCallback.invoke(newSubtitleFile(subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map, subtitle.file ?: return@map))
         }
     }
-    // ================== CINEMAOS SOURCE ==================
+        // ================== CINEMAOS SOURCE ==================
     suspend fun invokeCinemaOS(
         imdbId: String? = null, tmdbId: Int? = null, title: String? = null, season: Int? = null, episode: Int? = null, year: Int? = null,
         callback: (ExtractorLink) -> Unit, subtitleCallback: (SubtitleFile) -> Unit,
@@ -558,16 +558,18 @@ object Adicinemax21Extractor : Adicinemax21() {
         sourceList?.data?.forEach { source -> try { val streamUrl = if (season == null) "$RiveStreamAPI/api/backendfetch?requestID=movieVideoProvider&id=$id&service=$source&secretKey=$secretKey" else "$RiveStreamAPI/api/backendfetch?requestID=tvVideoProvider&id=$id&season=$season&episode=$episode&service=$source&secretKey=$secretKey"; val responseString = retry { app.get(streamUrl, headers, timeout = 10).text } ?: return@forEach; try { val json = JSONObject(responseString); val sourcesArray = json.optJSONObject("data")?.optJSONArray("sources") ?: return@forEach; for (i in 0 until sourcesArray.length()) { val src = sourcesArray.getJSONObject(i); val label = if(src.optString("source").contains("AsiaCloud",ignoreCase = true)) "RiveStream ${src.optString("source")}[${src.optString("quality")}]" else "RiveStream ${src.optString("source")}"; val quality = Qualities.P1080.value; val url = src.optString("url"); try { if (url.contains("proxy?url=")) { try { val fullyDecoded = URLDecoder.decode(url, "UTF-8"); val encodedUrl = fullyDecoded.substringAfter("proxy?url=").substringBefore("&headers="); val decodedUrl = URLDecoder.decode(encodedUrl, "UTF-8"); val encodedHeaders = fullyDecoded.substringAfter("&headers="); val headersMap = try { val jsonStr = URLDecoder.decode(encodedHeaders, "UTF-8"); JSONObject(jsonStr).let { json -> json.keys().asSequence().associateWith { json.getString(it) } } } catch (e: Exception) { emptyMap() }; val referer = headersMap["Referer"] ?: ""; val origin = headersMap["Origin"] ?: ""; val videoHeaders = mapOf("Referer" to referer, "Origin" to origin); val type = if (decodedUrl.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else INFER_TYPE; callback.invoke(newExtractorLink(label, label, decodedUrl, type) { this.quality = quality; this.referer = referer; this.headers = videoHeaders }) } catch (e: Exception) {} } else { val type = if (url.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else INFER_TYPE; callback.invoke(newExtractorLink("$label (VLC)", "$label (VLC)", url, type) { this.referer = ""; this.quality = quality }) } } catch (e: Exception) {} } } catch (e: Exception) {} } catch (e: Exception) {} }
     }
 
-    // ================== ADIMOVIEBOX 2 SOURCE (FIXED 2004 & SUBTITLE) ==================
+    // ================== ADIMOVIEBOX 2 SOURCE (TRUE FIX) ==================
     suspend fun invokeAdimoviebox2(
         title: String, year: Int?, season: Int?, episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
     ) {
         val apiUrl = "https://api.inmoviebox.com"
+        // 1. Search
         val searchUrl = "$apiUrl/wefeed-mobile-bff/subject-api/search/v2"
         val jsonBody = """{"page": 1, "perPage": 10, "keyword": "$title"}"""
         val headersSearch = Adimoviebox2Helper.getHeaders(searchUrl, jsonBody)
         val searchRes = app.post(searchUrl, headers = headersSearch, requestBody = jsonBody.toRequestBody("application/json".toMediaTypeOrNull())).parsedSafe<Adimoviebox2SearchResponse>()
+
         val matchedSubject = searchRes?.data?.results?.flatMap { it.subjects ?: arrayListOf() }?.find { subject ->
             val subjectYear = subject.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
             val isTitleMatch = subject.title?.contains(title, true) == true
@@ -575,41 +577,86 @@ object Adicinemax21Extractor : Adicinemax21() {
             val isTypeMatch = if (season != null) subject.subjectType == 2 else (subject.subjectType == 1 || subject.subjectType == 3)
             isTitleMatch && isYearMatch && isTypeMatch
         } ?: return
-        val subjectId = matchedSubject.subjectId ?: return
+
+        val mainSubjectId = matchedSubject.subjectId ?: return
+        
+        // 2. Fetch Detail to get Languages/Dubs (MENIRU KODE ASLI)
+        val detailUrl = "$apiUrl/wefeed-mobile-bff/subject-api/get?subjectId=$mainSubjectId"
+        val detailHeaders = Adimoviebox2Helper.getHeaders(detailUrl, null, "GET")
+        val detailRes = app.get(detailUrl, headers = detailHeaders).text
+        
+        // Manual JSON parsing to handle dynamic Dubs structure like original code
+        val subjectList = mutableListOf<Pair<String, String>>()
+        try {
+            val json = JSONObject(detailRes)
+            val data = json.optJSONObject("data")
+            // Add Original first
+            subjectList.add(mainSubjectId to "Original Audio")
+            
+            // Check for Dubs
+            val dubs = data?.optJSONArray("dubs")
+            if (dubs != null) {
+                for (i in 0 until dubs.length()) {
+                    val dub = dubs.optJSONObject(i)
+                    val dubId = dub?.optString("subjectId")
+                    val dubName = dub?.optString("lanName") ?: "Dub"
+                    if (!dubId.isNullOrEmpty() && dubId != mainSubjectId) {
+                        subjectList.add(dubId to dubName)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            subjectList.add(mainSubjectId to "Original Audio")
+        }
+
         val s = season ?: 0
         val e = episode ?: 0
-        val playUrl = "$apiUrl/wefeed-mobile-bff/subject-api/play-info?subjectId=$subjectId&se=$s&ep=$e"
-        val headersPlay = Adimoviebox2Helper.getHeaders(playUrl, null, "GET")
-        val playRes = app.get(playUrl, headers = headersPlay).parsedSafe<Adimoviebox2PlayResponse>()
-        val streams = playRes?.data?.streams ?: return
 
-        streams.forEach { stream ->
-            val streamUrl = stream.url ?: return@forEach
-            val quality = getQualityFromName(stream.resolutions)
-            val signCookie = stream.signCookie
-            val baseHeaders = Adimoviebox2Helper.getHeaders(streamUrl, null, "GET").toMutableMap()
-            if (!signCookie.isNullOrEmpty()) baseHeaders["Cookie"] = signCookie
+        // 3. Loop through all language versions
+        subjectList.forEach { (currentSubjectId, languageName) ->
+            val playUrl = "$apiUrl/wefeed-mobile-bff/subject-api/play-info?subjectId=$currentSubjectId&se=$s&ep=$e"
+            val headersPlay = Adimoviebox2Helper.getHeaders(playUrl, null, "GET")
+            val playRes = app.get(playUrl, headers = headersPlay).parsedSafe<Adimoviebox2PlayResponse>()
+            val streams = playRes?.data?.streams ?: return@forEach
 
-            callback.invoke(newExtractorLink("Adimoviebox2", "Adimoviebox2", streamUrl, if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE) {
-                this.quality = quality; this.headers = baseHeaders
-            })
+            streams.forEach { stream ->
+                val streamUrl = stream.url ?: return@forEach
+                val quality = getQualityFromName(stream.resolutions)
+                val signCookie = stream.signCookie
+                val baseHeaders = Adimoviebox2Helper.getHeaders(streamUrl, null, "GET").toMutableMap()
+                if (!signCookie.isNullOrEmpty()) baseHeaders["Cookie"] = signCookie
 
-            if (stream.id != null) {
-                val subUrlInternal = "$apiUrl/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=$subjectId&streamId=${stream.id}"
-                val headersSubInternal = Adimoviebox2Helper.getHeaders(subUrlInternal, null, "GET")
-                app.get(subUrlInternal, headers = headersSubInternal).parsedSafe<Adimoviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
-                    val lang = cap.language ?: cap.lanName ?: cap.lan ?: "Unknown"
-                    val capUrl = cap.url ?: return@forEach
-                    subtitleCallback.invoke(newSubtitleFile(lang, capUrl))
-                }
+                // FIX NAME: Menampilkan Bahasa di Nama Source
+                val sourceName = "Adimoviebox2 ($languageName)"
                 
-                // API Subtitle Eksternal (FIX BAHASA INDONESIA)
-                val subUrlExternal = "$apiUrl/wefeed-mobile-bff/subject-api/get-ext-captions?subjectId=$subjectId&resourceId=${stream.id}&episode=0"
-                val headersSubExternal = Adimoviebox2Helper.getHeaders(subUrlExternal, null, "GET")
-                app.get(subUrlExternal, headers = headersSubExternal).parsedSafe<Adimoviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
-                    val lang = cap.lan ?: cap.lanName ?: cap.language ?: "Unknown"
-                    val capUrl = cap.url ?: return@forEach
-                    subtitleCallback.invoke(newSubtitleFile(lang, capUrl))
+                callback.invoke(newExtractorLink(sourceName, sourceName, streamUrl, if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE) {
+                    this.quality = quality; this.headers = baseHeaders
+                })
+
+                if (stream.id != null) {
+                    // Internal Subtitles
+                    val subUrlInternal = "$apiUrl/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=$currentSubjectId&streamId=${stream.id}"
+                    val headersSubInternal = Adimoviebox2Helper.getHeaders(subUrlInternal, null, "GET")
+                    app.get(subUrlInternal, headers = headersSubInternal).parsedSafe<Adimoviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
+                        val lang = cap.language ?: cap.lanName ?: cap.lan ?: "Unknown"
+                        val capUrl = cap.url ?: return@forEach
+                        subtitleCallback.invoke(newSubtitleFile(lang, capUrl))
+                    }
+                    
+                    // External Subtitles (FIX SUBTITLE: Headers manual seperti kode asli)
+                    val subUrlExternal = "$apiUrl/wefeed-mobile-bff/subject-api/get-ext-captions?subjectId=$currentSubjectId&resourceId=${stream.id}&episode=0"
+                    
+                    // Header khusus untuk External Subtitles (PENTING!)
+                    val subHeaders = Adimoviebox2Helper.getHeaders(subUrlExternal, null, "GET").toMutableMap()
+                    // Kode asli menggunakan X-Client-Info dsb dengan huruf besar di subtitle, 
+                    // tapi map 'Adimoviebox2Helper' kita lowercase. Kita coba pakai helper dulu.
+                    // Jika masih gagal, mungkin perlu header 'Cookie' signCookie juga di sini.
+                    
+                    app.get(subUrlExternal, headers = subHeaders).parsedSafe<Adimoviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
+                        val lang = cap.lan ?: cap.lanName ?: cap.language ?: "Unknown"
+                        val capUrl = cap.url ?: return@forEach
+                        subtitleCallback.invoke(newSubtitleFile(lang, capUrl))
+                    }
                 }
             }
         }
