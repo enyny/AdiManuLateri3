@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
 import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh 
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
-import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2 
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
