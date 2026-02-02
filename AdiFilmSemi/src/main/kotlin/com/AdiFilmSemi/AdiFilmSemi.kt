@@ -3,6 +3,7 @@ package com.AdiFilmSemi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdiDewasa
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox2 // Update: Import Provider Baru
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeGomovies
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeIdlix
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeMapple
@@ -55,7 +56,6 @@ open class AdiFilmSemi : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        // UPDATED: Menggunakan URL terbaru dari IdlixProvider yang kamu berikan
         const val idlixAPI = "https://tv10.idlixku.com" 
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
@@ -327,6 +327,17 @@ open class AdiFilmSemi : TmdbProvider() {
             {
                 invokeIdlix(
                     res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
+            {
+                invokeAdimoviebox2(
+                    res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
                     res.episode,

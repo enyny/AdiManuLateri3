@@ -1,23 +1,25 @@
 package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
-import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh
+import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh 
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2 
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
 import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
 import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
 import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
 import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
+import com.AdiDrakor.AdiDrakorExtractor.invokeCinemaOS
+import com.AdiDrakor.AdiDrakorExtractor.invokePlayer4U
+import com.AdiDrakor.AdiDrakorExtractor.invokeRiveStream
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -32,14 +34,13 @@ import kotlin.math.roundToInt
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
     override val hasMainPage = true
+    override var lang = "id"
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
-    override var lang = "id"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.AsianDrama,
     )
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
@@ -57,7 +58,7 @@ open class AdiDrakor : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" // Updated domain
+        const val idlixAPI = "https://tv10.idlixku.com" 
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -70,6 +71,9 @@ open class AdiDrakor : TmdbProvider() {
         const val vidsrccxAPI = "https://vidsrc.cx"
         const val superembedAPI = "https://multiembed.mov"
         const val vidrockAPI = "https://vidrock.net"
+        const val cinemaOSApi = "https://cinemaos.tech"
+        const val Player4uApi = "https://player4u.xyz"
+        const val RiveStreamAPI = "https://rivestream.org"
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -87,7 +91,6 @@ open class AdiDrakor : TmdbProvider() {
 
     }
 
-    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -113,6 +116,7 @@ open class AdiDrakor : TmdbProvider() {
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
+        
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -134,7 +138,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -175,6 +178,7 @@ open class AdiDrakor : TmdbProvider() {
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
+        
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -232,7 +236,7 @@ open class AdiDrakor : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage)
+                            this.score = Score.from10(eps.voteAverage) 
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -319,7 +323,18 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 1. AdiDewasa (Priority)
+            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
+            {
+                invokeAdimoviebox2(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 1. AdiDewasa (Asian Drama Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -330,7 +345,7 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 2. KISSKH (New Integrated Source - Priority for Asian Drama)
+            // 2. KISSKH (Asian Drama/Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -371,7 +386,34 @@ open class AdiDrakor : TmdbProvider() {
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. Sumber Lainnya
+            // 7. CinemaOS (Smart Filtered)
+            {
+                invokeCinemaOS(
+                    res.imdbId,
+                    res.id,
+                    res.title,
+                    res.season,
+                    res.episode,
+                    res.year,
+                    callback,
+                    subtitleCallback
+                )
+            },
+            // 8. Player4U
+            {
+                if (!res.isAnime) invokePlayer4U(
+                    res.title,
+                    res.season,
+                    res.episode,
+                    res.year,
+                    callback
+                )
+            },
+            // 9. RiveStream
+            {
+                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
+            },
+            // Sumber-sumber lain
             {
                 invokeVidsrc(
                     res.imdbId,
