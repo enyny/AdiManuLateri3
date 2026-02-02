@@ -38,6 +38,11 @@ import com.AdiFilmSemi.AdiFilmSemi.Companion.vidsrccxAPI
 import com.AdiFilmSemi.AdiFilmSemi.Companion.superembedAPI
 import com.AdiFilmSemi.AdiFilmSemi.Companion.vidrockAPI
 import java.net.URI
+// Import tambahan untuk Adimoviebox2
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
+import android.net.Uri
 
 object AdiFilmSemiExtractor : AdiFilmSemi() {
 
@@ -133,9 +138,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
              subs?.forEach { subPath ->
                  val subUrl = fixUrl(subPath, baseUrl)
                  subtitleCallback.invoke(
-                     newSubtitleFile(
-                         "English", subUrl
-                     )
+                     newSubtitleFile("English", subUrl)
                  )
              }
              
@@ -144,7 +147,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         }
     }
 
-    // ================== ADIMOVIEBOX SOURCE (FIXED) ==================
+    // ================== ADIMOVIEBOX SOURCE (FIXED - SAMA DENGAN ADICINEMAX21) ==================
     suspend fun invokeAdimoviebox(
         title: String,
         year: Int?,
@@ -153,7 +156,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val apiUrl = "https://filmboom.top" // API Baru
+        val apiUrl = "https://filmboom.top" // API baru
         val searchUrl = "$apiUrl/wefeed-h5-bff/web/subject/search"
         
         val searchBody = mapOf(
@@ -209,6 +212,145 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
                     )
                 )
             }
+        }
+    }
+
+    // ================== ADIMOVIEBOX 2 SOURCE (NEW) ==================
+    suspend fun invokeAdimoviebox2(
+        title: String,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val apiUrl = "https://api.inmoviebox.com"
+        
+        // 1. Cari Film/Series berdasarkan Judul
+        val searchUrl = "$apiUrl/wefeed-mobile-bff/subject-api/search/v2"
+        val jsonBody = """{"page": 1, "perPage": 10, "keyword": "$title"}"""
+        
+        val headersSearch = Adimoviebox2Helper.getHeaders(searchUrl, jsonBody)
+        
+        val searchRes = app.post(
+            searchUrl,
+            headers = headersSearch,
+            requestBody = jsonBody.toRequestBody("application/json".toMediaTypeOrNull())
+        ).parsedSafe<Adimoviebox2SearchResponse>()
+
+        // 2. Filter hasil pencarian (Cocokkan Judul & Tahun)
+        val matchedSubject = searchRes?.data?.results?.flatMap { it.subjects ?: arrayListOf() }?.find { subject ->
+            val subjectYear = subject.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
+            val isTitleMatch = subject.title?.contains(title, true) == true
+            val isYearMatch = year == null || subjectYear == year
+            // Jika Series, tipe harus 2, jika Movie tipe 1
+            val isTypeMatch = if (season != null) subject.subjectType == 2 else subject.subjectType == 1
+            
+            isTitleMatch && isYearMatch && isTypeMatch
+        } ?: return
+
+        val subjectId = matchedSubject.subjectId ?: return
+        val s = season ?: 0
+        val e = episode ?: 0
+
+        // 3. Ambil Link Streaming
+        val playUrl = "$apiUrl/wefeed-mobile-bff/subject-api/play-info?subjectId=$subjectId&se=$s&ep=$e"
+        val headersPlay = Adimoviebox2Helper.getHeaders(playUrl, null, "GET")
+
+        val playRes = app.get(playUrl, headers = headersPlay).parsedSafe<Adimoviebox2PlayResponse>()
+        val streams = playRes?.data?.streams ?: return
+
+        streams.forEach { stream ->
+            val streamUrl = stream.url ?: return@forEach
+            val quality = getQualityFromName(stream.resolutions)
+            
+            callback.invoke(
+                newExtractorLink(
+                    "Adimoviebox2",
+                    "Adimoviebox2",
+                    streamUrl,
+                    if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
+                ) {
+                    this.quality = quality
+                }
+            )
+
+            // 4. Ambil Subtitle (Jika ada stream ID)
+            if (stream.id != null) {
+                val subUrl = "$apiUrl/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=$subjectId&streamId=${stream.id}"
+                val headersSub = Adimoviebox2Helper.getHeaders(subUrl, null, "GET")
+                
+                app.get(subUrl, headers = headersSub).parsedSafe<Adimoviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
+                    val lang = cap.language ?: cap.lanName ?: cap.lan ?: "Unknown"
+                    val capUrl = cap.url ?: return@forEach
+                    subtitleCallback.invoke(
+                        newSubtitleFile(lang, capUrl)
+                    )
+                }
+            }
+        }
+    }
+
+    // Helper Object untuk Enkripsi Adimoviebox2 (Private di dalam Extractor)
+    private object Adimoviebox2Helper {
+        private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
+        
+        fun getHeaders(url: String, body: String? = null, method: String = "POST"): Map<String, String> {
+            val timestamp = System.currentTimeMillis()
+            val xClientToken = generateXClientToken(timestamp)
+            val xTrSignature = generateXTrSignature(method, "application/json", if(method=="POST") "application/json; charset=utf-8" else "application/json", url, body, timestamp)
+
+            return mapOf(
+                "user-agent" to "com.community.mbox.in/50020042 (Linux; U; Android 16; en_IN; sdk_gphone64_x86_64; Build/BP22.250325.006; Cronet/133.0.6876.3)",
+                "accept" to "application/json",
+                "content-type" to "application/json",
+                "x-client-token" to xClientToken,
+                "x-tr-signature" to xTrSignature,
+                "x-client-info" to """{"package_name":"com.community.mbox.in","version_name":"3.0.03.0529.03","version_code":50020042,"os":"android","os_version":"16","device_id":"da2b99c821e6ea023e4be55b54d5f7d8","install_store":"ps","gaid":"d7578036d13336cc","brand":"google","model":"sdk_gphone64_x86_64","system_language":"en","net":"NETWORK_WIFI","region":"IN","timezone":"Asia/Calcutta","sp_code":""}""",
+                "x-client-status" to "0"
+            )
+        }
+
+        private fun md5(input: ByteArray): String {
+            return MessageDigest.getInstance("MD5").digest(input)
+                .joinToString("") { "%02x".format(it) }
+        }
+
+        private fun generateXClientToken(timestamp: Long): String {
+            val tsStr = timestamp.toString()
+            val reversed = tsStr.reversed()
+            val hash = md5(reversed.toByteArray())
+            return "$tsStr,$hash"
+        }
+
+        private fun generateXTrSignature(
+            method: String, accept: String?, contentType: String?, url: String, body: String?, timestamp: Long
+        ): String {
+            val parsed = Uri.parse(url)
+            val path = parsed.path ?: ""
+            val query = if (parsed.queryParameterNames.isNotEmpty()) {
+                parsed.queryParameterNames.sorted().joinToString("&") { key ->
+                    parsed.getQueryParameters(key).joinToString("&") { "$key=$it" }
+                }
+            } else ""
+            
+            val canonicalUrl = if (query.isNotEmpty()) "$path?$query" else path
+            val bodyBytes = body?.toByteArray(Charsets.UTF_8)
+            val bodyHash = if (bodyBytes != null) md5(if (bodyBytes.size > 102400) bodyBytes.copyOfRange(0, 102400) else bodyBytes) else ""
+            val bodyLength = bodyBytes?.size?.toString() ?: ""
+            
+            val canonical = "${method.uppercase()}\n${accept ?: ""}\n${contentType ?: ""}\n$bodyLength\n$timestamp\n$bodyHash\n$canonicalUrl"
+            
+            val secretBytes = base64DecodeArray(secretKeyDefault)
+            val mac = Mac.getInstance("HmacMD5")
+            mac.init(SecretKeySpec(secretBytes, "HmacMD5"))
+            val signature = base64Encode(mac.doFinal(canonical.toByteArray(Charsets.UTF_8)))
+
+            return "$timestamp|2|$signature"
+        }
+        
+        private fun base64DecodeArray(str: String): ByteArray {
+             return android.util.Base64.decode(str, android.util.Base64.DEFAULT)
         }
     }
 
@@ -1252,7 +1394,7 @@ object AdiFilmSemiExtractor : AdiFilmSemi() {
 
     private fun extractPlayer4uLinks(document: Document, season:Int?, episode:Int?, title:String, year:Int?): List<Player4uLinkData> {
         return document.select(".playbtnx").mapNotNull { element ->
-            val titleText = element.text().split(" | ").lastOrNull() ?: return@mapNotNull null
+            val titleText = element.text()?.split(" | ")?.lastOrNull() ?: return@mapNotNull null
             if (season == null && episode == null) {
                 if (year != null && (titleText.startsWith("$title $year", ignoreCase = true) ||
                             titleText.startsWith("$title ($year)", ignoreCase = true))) {

@@ -2,6 +2,8 @@ package com.AdiFilmSemi
 
 import com.fasterxml.jackson.annotation.JsonProperty
 
+// ================== GENERAL DATA CLASSES ==================
+
 data class AniIds(var id: Int? = null, var idMal: Int? = null)
 
 data class TmdbDate(
@@ -138,7 +140,9 @@ data class GpressSources(
     @JsonProperty("max") val max: String,
 )
 
-// ResponseHash dihapus karena Idlix baru menggunakan IdlixResponseHash internal
+// ================== IDLIX INTERNAL DATA CLASSES ==================
+// Note: IdlixResponseHash & IdlixAesData are defined inside the Extractor file or can be added here if needed.
+// For now, they are handled locally in Extractor or mapped here if reused.
 
 data class KisskhEpisodes(
     @JsonProperty("id") val id: Int?,
@@ -243,7 +247,7 @@ data class AdiDewasaItem(
     @JsonProperty("year") val year: String? = null 
 )
 
-// ================== ADIMOVIEBOX MODELS (NEW) ==================
+// ================== ADIMOVIEBOX (V1) MODELS ==================
 data class AdimovieboxResponse(
     @JsonProperty("data") val data: AdimovieboxData? = null,
 )
@@ -271,4 +275,54 @@ data class AdimovieboxStreamItem(
 data class AdimovieboxCaptionItem(
     @JsonProperty("lanName") val lanName: String? = null,
     @JsonProperty("url") val url: String? = null,
+)
+
+// ================== ADIMOVIEBOX 2 (V2) DATA CLASSES ==================
+data class Adimoviebox2SearchResponse(
+    @JsonProperty("data") val data: Adimoviebox2SearchData? = null
+)
+
+data class Adimoviebox2SearchData(
+    @JsonProperty("results") val results: ArrayList<Adimoviebox2SearchResult>? = arrayListOf()
+)
+
+data class Adimoviebox2SearchResult(
+    @JsonProperty("subjects") val subjects: ArrayList<Adimoviebox2Subject>? = arrayListOf()
+)
+
+data class Adimoviebox2Subject(
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("subjectType") val subjectType: Int? = null // 1=Movie, 2=Series
+)
+
+data class Adimoviebox2PlayResponse(
+    @JsonProperty("data") val data: Adimoviebox2PlayData? = null
+)
+
+data class Adimoviebox2PlayData(
+    @JsonProperty("streams") val streams: ArrayList<Adimoviebox2Stream>? = arrayListOf()
+)
+
+data class Adimoviebox2Stream(
+    @JsonProperty("id") val id: String? = null,
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("format") val format: String? = null,
+    @JsonProperty("resolutions") val resolutions: String? = null,
+)
+
+data class Adimoviebox2SubtitleResponse(
+    @JsonProperty("data") val data: Adimoviebox2SubtitleData? = null
+)
+
+data class Adimoviebox2SubtitleData(
+    @JsonProperty("extCaptions") val extCaptions: ArrayList<Adimoviebox2Caption>? = arrayListOf()
+)
+
+data class Adimoviebox2Caption(
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("language") val language: String? = null,
+    @JsonProperty("lanName") val lanName: String? = null,
+    @JsonProperty("lan") val lan: String? = null
 )
