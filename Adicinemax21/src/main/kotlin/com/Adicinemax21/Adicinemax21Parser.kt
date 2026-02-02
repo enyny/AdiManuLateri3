@@ -554,11 +554,13 @@ data class Adimoviebox2PlayData(
     @JsonProperty("streams") val streams: ArrayList<Adimoviebox2Stream>? = arrayListOf()
 )
 
+// FIX: Menambahkan field signCookie untuk menangani konten high-security (Error 2004)
 data class Adimoviebox2Stream(
     @JsonProperty("id") val id: String? = null,
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("format") val format: String? = null,
     @JsonProperty("resolutions") val resolutions: String? = null,
+    @JsonProperty("signCookie") val signCookie: String? = null // <--- Wajib ada
 )
 
 data class Adimoviebox2SubtitleResponse(
