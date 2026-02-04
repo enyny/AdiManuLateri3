@@ -20,10 +20,7 @@ class AdiNgeFilm : MainAPI() {
     // ==========================================
     // 🔗 KONTROL JARAK JAUH (SMART LIST - ZANETA)
     // ==========================================
-    // Link Raw GitHub kamu (Repo Zaneta)
     private val REMOTE_DOMAIN_URL = "https://raw.githubusercontent.com/michat88/Zaneta/main/domain_ngefilm.txt"
-    
-    // Domain cadangan (Hardcode) jika GitHub offline
     private var currentDomain = "https://new31.ngefilm.site" 
     
     override var mainUrl = currentDomain
@@ -40,23 +37,17 @@ class AdiNgeFilm : MainAPI() {
 
     private val cfInterceptor = CloudflareKiller()
 
-    // --- FUNGSI PINTAR: CEK DOMAIN YANG HIDUP ---
+    // --- FUNGSI PINTAR: CEK DOMAIN ---
     private suspend fun getActiveDomain(): String {
         return try {
-            // 1. Ambil daftar teks dari GitHub
             val responseText = app.get(REMOTE_DOMAIN_URL).text
-            
-            // 2. Bersihkan daftar & ambil yang depannya "http"
             val candidates = responseText.lines()
                 .map { it.trim() }
                 .filter { it.startsWith("http") }
 
-            // 3. LOOPING: Cek satu per satu mana yang hidup
             for (domain in candidates) {
                 try {
-                    // Coba konek ke domain dengan timeout 5 detik
                     val response = app.get(domain, timeout = 5) 
-                    
                     if (response.isSuccessful) {
                         currentDomain = domain
                         mainUrl = domain
@@ -66,7 +57,6 @@ class AdiNgeFilm : MainAPI() {
                     continue
                 }
             }
-            
             currentDomain
         } catch (e: Exception) {
             currentDomain
@@ -87,12 +77,7 @@ class AdiNgeFilm : MainAPI() {
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val activeUrl = getActiveDomain()
-        
-        val document = app.get(
-            "$activeUrl/${request.data.format(page)}", 
-            interceptor = cfInterceptor
-        ).document
-        
+        val document = app.get("$activeUrl/${request.data.format(page)}", interceptor = cfInterceptor).document
         val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
@@ -125,10 +110,7 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get(
-            "$currentDomain?s=$query&post_type[]=post&post_type[]=tv",
-            interceptor = cfInterceptor
-        ).document
+        val document = app.get("$currentDomain?s=$query&post_type[]=post&post_type[]=tv", interceptor = cfInterceptor).document
         return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
     }
 
@@ -166,24 +148,26 @@ class AdiNgeFilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
-        val poster = fixUrlNull(document.selectFirst("figure.pull-left > img")?.getImageAttr())
-            ?.fixImageQuality()
+        val poster = fixUrlNull(document.selectFirst("figure.pull-left > img")?.getImageAttr())?.fixImageQuality()
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
-        val year = document.select("div.gmr-moviedata strong:contains(Year:) > a").text()
-            .trim().toIntOrNull()
+        val year = document.select("div.gmr-moviedata strong:contains(Year:) > a").text().trim().toIntOrNull()
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         
-        // --- PERBAIKAN TRAILER ---
-        // Selector dipersingkat agar lebih robust sesuai analisa log curl
-        val trailer = document.selectFirst("a.gmr-trailer-popup")?.attr("href")
+        // --- PERBAIKAN TRAILER MEMANJANG/GLITCH ---
+        // 1. Ambil href, dan pastikan sudah di-fix (https://...)
+        var trailer = fixUrlNull(document.selectFirst("a.gmr-trailer-popup")?.attr("href"))
         
-        val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
-            ?.text()?.trim()
-        val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")
-            ?.map { it.select("a").text() }
-        val duration = document.selectFirst("div.gmr-moviedata span[property=duration]")?.text()
-            ?.replace(Regex("\\D"), "")?.toIntOrNull()
+        // 2. Pembersihan Link:
+        // Jika formatnya 'embed', ubah paksa jadi 'watch?v=' agar dikenali sebagai YouTube murni.
+        // Ini mencegah player membukanya sebagai "Webview" yang sering bikin tampilan rusak.
+        if (trailer?.contains("youtube.com/embed/") == true) {
+            trailer = trailer?.replace("youtube.com/embed/", "youtube.com/watch?v=")
+        }
+        
+        val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")?.text()?.trim()
+        val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")?.map { it.select("a").text() }
+        val duration = document.selectFirst("div.gmr-moviedata span[property=duration]")?.text()?.replace(Regex("\\D"), "")?.toIntOrNull()
         val recommendations = document.select("article.item.col-md-20").mapNotNull { it.toRecommendResult() }
 
         return if (tvType == TvType.TvSeries) {
@@ -192,10 +176,8 @@ class AdiNgeFilm : MainAPI() {
                     val href = fixUrl(eps.attr("href"))
                     val rawTitle = eps.attr("title").takeIf { it.isNotBlank() } ?: eps.text()
                     val cleanTitle = rawTitle.replaceFirst(Regex("(?i)Permalink ke\\s*"), "").trim()
-
                     val epNum = Regex("Episode\\s*(\\d+)").find(cleanTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
                         ?: cleanTitle.split(" ").lastOrNull()?.filter { it.isDigit() }?.toIntOrNull()
-
                     val formattedName = epNum?.let { "Episode $it" } ?: cleanTitle
 
                     newEpisode(href) {
@@ -214,7 +196,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer) // Trailer dimasukkan di sini
+                addTrailer(trailer) // Trailer bersih
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -226,7 +208,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer) // Trailer dimasukkan di sini
+                addTrailer(trailer) // Trailer bersih
             }   
         }
     }
