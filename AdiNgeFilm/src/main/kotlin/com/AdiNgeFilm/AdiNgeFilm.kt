@@ -17,8 +17,16 @@ import org.jsoup.nodes.Element
 
 class AdiNgeFilm : MainAPI() {
 
-    // ✅ UPDATE DOMAIN KE NEW31
-    override var mainUrl = "https://new31.ngefilm.site"
+    // ==========================================
+    // 🔗 KONTROL JARAK JAUH (LIST DOMAIN)
+    // ==========================================
+    // Link Raw GitHub kamu (Repo Zaneta)
+    private val REMOTE_DOMAIN_URL = "https://raw.githubusercontent.com/michat88/Zaneta/main/domain_ngefilm.txt"
+    
+    // Domain cadangan (Hardcode) jika GitHub offline
+    private var currentDomain = "https://new31.ngefilm.site" 
+    
+    override var mainUrl = currentDomain
     private var directUrl: String? = null
     override var name = "AdiNgeFilm"
     override val hasMainPage = true
@@ -30,8 +38,33 @@ class AdiNgeFilm : MainAPI() {
         TvType.AsianDrama
     )
 
-    // ✅ TAMBAHKAN CLOUDFLARE KILLER (PENTING!)
     private val cfInterceptor = CloudflareKiller()
+
+    // --- FUNGSI BARU: MEMBACA LIST DOMAIN ---
+    private suspend fun getActiveDomain(): String {
+        return try {
+            // 1. Ambil teks dari GitHub
+            val responseText = app.get(REMOTE_DOMAIN_URL).text
+            
+            // 2. Pecah menjadi List berdasarkan baris (Enter)
+            //    dan ambil link valid pertama yang ditemukan
+            val activeLink = responseText.lines()
+                .map { it.trim() } // Hapus spasi
+                .firstOrNull { it.startsWith("http") } // Ambil yang depannya http
+
+            // 3. Jika ada link valid, pakai itu
+            if (!activeLink.isNullOrEmpty()) {
+                currentDomain = activeLink
+                mainUrl = activeLink
+                activeLink
+            } else {
+                currentDomain
+            }
+        } catch (e: Exception) {
+            // Jika gagal ambil dari GitHub, pakai cadangan terakhir
+            currentDomain
+        }
+    }
 
     override val mainPage = mainPageOf(
         "year/2025/page/%d/" to "Terbaru",
@@ -46,12 +79,14 @@ class AdiNgeFilm : MainAPI() {
     )
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // ✅ PAKAI INTERCEPTOR DI SINI AGAR TIDAK ERROR "FAILED TO CONNECT"
+        // Cek GitHub untuk update domain
+        val activeUrl = getActiveDomain()
+        
         val document = app.get(
-            "$mainUrl/${request.data.format(page)}", 
+            "$activeUrl/${request.data.format(page)}", 
             interceptor = cfInterceptor
         ).document
-
+        
         val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
@@ -84,9 +119,8 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // ✅ PAKAI INTERCEPTOR SAAT SEARCH JUGA
         val document = app.get(
-            "$mainUrl?s=$query&post_type[]=post&post_type[]=tv",
+            "$currentDomain?s=$query&post_type[]=post&post_type[]=tv",
             interceptor = cfInterceptor
         ).document
         return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
@@ -120,7 +154,6 @@ class AdiNgeFilm : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // ✅ PAKAI INTERCEPTOR SAAT LOAD DETAIL
         val fetch = app.get(url, interceptor = cfInterceptor)
         directUrl = getBaseUrl(fetch.url)
         val document = fetch.document
@@ -194,7 +227,6 @@ class AdiNgeFilm : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ✅ PAKAI INTERCEPTOR SAAT LOAD LINK
         val document = app.get(data, interceptor = cfInterceptor).document
         val id = document.selectFirst("div#muvipro_player_content_id")?.attr("data-id")
 
