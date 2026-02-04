@@ -1,25 +1,25 @@
-package com.Adicinemax21
+package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
-import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 
-import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
-import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
-import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
-import com.Adicinemax21.Adicinemax21Extractor.invokeSuperembed
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidfast
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidlink
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrc
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrccc
-import com.Adicinemax21.Adicinemax21Extractor.invokeVixsrc
-import com.Adicinemax21.Adicinemax21Extractor.invokeWatchsomuch
-import com.Adicinemax21.Adicinemax21Extractor.invokeWyzie
-import com.Adicinemax21.Adicinemax21Extractor.invokeXprime
-import com.Adicinemax21.Adicinemax21Extractor.invokeCinemaOS
-import com.Adicinemax21.Adicinemax21Extractor.invokePlayer4U
-import com.Adicinemax21.Adicinemax21Extractor.invokeRiveStream
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
+import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh 
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2
+import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
+import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
+import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
+import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
+import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
+import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
+import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
+import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
+import com.AdiDrakor.AdiDrakorExtractor.invokeCinemaOS
+import com.AdiDrakor.AdiDrakorExtractor.invokePlayer4U
+import com.AdiDrakor.AdiDrakorExtractor.invokeRiveStream
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -31,8 +31,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlin.math.roundToInt
 
-open class Adicinemax21 : TmdbProvider() {
-    override var name = "Adicinemax21"
+open class AdiDrakor : TmdbProvider() {
+    override var name = "AdiDrakor"
     override val hasMainPage = true
     override var lang = "id"
     override val instantLinkLoading = true
@@ -45,7 +45,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & Adicinemax21 */
+    /** AUTHOR : Hexated & AdiDrakor */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -92,30 +92,14 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        "$tmdbAPI/trending/movie/day?api_key=$apiKey&region=US&without_genres=16" to "Trending Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "Popular Movies (2020+)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "Popular TV Shows (2020+)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "Netflix Originals (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "Netflix Movies (New)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49&sort_by=popularity.desc&first_air_date.gte=2020-01-01&without_genres=16" to "HBO Originals (New)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=384|1899&watch_region=US&sort_by=popularity.desc&primary_release_date.gte=2020-01-01&without_genres=16" to "HBO Movies (New)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc&first_air_date.gte=2020-01-01" to "Indonesian Series (2020+)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16,27&sort_by=popularity.desc&primary_release_date.gte=2020-01-01" to "Indonesian Movies (2020+)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&with_genres=27&without_genres=16&sort_by=popularity.desc&primary_release_date.gte=2020-01-01" to "Indonesian Horror (2020+)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_genres=16&first_air_date.gte=2020-01-01" to "Korean Dramas (2020+)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_genres=16&first_air_date.gte=2020-01-01" to "Chinese Dramas (2020+)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Action Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Sci-Fi Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Horror Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Romance Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Comedy Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Thriller Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Movies Lagi",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=12&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Adventure Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=9648&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Mystery Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=14&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Fantasy Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10752&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "War Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=80&sort_by=popularity.desc&without_genres=16&primary_release_date.gte=2020-01-01" to "Crime Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&primary_release_date.gte=${getDate().today}" to "Upcoming Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=28" to "Action Korean Movies"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -181,9 +165,9 @@ open class Adicinemax21 : TmdbProvider() {
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
@@ -216,15 +200,7 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        // FIX V3: "Safe Mode" Trailer
-        // 1. Hanya ambil site YouTube (Menghindari Vimeo dll)
-        // 2. Hanya ambil type "Trailer" (Hindari Teaser/Clip yang sering kena region lock)
-        // 3. Ambil 1 saja (Mengurangi beban request extractor agar tidak dideteksi bot)
-        val trailer = res.videos?.results
-            ?.filter { it.site == "YouTube" && it.key?.isNotBlank() == true && it.type == "Trailer" }
-            ?.sortedByDescending { it.type == "Trailer" } // Pastikan Trailer prioritas utama
-            ?.map { "https://www.youtube.com/watch?v=${it.key}" }
-            ?.take(1)
+        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -336,6 +312,7 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
+            // 0. IDLIX / JENIUSPLAY (PRIORITAS UTAMA)
             {
                 invokeIdlix(
                     res.title,
@@ -346,6 +323,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
             {
                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
@@ -356,6 +334,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 1. AdiDewasa (Asian Drama Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -366,6 +345,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 2. KISSKH (Asian Drama/Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -376,6 +356,7 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -386,9 +367,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
+            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -399,9 +382,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
+            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -414,6 +399,7 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback
                 )
             },
+            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
@@ -423,9 +409,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 9. RiveStream
             {
                 if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
             },
+            // Sumber-sumber lain
             {
                 invokeVidsrc(
                     res.imdbId,
@@ -559,12 +547,10 @@ open class Adicinemax21 : TmdbProvider() {
 
     data class Trailers(
         @JsonProperty("key") val key: String? = null,
-        @JsonProperty("site") val site: String? = null,
-        @JsonProperty("type") val type: String? = null,
     )
 
     data class ResultsTrailer(
-        @JsonProperty("results") val results: List<Trailers>? = null,
+        @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
     )
 
     data class AltTitles(
