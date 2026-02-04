@@ -141,6 +141,18 @@ class AdiNgeFilm : MainAPI() {
         }
     }
 
+    // --- HELPER BARU: CUCI BERSIH ID YOUTUBE ---
+    private fun cleanYoutubeTrailer(url: String?): String? {
+        if (url == null) return null
+        // Regex sakti: Mengambil ID dari link embed, watch, youtu.be, dll.
+        val pattern = "(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"
+        val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+        val match = regex.find(url)
+        
+        // Jika ketemu ID (11 karakter), buat link standar. Jika tidak, kembalikan aslinya.
+        return match?.groupValues?.get(1)?.let { "https://www.youtube.com/watch?v=$it" } ?: url
+    }
+
     override suspend fun load(url: String): LoadResponse {
         val fetch = app.get(url, interceptor = cfInterceptor)
         directUrl = getBaseUrl(fetch.url)
@@ -154,16 +166,11 @@ class AdiNgeFilm : MainAPI() {
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         
-        // --- PERBAIKAN TRAILER MEMANJANG/GLITCH ---
-        // 1. Ambil href, dan pastikan sudah di-fix (https://...)
-        var trailer = fixUrlNull(document.selectFirst("a.gmr-trailer-popup")?.attr("href"))
-        
-        // 2. Pembersihan Link:
-        // Jika formatnya 'embed', ubah paksa jadi 'watch?v=' agar dikenali sebagai YouTube murni.
-        // Ini mencegah player membukanya sebagai "Webview" yang sering bikin tampilan rusak.
-        if (trailer?.contains("youtube.com/embed/") == true) {
-            trailer = trailer?.replace("youtube.com/embed/", "youtube.com/watch?v=")
-        }
+        // --- PEMANGGILAN FUNGSI CUCI TRAILER ---
+        // 1. Ambil link mentah (selector dipersingkat agar lebih ampuh)
+        val rawTrailer = fixUrlNull(document.selectFirst("a.gmr-trailer-popup")?.attr("href"))
+        // 2. Cuci link agar 100% standar YouTube
+        val trailer = cleanYoutubeTrailer(rawTrailer)
         
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")?.text()?.trim()
         val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")?.map { it.select("a").text() }
