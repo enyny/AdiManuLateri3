@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
 import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 // Update: Import Provider Baru
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -58,7 +58,7 @@ open class Adicinemax21 : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" // Update ke domain terbaru jika perlu
+        const val idlixAPI = "https://tv10.idlixku.com" 
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -181,9 +181,9 @@ open class Adicinemax21 : TmdbProvider() {
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
         }
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
@@ -216,7 +216,15 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        // FIX V3: "Safe Mode" Trailer
+        // 1. Hanya ambil site YouTube (Menghindari Vimeo dll)
+        // 2. Hanya ambil type "Trailer" (Hindari Teaser/Clip yang sering kena region lock)
+        // 3. Ambil 1 saja (Mengurangi beban request extractor agar tidak dideteksi bot)
+        val trailer = res.videos?.results
+            ?.filter { it.site == "YouTube" && it.key?.isNotBlank() == true && it.type == "Trailer" }
+            ?.sortedByDescending { it.type == "Trailer" } // Pastikan Trailer prioritas utama
+            ?.map { "https://www.youtube.com/watch?v=${it.key}" }
+            ?.take(1)
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -328,7 +336,6 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. IDLIX / JENIUSPLAY (PRIORITAS UTAMA)
             {
                 invokeIdlix(
                     res.title,
@@ -339,7 +346,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
             {
                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
@@ -350,7 +356,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 1. AdiDewasa (Asian Drama Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -361,7 +366,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. KISSKH (Asian Drama/Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -372,7 +376,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -383,11 +386,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -398,11 +399,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -415,7 +414,6 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
@@ -425,11 +423,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 9. RiveStream
             {
                 if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
             },
-            // Sumber-sumber lain
             {
                 invokeVidsrc(
                     res.imdbId,
@@ -563,10 +559,12 @@ open class Adicinemax21 : TmdbProvider() {
 
     data class Trailers(
         @JsonProperty("key") val key: String? = null,
+        @JsonProperty("site") val site: String? = null,
+        @JsonProperty("type") val type: String? = null,
     )
 
     data class ResultsTrailer(
-        @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
+        @JsonProperty("results") val results: List<Trailers>? = null,
     )
 
     data class AltTitles(
