@@ -141,16 +141,17 @@ class AdiNgeFilm : MainAPI() {
         }
     }
 
-    // --- HELPER BARU: CUCI BERSIH ID YOUTUBE ---
-    private fun cleanYoutubeTrailer(url: String?): String? {
-        if (url == null) return null
-        // Regex sakti: Mengambil ID dari link embed, watch, youtu.be, dll.
-        val pattern = "(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"
+    // --- HELPER FIX: EXTRACTION ID YOUTUBE ---
+    // Fungsi ini lebih kejam. Jika tidak menemukan ID valid, dia return NULL.
+    // Ini mencegah player mencoba memutar link sampah yang bikin glitch.
+    private fun getYoutubeId(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        // Pola regex ini mencari ID 11 karakter (huruf/angka/tanda minus/underscore)
+        // yang biasa dipakai YouTube.
+        val pattern = "(?:youtube(?:-nocookie)?\\.com\\/(?:[^\\/\\n\\s]+\\/\\S+\\/|(?:v|e(?:mbed)?)\\/|\\S*?[?&]v=)|youtu\\.be\\/)([a-zA-Z0-9_-]{11})"
         val regex = Regex(pattern, RegexOption.IGNORE_CASE)
         val match = regex.find(url)
-        
-        // Jika ketemu ID (11 karakter), buat link standar. Jika tidak, kembalikan aslinya.
-        return match?.groupValues?.get(1)?.let { "https://www.youtube.com/watch?v=$it" } ?: url
+        return match?.groupValues?.get(1)
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -166,11 +167,16 @@ class AdiNgeFilm : MainAPI() {
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         
-        // --- PEMANGGILAN FUNGSI CUCI TRAILER ---
-        // 1. Ambil link mentah (selector dipersingkat agar lebih ampuh)
+        // --- LOGIKA BARU TRAILER ---
+        // 1. Ambil link mentah dari tombol
         val rawTrailer = fixUrlNull(document.selectFirst("a.gmr-trailer-popup")?.attr("href"))
-        // 2. Cuci link agar 100% standar YouTube
-        val trailer = cleanYoutubeTrailer(rawTrailer)
+        
+        // 2. Ambil HANYA ID-nya saja (Contoh: "eFCA3eDR1bg")
+        val ytId = getYoutubeId(rawTrailer)
+        
+        // 3. Rakit ulang jadi link standar yang pasti bersih
+        // Jika ID tidak ketemu, trailer akan NULL (Tombol tidak muncul, daripada muncul tapi error)
+        val trailer = ytId?.let { "https://www.youtube.com/watch?v=$it" }
         
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")?.text()?.trim()
         val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")?.map { it.select("a").text() }
@@ -203,7 +209,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer) // Trailer bersih
+                addTrailer(trailer) // Link bersih masuk sini
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -215,7 +221,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer) // Trailer bersih
+                addTrailer(trailer) // Link bersih masuk sini
             }   
         }
     }
