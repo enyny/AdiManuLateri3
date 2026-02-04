@@ -18,12 +18,12 @@ import org.jsoup.nodes.Element
 class AdiNgeFilm : MainAPI() {
 
     // ==========================================
-    // 🔗 KONTROL JARAK JAUH (SMART LIST)
+    // 🔗 KONTROL JARAK JAUH (SMART LIST - ZANETA)
     // ==========================================
     // Link Raw GitHub kamu (Repo Zaneta)
     private val REMOTE_DOMAIN_URL = "https://raw.githubusercontent.com/michat88/Zaneta/main/domain_ngefilm.txt"
     
-    // Domain cadangan (Hardcode) jika GitHub offline atau semua list mati
+    // Domain cadangan (Hardcode) jika GitHub offline
     private var currentDomain = "https://new31.ngefilm.site" 
     
     override var mainUrl = currentDomain
@@ -40,7 +40,7 @@ class AdiNgeFilm : MainAPI() {
 
     private val cfInterceptor = CloudflareKiller()
 
-    // --- FUNGSI PINTAR: CEK DOMAIN YANG HIDUP (PING) ---
+    // --- FUNGSI PINTAR: CEK DOMAIN YANG HIDUP ---
     private suspend fun getActiveDomain(): String {
         return try {
             // 1. Ambil daftar teks dari GitHub
@@ -54,27 +54,21 @@ class AdiNgeFilm : MainAPI() {
             // 3. LOOPING: Cek satu per satu mana yang hidup
             for (domain in candidates) {
                 try {
-                    // Coba konek ke domain dengan timeout cepat (5 detik)
-                    // Kalau domain belum ada (new50), ini akan error dan lanjut ke bawah
-                    // Kita pakai interceptor false biar raw request, atau true juga tidak masalah
+                    // Coba konek ke domain dengan timeout 5 detik
                     val response = app.get(domain, timeout = 5) 
                     
                     if (response.isSuccessful) {
-                        // KETEMU! Domain ini hidup.
                         currentDomain = domain
                         mainUrl = domain
                         return domain
                     }
                 } catch (e: Exception) {
-                    // Gagal konek (Situs mati/belum ada), lanjut ke domain berikutnya...
                     continue
                 }
             }
             
-            // Kalau semua di list mati, pakai domain default terakhir
             currentDomain
         } catch (e: Exception) {
-            // Kalau GitHub offline/gagal, pakai domain default
             currentDomain
         }
     }
@@ -92,7 +86,6 @@ class AdiNgeFilm : MainAPI() {
     )
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Cek GitHub & Cari Domain Hidup Dulu
         val activeUrl = getActiveDomain()
         
         val document = app.get(
@@ -132,7 +125,6 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Gunakan domain yang sudah dipastikan aktif (currentDomain)
         val document = app.get(
             "$currentDomain?s=$query&post_type[]=post&post_type[]=tv",
             interceptor = cfInterceptor
@@ -181,7 +173,11 @@ class AdiNgeFilm : MainAPI() {
             .trim().toIntOrNull()
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
-        val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
+        
+        // --- PERBAIKAN TRAILER ---
+        // Selector dipersingkat agar lebih robust sesuai analisa log curl
+        val trailer = document.selectFirst("a.gmr-trailer-popup")?.attr("href")
+        
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
             ?.text()?.trim()
         val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")
@@ -218,7 +214,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer)
+                addTrailer(trailer) // Trailer dimasukkan di sini
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -230,7 +226,7 @@ class AdiNgeFilm : MainAPI() {
                 addActors(actors)
                 this.recommendations = recommendations
                 this.duration = duration ?: 0
-                addTrailer(trailer)
+                addTrailer(trailer) // Trailer dimasukkan di sini
             }   
         }
     }
