@@ -2,8 +2,9 @@ package com.AdiFilmSemi
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdiDewasa
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeKisskh 
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox
-import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox2 // Update: Import Provider Baru
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeAdimoviebox2 
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeGomovies
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeIdlix
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeMapple
@@ -18,6 +19,7 @@ import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeWyzie
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeXprime
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeCinemaOS
 import com.AdiFilmSemi.AdiFilmSemiExtractor.invokePlayer4U
+import com.AdiFilmSemi.AdiFilmSemiExtractor.invokeRiveStream
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -31,8 +33,8 @@ import kotlin.math.roundToInt
 
 open class AdiFilmSemi : TmdbProvider() {
     override var name = "AdiFilmSemi"
-    override var lang = "id"
     override val hasMainPage = true
+    override var lang = "id"
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
@@ -71,6 +73,7 @@ open class AdiFilmSemi : TmdbProvider() {
         const val vidrockAPI = "https://vidrock.net"
         const val cinemaOSApi = "https://cinemaos.tech"
         const val Player4uApi = "https://player4u.xyz"
+        const val RiveStreamAPI = "https://rivestream.org"
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -89,6 +92,8 @@ open class AdiFilmSemi : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
+        
         // GROUP 1: Sexual Obsession (Keyword 459)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=primary_release_date.desc&include_adult=true" to "Sexual Obsession (New)",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=459&sort_by=popularity.desc&include_adult=true" to "Sexual Obsession (Popular)",
@@ -124,11 +129,18 @@ open class AdiFilmSemi : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val adultQuery =
-            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        // We override adult query slightly differently here since your categories explicitly have include_adult=true
+        // But for pagination, we just append the page
+        val url = if(request.data.contains("include_adult=true")) {
+             "${request.data}&page=$page"
+        } else {
+             val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+             "${request.data}$adultQuery&page=$page"
+        }
+        
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        val home = app.get("${request.data}$adultQuery&page=$page")
+        val home = app.get(url)
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
@@ -149,7 +161,7 @@ open class AdiFilmSemi : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=true")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
@@ -171,14 +183,14 @@ open class AdiFilmSemi : TmdbProvider() {
             }
         } catch (e: Exception) {
             throw ErrorLoadingException("Invalid URL or JSON data: ${e.message}")
-        }
+        } ?: throw ErrorLoadingException("Invalid data format")
 
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append&include_video_language=id,en"
         }
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
@@ -211,7 +223,15 @@ open class AdiFilmSemi : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        // FIX V3: "Safe Mode" Trailer
+        // 1. Hanya ambil site YouTube (Menghindari Vimeo dll)
+        // 2. Hanya ambil type "Trailer" (Hindari Teaser/Clip yang sering kena region lock)
+        // 3. Ambil 1 saja (Mengurangi beban request extractor agar tidak dideteksi bot)
+        val trailer = res.videos?.results
+            ?.filter { it.site == "YouTube" && it.key?.isNotBlank() == true && it.type == "Trailer" }
+            ?.sortedByDescending { it.type == "Trailer" } // Pastikan Trailer prioritas utama
+            ?.map { "https://www.youtube.com/watch?v=${it.key}" }
+            ?.take(1)
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -323,7 +343,6 @@ open class AdiFilmSemi : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 1. JeniusPlay (via Idlix) - PRIORITAS UTAMA
             {
                 invokeIdlix(
                     res.title,
@@ -334,7 +353,6 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
             {
                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
@@ -345,7 +363,6 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 2. AdiDewasa (High Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -356,7 +373,16 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 3. Adimoviebox (Direct Source)
+            {
+                invokeKisskh(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -367,11 +393,9 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -382,11 +406,9 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -399,7 +421,6 @@ open class AdiFilmSemi : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
@@ -409,7 +430,9 @@ open class AdiFilmSemi : TmdbProvider() {
                     callback
                 )
             },
-            // Sumber-sumber lain
+            {
+                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
+            },
             {
                 invokeVidsrc(
                     res.imdbId,
@@ -543,10 +566,12 @@ open class AdiFilmSemi : TmdbProvider() {
 
     data class Trailers(
         @JsonProperty("key") val key: String? = null,
+        @JsonProperty("site") val site: String? = null,
+        @JsonProperty("type") val type: String? = null,
     )
 
     data class ResultsTrailer(
-        @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
+        @JsonProperty("results") val results: List<Trailers>? = null,
     )
 
     data class AltTitles(
