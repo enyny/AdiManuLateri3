@@ -18,12 +18,12 @@ import org.jsoup.nodes.Element
 class AdiNgeFilm : MainAPI() {
 
     // ==========================================
-    // 🔗 KONTROL JARAK JAUH (LIST DOMAIN)
+    // 🔗 KONTROL JARAK JAUH (SMART LIST)
     // ==========================================
     // Link Raw GitHub kamu (Repo Zaneta)
     private val REMOTE_DOMAIN_URL = "https://raw.githubusercontent.com/michat88/Zaneta/main/domain_ngefilm.txt"
     
-    // Domain cadangan (Hardcode) jika GitHub offline
+    // Domain cadangan (Hardcode) jika GitHub offline atau semua list mati
     private var currentDomain = "https://new31.ngefilm.site" 
     
     override var mainUrl = currentDomain
@@ -40,28 +40,41 @@ class AdiNgeFilm : MainAPI() {
 
     private val cfInterceptor = CloudflareKiller()
 
-    // --- FUNGSI BARU: MEMBACA LIST DOMAIN ---
+    // --- FUNGSI PINTAR: CEK DOMAIN YANG HIDUP (PING) ---
     private suspend fun getActiveDomain(): String {
         return try {
-            // 1. Ambil teks dari GitHub
+            // 1. Ambil daftar teks dari GitHub
             val responseText = app.get(REMOTE_DOMAIN_URL).text
             
-            // 2. Pecah menjadi List berdasarkan baris (Enter)
-            //    dan ambil link valid pertama yang ditemukan
-            val activeLink = responseText.lines()
-                .map { it.trim() } // Hapus spasi
-                .firstOrNull { it.startsWith("http") } // Ambil yang depannya http
+            // 2. Bersihkan daftar & ambil yang depannya "http"
+            val candidates = responseText.lines()
+                .map { it.trim() }
+                .filter { it.startsWith("http") }
 
-            // 3. Jika ada link valid, pakai itu
-            if (!activeLink.isNullOrEmpty()) {
-                currentDomain = activeLink
-                mainUrl = activeLink
-                activeLink
-            } else {
-                currentDomain
+            // 3. LOOPING: Cek satu per satu mana yang hidup
+            for (domain in candidates) {
+                try {
+                    // Coba konek ke domain dengan timeout cepat (5 detik)
+                    // Kalau domain belum ada (new50), ini akan error dan lanjut ke bawah
+                    // Kita pakai interceptor false biar raw request, atau true juga tidak masalah
+                    val response = app.get(domain, timeout = 5) 
+                    
+                    if (response.isSuccessful) {
+                        // KETEMU! Domain ini hidup.
+                        currentDomain = domain
+                        mainUrl = domain
+                        return domain
+                    }
+                } catch (e: Exception) {
+                    // Gagal konek (Situs mati/belum ada), lanjut ke domain berikutnya...
+                    continue
+                }
             }
+            
+            // Kalau semua di list mati, pakai domain default terakhir
+            currentDomain
         } catch (e: Exception) {
-            // Jika gagal ambil dari GitHub, pakai cadangan terakhir
+            // Kalau GitHub offline/gagal, pakai domain default
             currentDomain
         }
     }
@@ -79,7 +92,7 @@ class AdiNgeFilm : MainAPI() {
     )
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Cek GitHub untuk update domain
+        // Cek GitHub & Cari Domain Hidup Dulu
         val activeUrl = getActiveDomain()
         
         val document = app.get(
@@ -119,6 +132,7 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Gunakan domain yang sudah dipastikan aktif (currentDomain)
         val document = app.get(
             "$currentDomain?s=$query&post_type[]=post&post_type[]=tv",
             interceptor = cfInterceptor
