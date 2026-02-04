@@ -129,11 +129,18 @@ open class AdiFilmSemi : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val adultQuery =
-            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        // We override adult query slightly differently here since your categories explicitly have include_adult=true
+        // But for pagination, we just append the page
+        val url = if(request.data.contains("include_adult=true")) {
+             "${request.data}&page=$page"
+        } else {
+             val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+             "${request.data}$adultQuery&page=$page"
+        }
+        
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        val home = app.get("${request.data}$adultQuery&page=$page")
+        val home = app.get(url)
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
@@ -154,7 +161,7 @@ open class AdiFilmSemi : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=true")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
@@ -217,9 +224,12 @@ open class AdiFilmSemi : TmdbProvider() {
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
         // FIX V3: "Safe Mode" Trailer
+        // 1. Hanya ambil site YouTube (Menghindari Vimeo dll)
+        // 2. Hanya ambil type "Trailer" (Hindari Teaser/Clip yang sering kena region lock)
+        // 3. Ambil 1 saja (Mengurangi beban request extractor agar tidak dideteksi bot)
         val trailer = res.videos?.results
             ?.filter { it.site == "YouTube" && it.key?.isNotBlank() == true && it.type == "Trailer" }
-            ?.sortedByDescending { it.type == "Trailer" } 
+            ?.sortedByDescending { it.type == "Trailer" } // Pastikan Trailer prioritas utama
             ?.map { "https://www.youtube.com/watch?v=${it.key}" }
             ?.take(1)
 
