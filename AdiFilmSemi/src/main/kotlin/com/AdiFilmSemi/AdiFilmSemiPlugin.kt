@@ -11,7 +11,7 @@ class AdiFilmSemiPlugin : Plugin() {
         registerMainAPI(AdiFilmSemi())
         
         // Register Extractors
-        // Kita hanya butuh Jeniusplay yang baru, karena Yflix sudah dihapus
+        // Mendaftarkan Jeniusplay yang baru (dari IdlixProvider)
         registerExtractorAPI(Jeniusplay())
     }
 }
