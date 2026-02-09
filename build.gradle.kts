@@ -32,12 +32,13 @@ fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByN
 
 subprojects {
     apply(plugin = "com.android.library")
-    apply(plugin = "kotlin-android")
+    // FIX 1: Menggunakan ID plugin lengkap, bukan alias lama
+    apply(plugin = "org.jetbrains.kotlin.android") 
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
-        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/michat88/AdiManuLateri3/tree/master")
-        authors = listOf("AdiManuLateri3")
+        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/michat88/AdiManuLateri3")
+        authors = listOf("AldryManu")
     }
 
     android {
@@ -45,7 +46,8 @@ subprojects {
 
         defaultConfig {
             minSdk = 21
-            compileSdkVersion(35)
+            // FIX 2: Menggunakan compileSdk (Property), bukan compileSdkVersion (Method)
+            compileSdk = 35 
             targetSdk = 35
         }
 
