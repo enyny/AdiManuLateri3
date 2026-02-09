@@ -61,8 +61,8 @@ subprojects {
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
                     "-Xno-receiver-assertions",
-                    // OPSI 1: Mengaktifkan param-property (Masa Depan)
-                    "-Xannotation-defaulting=param-property" 
+                    // OPSI 2: Memaksa perilaku lama (Legacy) tanpa warning
+                    "-Xannotation-defaulting=first-only"
                 )
             }
         }
