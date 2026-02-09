@@ -13,7 +13,7 @@ buildscript {
 
     dependencies {
         classpath("com.android.tools.build:gradle:8.13.2")
-        classpath("com.github.recloudstream:gradle:cce1b8d84d")
+        classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
@@ -47,7 +47,6 @@ subprojects {
             minSdk = 21
             compileSdkVersion(35)
             targetSdk = 35
-
         }
 
         compileOptions {
@@ -55,14 +54,14 @@ subprojects {
             targetCompatibility = JavaVersion.VERSION_1_8
         }
 
-
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
                 jvmTarget.set(JvmTarget.JVM_1_8)
                 freeCompilerArgs.addAll(
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
-                    "-Xno-receiver-assertions"
+                    "-Xno-receiver-assertions",
+                    "-Xannotation-default-target=param-property"
                 )
             }
         }
@@ -71,7 +70,9 @@ subprojects {
     dependencies {
         val implementation by configurations
         val cloudstream by configurations
-        cloudstream("com.lagradost:cloudstream3:pre-release")
+        
+        // KEMBALI KE VERSI LAMA (Biar file lain gak error)
+        cloudstream("com.lagradost:cloudstream3:pre-release") 
 
         // Other dependencies
         implementation(kotlin("stdlib"))
