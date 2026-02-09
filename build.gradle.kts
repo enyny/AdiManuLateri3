@@ -14,7 +14,7 @@ buildscript {
 
     dependencies {
         // AGP 8.4.2 kompatibel dengan Gradle 8.14+
-        classpath("com.android.tools.build:gradle:8.4.2")
+        classpath("com.android.tools.build:gradle:8.13.2")
         
         // PERBAIKAN UTAMA: Menggunakan hash spesifik menggantikan master-SNAPSHOT
         classpath("com.github.recloudstream:gradle:138bb97")
