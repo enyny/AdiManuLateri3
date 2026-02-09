@@ -32,8 +32,7 @@ fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByN
 
 subprojects {
     apply(plugin = "com.android.library")
-    // FIX 1: Menggunakan ID plugin lengkap, bukan alias lama
-    apply(plugin = "org.jetbrains.kotlin.android") 
+    apply(plugin = "kotlin-android") 
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
@@ -44,10 +43,11 @@ subprojects {
     android {
         namespace = "com.phisher98"
 
+        // KITA KEMBALIKAN KE SINI (Syntax Lama yang Aman)
+        compileSdkVersion(35)
+
         defaultConfig {
             minSdk = 21
-            // FIX 2: Menggunakan compileSdk (Property), bukan compileSdkVersion (Method)
-            compileSdk = 35 
             targetSdk = 35
         }
 
