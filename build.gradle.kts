@@ -12,16 +12,15 @@ buildscript {
     }
 
     dependencies {
-        // AGP 8.7.3: Paling tinggi yang stabil & support Gradle 8.14
-        // Jangan pakai 9.0.0 dulu, plugin CS3 belum sanggup.
-        classpath("com.android.tools.build:gradle:8.7.3")
+        // AGP 8.8.0: Versi stabil tinggi (Lebih aman daripada 9.0 alpha untuk saat ini)
+        classpath("com.android.tools.build:gradle:8.8.0")
 
-        // Cloudstream Gradle Plugin (Hash Stabil)
+        // Cloudstream Plugin (Hash Stabil)
         classpath("com.github.recloudstream:gradle:cce1b8d84d")
 
-        // KOTLIN 2.1.0: Ini solusi error 'metadata' kamu.
-        // Ini versi terbaru yang memperbaiki masalah kompatibilitas library CS3 baru.
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        // SOLUSI ERROR KAMU: Upgrade ke Kotlin 2.3.0
+        // Agar bisa membaca metadata version 2.3.0 dari library Cloudstream
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
 
@@ -52,26 +51,24 @@ subprojects {
 
         defaultConfig {
             minSdk = 21
-            // Target SDK Android 15 (Vanilla Ice Cream)
             compileSdkVersion(35)
             targetSdk = 35
         }
 
         compileOptions {
-            // Kita pakai Java 17 untuk compile biar support fitur bahasa baru
+            // Kita pakai Java 17 (Standar masa depan)
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
 
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
-                // JVM Target 17 (Lebih modern daripada 1.8)
-                jvmTarget.set(JvmTarget.JVM_17) 
+                jvmTarget.set(JvmTarget.JVM_17)
                 freeCompilerArgs.addAll(
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
                     "-Xno-receiver-assertions",
-                    // Wajib ada untuk support Kotlin 2.0+ di Cloudstream
+                    // Flag wajib untuk Kotlin 2.x
                     "-Xannotation-defaulting=param-property" 
                 )
             }
@@ -82,32 +79,25 @@ subprojects {
         val implementation by configurations
         val cloudstream by configurations
         
-        // Library Utama Cloudstream
+        // Library Utama
         cloudstream("com.lagradost:cloudstream3:pre-release")
 
-        // --- DEPENDENCIES "MASA DEPAN" (Versi Terbaru) ---
+        // --- DEPENDENCIES (Versi Disesuaikan) ---
         
-        // Kotlin Standard Library (Otomatis ikut versi plugin 2.1.0)
-        implementation(kotlin("stdlib")) 
-
-        // Networking
-        implementation("com.github.Blatzar:NiceHttp:0.4.16") // Belum ada update baru
-        implementation("org.jsoup:jsoup:1.18.3") // Update Jsoup terbaru
+        implementation(kotlin("stdlib")) // Akan ikut versi 2.3.0
         
-        // Annotations
-        implementation("androidx.annotation:annotation:1.9.1") // Update terbaru
+        implementation("com.github.Blatzar:NiceHttp:0.4.16")
+        implementation("org.jsoup:jsoup:1.18.3")
+        implementation("androidx.annotation:annotation:1.9.1")
         
-        // JSON Parsing (Jackson & Gson - Update Terbaru)
+        // Update Library JSON agar support Kotlin 2.3
         implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
         implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
-        implementation("com.google.code.gson:gson:2.11.0")
+        implementation("com.google.code.gson:gson:2.12.0")
         implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
         
-        // Coroutines & Async
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
-        
-        // Utilities
-        implementation("org.mozilla:rhino:1.7.15") // Update Rhino
+        implementation("org.mozilla:rhino:1.7.15")
         implementation("me.xdrop:fuzzywuzzy:1.4.0")
         implementation("com.github.vidstige:jadb:v1.2.1")
         implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
