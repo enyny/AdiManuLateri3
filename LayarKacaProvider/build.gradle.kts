@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 7
+version = 16
 
 
 cloudstream {
@@ -24,5 +24,6 @@ cloudstream {
     )
 
 
-    isCrossPlatform = true
+    iconUrl = "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%"
+
 }
