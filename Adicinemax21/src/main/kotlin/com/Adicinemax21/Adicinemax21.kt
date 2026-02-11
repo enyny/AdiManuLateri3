@@ -120,7 +120,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     private fun getImageUrl(link: String?): String? {
         if (link == null) return null
-        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
+        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
     }
 
     private fun getOriImageUrl(link: String?): String? {
